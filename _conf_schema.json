@@ -9,6 +9,11 @@
     "description": "配置模式：basic（推荐）或 advanced（高级参数生效）",
     "default": "basic"
   },
+  "lifecycle_log": {
+    "type": "bool",
+    "description": "是否输出插件生命周期日志（initialized/terminated）",
+    "default": true
+  },
   "debug_log": {
     "type": "bool",
     "description": "是否输出详细调试日志到控制台",

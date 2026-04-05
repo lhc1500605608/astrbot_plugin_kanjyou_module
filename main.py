@@ -16,6 +16,7 @@ from astrbot.api.star import Context, Star, register
 DEFAULT_CONFIG = {
     "enabled": True,
     "config_mode": "basic",
+    "lifecycle_log": True,
     "debug_log": False,
     "debug_status_window_sec": 300,
     "timezone": "Asia/Shanghai",
@@ -67,7 +68,7 @@ INTERNAL_POLICY = {
     "quality_history_size": 6,
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.2")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.3")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -82,7 +83,8 @@ class KanjyouIdleProactivePlugin(Star):
     async def initialize(self):
         if self._loop_task is None or self._loop_task.done():
             self._loop_task = asyncio.create_task(self._idle_loop())
-        logger.info("[idle-proactive] initialized")
+        if self.config.get("lifecycle_log", True):
+            logger.info("[idle-proactive] initialized")
         self._debug("plugin initialize complete")
 
     async def terminate(self):
@@ -93,7 +95,8 @@ class KanjyouIdleProactivePlugin(Star):
             except asyncio.CancelledError:
                 pass
         self._save_state()
-        logger.info("[idle-proactive] terminated")
+        if self.config.get("lifecycle_log", True):
+            logger.info("[idle-proactive] terminated")
         self._debug("plugin terminate complete")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -930,7 +933,7 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _debug(self, msg: str):
         if self.config.get("debug_log", False):
-            logger.info(f"[idle-proactive][debug] {msg}")
+            logger.debug(f"[idle-proactive] {msg}")
 
     def _maybe_log_status(self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False):
         if not self.config.get("debug_log", False):

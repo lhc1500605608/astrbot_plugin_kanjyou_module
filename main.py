@@ -27,6 +27,7 @@ class KanjyouIdleProactivePlugin(Star):
         if self._loop_task is None or self._loop_task.done():
             self._loop_task = asyncio.create_task(self._idle_loop())
         logger.info("[idle-proactive] initialized")
+        self._debug("plugin initialize complete")
 
     async def terminate(self):
         if self._loop_task and not self._loop_task.done():
@@ -37,14 +38,17 @@ class KanjyouIdleProactivePlugin(Star):
                 pass
         self._save_state()
         logger.info("[idle-proactive] terminated")
+        self._debug("plugin terminate complete")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_all_message(self, event: AstrMessageEvent):
         session_key = self._session_key(event)
         if not session_key:
+            self._debug("skip message: session key unavailable")
             return
 
         if not self._is_whitelisted(event):
+            self._debug(f"skip message: not in whitelist session={session_key}")
             return
 
         now_ts = self._now().timestamp()
@@ -55,6 +59,9 @@ class KanjyouIdleProactivePlugin(Star):
             s["next_check_at"] = now_ts + self._randomized_interval()
             self._sessions[session_key] = s
             self._save_state()
+            self._debug(
+                f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
+            )
 
     @filter.after_message_sent()
     async def after_message_sent(self, event: AstrMessageEvent):
@@ -72,6 +79,9 @@ class KanjyouIdleProactivePlugin(Star):
             s["last_interaction_at"] = now_ts
             self._sessions[session_key] = s
             self._save_state()
+            self._debug(
+                f"touch by bot session={session_key} last_interaction={self._fmt_ts(now_ts)}"
+            )
 
     @filter.command("idle_status")
     async def idle_status(self, event: AstrMessageEvent):
@@ -92,7 +102,7 @@ class KanjyouIdleProactivePlugin(Star):
             f"enabled={self._config['enabled']} | idle={idle_sec}s | "
             f"today_count={s.get('today_proactive_count', 0)} | "
             f"cooldown_until={self._fmt_ts(s.get('cooldown_until'))} | "
-            f"sleep_mode={sleep_on}"
+            f"sleep_mode={sleep_on} | debug_log={self._config.get('debug_log', False)}"
         )
         yield event.plain_result(summary)
 
@@ -107,6 +117,18 @@ class KanjyouIdleProactivePlugin(Star):
         self._config["enabled"] = False
         self._save_config()
         yield event.plain_result("已关闭闲时主动聊天。")
+
+    @filter.command("idle_debug_on")
+    async def idle_debug_on(self, event: AstrMessageEvent):
+        self._config["debug_log"] = True
+        self._save_config()
+        yield event.plain_result("已开启 idle debug 日志。")
+
+    @filter.command("idle_debug_off")
+    async def idle_debug_off(self, event: AstrMessageEvent):
+        self._config["debug_log"] = False
+        self._save_config()
+        yield event.plain_result("已关闭 idle debug 日志。")
 
     @filter.command("idle_wl_add_private")
     async def idle_wl_add_private(self, event: AstrMessageEvent, user_id: str):
@@ -169,10 +191,12 @@ class KanjyouIdleProactivePlugin(Star):
 
     async def _check_sessions(self):
         if not self._config.get("enabled", True):
+            self._debug("loop skip: plugin disabled")
             return
 
         now = self._now()
         if self._in_sleep_window(now):
+            self._debug(f"loop skip: in sleep window now={now.strftime('%H:%M')}")
             return
 
         now_ts = now.timestamp()
@@ -183,61 +207,88 @@ class KanjyouIdleProactivePlugin(Star):
                 self._rollover_daily_counter(s, now)
 
                 if now_ts < s.get("next_check_at", 0):
+                    self._debug(
+                        f"session skip(next_check) session={session_key} next_check={self._fmt_ts(s.get('next_check_at'))}"
+                    )
                     continue
 
                 if now_ts < s.get("cooldown_until", 0):
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._debug(
+                        f"session skip(cooldown) session={session_key} cooldown_until={self._fmt_ts(s.get('cooldown_until'))}"
+                    )
                     continue
 
                 if s.get("today_proactive_count", 0) >= self._config["max_per_session_per_day"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._debug(
+                        f"session skip(limit) session={session_key} today_count={s.get('today_proactive_count', 0)}"
+                    )
                     continue
 
                 idle_sec = now_ts - s.get("last_interaction_at", now_ts)
                 if idle_sec < self._config["min_idle_sec"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._debug(
+                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self._config['min_idle_sec']}"
+                    )
                     continue
 
                 should_trigger = self._should_trigger(float(idle_sec))
                 if not should_trigger:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._debug(
+                        f"session skip(probability) session={session_key} idle_sec={int(idle_sec)}"
+                    )
                     continue
 
                 umo = s.get("unified_msg_origin")
                 if not umo:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._debug(f"session skip(no_origin) session={session_key}")
                     continue
 
-                success = await self._send_proactive(umo, None)
+                success = await self._send_proactive(umo, None, session_key)
                 s["next_check_at"] = now_ts + self._randomized_interval()
                 if success:
                     s["last_bot_at"] = now_ts
                     s["last_interaction_at"] = now_ts
                     s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
                     s["cooldown_until"] = now_ts + self._config["cooldown_sec"]
+                    self._debug(
+                        f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']}"
+                    )
+                else:
+                    self._debug(f"session trigger(failed) session={session_key}")
                 changed = True
 
             if changed:
                 self._save_state()
+                self._debug("state persisted")
 
-    async def _send_proactive(self, unified_msg_origin: str, event: Optional[AstrMessageEvent]) -> bool:
-        topic = random.choice(self._config["topic_pool"])
+    async def _send_proactive(
+        self, unified_msg_origin: str, event: Optional[AstrMessageEvent], session_key: str = ""
+    ) -> bool:
+        topic = self._pick_topic(session_key)
         try:
             chain = MessageChain().message(topic)
             await self.context.send_message(unified_msg_origin, chain)
+            self._debug(f"send proactive ok session={session_key} topic={topic}")
             return True
         except Exception:
             try:
                 # 兼容部分适配器对 MessageChain 构造差异
                 await self.context.send_message(unified_msg_origin, [Plain(topic)])
+                self._debug(f"send proactive ok(fallback) session={session_key} topic={topic}")
                 return True
             except Exception as exc:
                 logger.error(f"[idle-proactive] send failed: {exc}")
+                self._debug(f"send proactive failed session={session_key} err={exc}")
                 if event:
                     await event.send(event.plain_result("主动消息发送失败，请检查适配器是否支持主动消息。"))
                 return False
@@ -278,6 +329,13 @@ class KanjyouIdleProactivePlugin(Star):
         if group_id:
             return f"group:{group_id}"
         return f"private:{sender_id}"
+
+    def _pick_topic(self, session_key: str) -> str:
+        if session_key.startswith("private:") and self._config.get("private_topic_pool"):
+            return random.choice(self._config["private_topic_pool"])
+        if session_key.startswith("group:") and self._config.get("group_topic_pool"):
+            return random.choice(self._config["group_topic_pool"])
+        return random.choice(self._config["topic_pool"])
 
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
         key = self._session_key(event)
@@ -344,6 +402,7 @@ class KanjyouIdleProactivePlugin(Star):
     def _load_config(self) -> Dict:
         default = {
             "enabled": True,
+            "debug_log": False,
             "timezone": "Asia/Shanghai",
             "private_whitelist": [],
             "group_whitelist": [],
@@ -355,6 +414,16 @@ class KanjyouIdleProactivePlugin(Star):
             "max_per_session_per_day": 8,
             "trigger_base_prob": 0.08,
             "trigger_max_prob": 0.55,
+            "private_topic_pool": [
+                "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
+                "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
+                "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？",
+            ],
+            "group_topic_pool": [
+                "大家最近有没有遇到一个值得分享的小发现？",
+                "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
+                "随机话题：最近哪个工具或方法让你效率提升最明显？",
+            ],
             "topic_pool": [
                 "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
                 "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
@@ -373,6 +442,10 @@ class KanjyouIdleProactivePlugin(Star):
             merged = {**default, **loaded}
             if not isinstance(merged.get("sleep_windows"), list) or not merged["sleep_windows"]:
                 merged["sleep_windows"] = default["sleep_windows"]
+            if not isinstance(merged.get("private_topic_pool"), list) or not merged["private_topic_pool"]:
+                merged["private_topic_pool"] = default["private_topic_pool"]
+            if not isinstance(merged.get("group_topic_pool"), list) or not merged["group_topic_pool"]:
+                merged["group_topic_pool"] = default["group_topic_pool"]
             if not isinstance(merged.get("topic_pool"), list) or not merged["topic_pool"]:
                 merged["topic_pool"] = default["topic_pool"]
             return merged
@@ -405,3 +478,7 @@ class KanjyouIdleProactivePlugin(Star):
     def _write_json(self, path: Path, data):
         with path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def _debug(self, msg: str):
+        if self._config.get("debug_log", False):
+            logger.info(f"[idle-proactive][debug] {msg}")

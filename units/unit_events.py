@@ -16,6 +16,7 @@ class EventUnitsMixin:
         async with self._lock:
             s = self._get_or_create_session(event)
             self._ensure_session_shape(s)
+            self._boost_energy_by_human(s, now_ts)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["pending_human_reply"] = False

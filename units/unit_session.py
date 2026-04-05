@@ -254,6 +254,21 @@ class SessionConfigUnitsMixin:
         ].strip():
             self.config["fallback_proactive_text"] = DEFAULT_CONFIG["fallback_proactive_text"]
             changed = True
+        if not isinstance(self.config.get("enable_holiday_perception"), bool):
+            self.config["enable_holiday_perception"] = self._to_bool(
+                self.config.get("enable_holiday_perception"), DEFAULT_CONFIG["enable_holiday_perception"]
+            )
+            changed = True
+        if not isinstance(self.config.get("enable_platform_perception"), bool):
+            self.config["enable_platform_perception"] = self._to_bool(
+                self.config.get("enable_platform_perception"), DEFAULT_CONFIG["enable_platform_perception"]
+            )
+            changed = True
+        if not isinstance(self.config.get("holiday_country"), str) or not self.config.get("holiday_country", "").strip():
+            self.config["holiday_country"] = DEFAULT_CONFIG["holiday_country"]
+            changed = True
+        else:
+            self.config["holiday_country"] = str(self.config["holiday_country"]).upper().strip()
         return changed
 
     def _normalize_security_layer(self) -> bool:

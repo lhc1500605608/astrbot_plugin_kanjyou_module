@@ -1,4 +1,5 @@
 import asyncio
+import random
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -44,33 +45,83 @@ class RuntimeUnitsMixin:
 
     async def _process_session(self, session_key: str, s: Dict, now: datetime, now_ts: float) -> bool:
         self._unit_rollover_counters(s, now)
+        self._recover_session_energy(s, now_ts)
 
         if self._unit_gate_next_check(session_key, s, now_ts):
+            self._debug_decision(session_key, {"outcome": "skip", "reason": "next_check"})
             return False
         if self._unit_gate_cooldown(session_key, s, now_ts):
+            self._debug_decision(session_key, {"outcome": "skip", "reason": "cooldown"})
             return True
         if self._unit_gate_daily_limit(session_key, s, now_ts):
+            self._debug_decision(session_key, {"outcome": "skip", "reason": "daily_limit"})
             return True
         if self._unit_gate_pending_reply(session_key, s, now_ts):
+            self._debug_decision(session_key, {"outcome": "skip", "reason": "await_human_reply"})
             return True
 
         period = self._get_period(now)
         if self._unit_gate_period_limit(session_key, s, period, now, now_ts):
+            self._debug_decision(
+                session_key, {"outcome": "skip", "reason": "period_limit", "period": period}
+            )
             return True
 
         idle_sec = now_ts - s.get("last_interaction_at", now_ts)
         decay = self._no_reply_decay_factor(s)
         if self._unit_gate_idle(session_key, s, idle_sec, decay, now, now_ts):
+            self._debug_decision(
+                session_key,
+                {
+                    "outcome": "skip",
+                    "reason": "idle_not_enough",
+                    "idle_sec": int(idle_sec),
+                    "decay": round(decay, 3),
+                },
+            )
             return True
-        if self._unit_gate_probability(session_key, s, idle_sec, now, now_ts):
+        if self._unit_gate_energy(session_key, s, now_ts):
+            self._debug_decision(
+                session_key,
+                {
+                    "outcome": "skip",
+                    "reason": "energy_low",
+                    "energy": round(float(s.get("energy", 0.0)), 2),
+                    "energy_min_trigger": round(self._energy_min_trigger(), 2),
+                },
+            )
+            return True
+        blocked_by_prob, prob_info = self._unit_gate_probability(session_key, s, idle_sec, now, now_ts)
+        self._debug_decision(
+            session_key,
+            {
+                "outcome": "skip" if blocked_by_prob else "pass",
+                "reason": "probability",
+                "idle_sec": int(idle_sec),
+                "probability": prob_info["probability"],
+                "roll": prob_info["roll"],
+            },
+        )
+        if blocked_by_prob:
             return True
 
         umo = s.get("unified_msg_origin")
         if self._unit_gate_origin(session_key, s, umo, now_ts):
+            self._debug_decision(session_key, {"outcome": "skip", "reason": "missing_origin"})
             return True
 
         success, sent_text = await self._unit_execute_send(umo, session_key, idle_sec, s)
         self._unit_finalize_result(session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts)
+        self._debug_decision(
+            session_key,
+            {
+                "outcome": "triggered" if success else "failed",
+                "reason": "send_proactive",
+                "idle_sec": int(idle_sec),
+                "decay": round(decay, 3),
+                "energy": round(float(s.get("energy", 0.0)), 2),
+            },
+        )
         return True
 
     def _unit_global_guard(self, now_ts: float) -> bool:
@@ -188,19 +239,42 @@ class RuntimeUnitsMixin:
         )
         return True
 
-    def _unit_gate_probability(
-        self, session_key: str, s: Dict, idle_sec: float, now: datetime, now_ts: float
-    ) -> bool:
-        if self._should_trigger(float(idle_sec), now):
+    def _unit_gate_energy(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if not self._energy_enabled():
+            return False
+        current = float(s.get("energy", self._energy_initial()))
+        if current >= self._energy_min_trigger():
             return False
         self._unit_defer_session(
             session_key,
             s,
             now_ts,
-            "probability_miss",
-            f"session skip(probability) session={session_key} idle_sec={int(idle_sec)}",
+            "energy_low",
+            (
+                f"session skip(energy_low) session={session_key} "
+                f"energy={current:.2f} min_trigger={self._energy_min_trigger():.2f}"
+            ),
         )
         return True
+
+    def _unit_gate_probability(
+        self, session_key: str, s: Dict, idle_sec: float, now: datetime, now_ts: float
+    ) -> tuple[bool, Dict]:
+        p = float(self._trigger_probability(float(idle_sec), now))
+        roll = random.random()
+        if roll < p:
+            return False, {"probability": round(p, 4), "roll": round(roll, 4)}
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "probability_miss",
+            (
+                f"session skip(probability) session={session_key} idle_sec={int(idle_sec)} "
+                f"p={p:.4f} roll={roll:.4f}"
+            ),
+        )
+        return True, {"probability": round(p, 4), "roll": round(roll, 4)}
 
     def _unit_gate_origin(self, session_key: str, s: Dict, umo: str, now_ts: float) -> bool:
         if umo:
@@ -233,6 +307,7 @@ class RuntimeUnitsMixin:
         if success:
             self._global_send_history.append(now_ts)
             self._global_fail_streak = 0
+            self._consume_session_energy(s, now_ts)
             s["last_bot_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1

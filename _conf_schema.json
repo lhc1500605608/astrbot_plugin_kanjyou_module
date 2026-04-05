@@ -73,14 +73,29 @@
   },
   "proactive_prompt_template": {
     "type": "string",
-    "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
+    "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
     "editor_mode": true,
-    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。"
+    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。"
   },
   "fallback_proactive_text": {
     "type": "string",
     "description": "[生成] 模型生成失败时的兜底主动问候",
     "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
+  },
+  "enable_holiday_perception": {
+    "type": "bool",
+    "description": "[生成] 是否启用节假日感知（目前内置支持 CN）",
+    "default": true
+  },
+  "holiday_country": {
+    "type": "string",
+    "description": "[生成] 节假日感知地区代码（默认 CN）",
+    "default": "CN"
+  },
+  "enable_platform_perception": {
+    "type": "bool",
+    "description": "[生成] 是否启用平台与会话场景感知",
+    "default": true
   },
   "security_global_hourly_cap": {
     "type": "int",

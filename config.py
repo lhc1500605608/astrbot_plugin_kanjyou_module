@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
         "请严格基于下方人格设定进行表达，不要脱离人格。\n"
         "人格设定：\n{persona}\n\n"
         "当前会话类型：{session_type}\n"
+        "环境感知信息：{env_perception}\n"
         "距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n"
         "建议语气：{style_hint}\n"
         "最近已发过的主动问候（避免重复）：\n{recent_history}\n"
@@ -31,6 +32,9 @@ DEFAULT_CONFIG = {
         "5) 和最近问候不重复。"
     ),
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
+    "enable_holiday_perception": True,
+    "enable_platform_perception": True,
+    "holiday_country": "CN",
     "security_global_hourly_cap": 6,
     "security_max_fail_streak": 3,
     "security_fail_pause_min": 180,
@@ -68,6 +72,7 @@ EXECUTION_ORDER = (
     "unit_gate_pending_reply",
     "unit_gate_period_limit",
     "unit_gate_idle",
+    "unit_gate_energy",
     "unit_gate_probability",
     "unit_gate_origin",
     "unit_execute_send",
@@ -83,4 +88,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "1.8.5"
+PLUGIN_VERSION = "1.10.0"

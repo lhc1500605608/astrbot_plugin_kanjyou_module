@@ -8,6 +8,12 @@ from astrbot.api.event import AstrMessageEvent
 
 from config import DEFAULT_CONFIG
 
+try:
+    import chinese_calendar as _cc
+except Exception:
+    _cc = None
+
+
 class PolicyGenerationUnitsMixin:
     async def _generate_proactive_text(
         self, unified_msg_origin: str, session_key: str, idle_sec: float, session: Optional[Dict]
@@ -17,6 +23,7 @@ class PolicyGenerationUnitsMixin:
         )
         try:
             session_type = "私聊" if session_key.startswith("private:") else "群聊"
+            env_perception = self._build_env_perception(unified_msg_origin, session_key)
             persona_text = await self._resolve_persona_prompt()
             style_hint = self._style_hint(session_key, session, idle_sec)
             recent_history = self._recent_history_text(session)
@@ -26,6 +33,7 @@ class PolicyGenerationUnitsMixin:
             prompt = prompt_tpl.format(
                 persona=persona_text,
                 session_type=session_type,
+                env_perception=env_perception,
                 idle_seconds=int(idle_sec),
                 idle_minutes=max(1, int(idle_sec // 60)),
                 style_hint=style_hint,
@@ -58,6 +66,90 @@ class PolicyGenerationUnitsMixin:
             logger.error(f"[idle-proactive] generate proactive text failed: {exc}")
             self._debug(f"generate failed session={session_key} err={exc}")
             return fallback
+
+    def _build_env_perception(self, unified_msg_origin: str, session_key: str) -> str:
+        now = self._now()
+        parts = [self._time_perception_text(now), self._day_perception_text(now)]
+        holiday_text = self._holiday_perception_text(now)
+        if holiday_text:
+            parts.append(holiday_text)
+        platform_text = self._platform_perception_text(unified_msg_origin, session_key)
+        if platform_text:
+            parts.append(platform_text)
+        return "；".join(x for x in parts if x)
+
+    def _time_perception_text(self, now: datetime) -> str:
+        hm = now.strftime("%H:%M")
+        hour = now.hour
+        if 5 <= hour < 12:
+            span = "上午"
+        elif 12 <= hour < 14:
+            span = "中午"
+        elif 14 <= hour < 18:
+            span = "下午"
+        elif 18 <= hour < 23:
+            span = "晚上"
+        else:
+            span = "深夜"
+        return f"当前时间 {hm}（{span}）"
+
+    def _day_perception_text(self, now: datetime) -> str:
+        names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        weekday = names[now.weekday()]
+        day_type = "周末" if now.weekday() >= 5 else "工作日"
+        return f"{weekday}，{day_type}"
+
+    def _holiday_perception_text(self, now: datetime) -> str:
+        if not self._to_bool(
+            self.config.get("enable_holiday_perception"), DEFAULT_CONFIG["enable_holiday_perception"]
+        ):
+            return ""
+        country = str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"])).upper().strip()
+        if country != "CN":
+            return ""
+        if _cc is None:
+            return ""
+
+        today = now.date()
+        try:
+            detail = _cc.get_holiday_detail(today)
+            on_holiday = False
+            name = ""
+            if isinstance(detail, tuple):
+                if len(detail) >= 1:
+                    on_holiday = bool(detail[0])
+                if len(detail) >= 2 and detail[1]:
+                    name = str(detail[1])
+            elif detail:
+                name = str(detail)
+                on_holiday = _cc.is_holiday(today)
+
+            if on_holiday:
+                return f"节假日：{name or '法定假日'}"
+            if _cc.is_workday(today):
+                return "今天是工作日"
+            return "今天是休息日"
+        except Exception:
+            return ""
+
+    def _platform_perception_text(self, unified_msg_origin: str, session_key: str) -> str:
+        if not self._to_bool(
+            self.config.get("enable_platform_perception"), DEFAULT_CONFIG["enable_platform_perception"]
+        ):
+            return ""
+        raw = (unified_msg_origin or "").strip()
+        channel = raw.split(":", 1)[0].split("/", 1)[0].lower() if raw else ""
+        mapping = {
+            "telegram": "Telegram",
+            "discord": "Discord",
+            "onebot": "QQ/OneBot",
+            "qq": "QQ",
+            "wechat": "微信",
+            "kook": "KOOK",
+        }
+        channel_name = mapping.get(channel, channel or "未知平台")
+        session_type = "群聊" if str(session_key).startswith("group:") else "私聊"
+        return f"平台：{channel_name}，场景：{session_type}"
 
     def _should_trigger(self, idle_sec: float, now: datetime) -> bool:
         min_idle = float(self._effective_min_idle_sec(now))

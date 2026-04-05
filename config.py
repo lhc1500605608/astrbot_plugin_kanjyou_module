@@ -41,6 +41,13 @@ DEFAULT_CONFIG = {
     "security_allow_links": False,
     "security_blocked_words": [],
     "security_max_text_length": 90,
+    "mood_enabled": True,
+    "mood_initial": 70.0,
+    "mood_min_trigger": 35.0,
+    "mood_cost_on_proactive": 28.0,
+    "mood_cost_on_dialogue": 8.0,
+    "mood_recover_per_min": 1.2,
+    "debug_decision_log": True,
 }
 
 INTERNAL_POLICY = {
@@ -72,7 +79,7 @@ EXECUTION_ORDER = (
     "unit_gate_pending_reply",
     "unit_gate_period_limit",
     "unit_gate_idle",
-    "unit_gate_energy",
+    "unit_gate_mood",
     "unit_gate_probability",
     "unit_gate_origin",
     "unit_execute_send",
@@ -88,4 +95,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "1.10.0"
+PLUGIN_VERSION = "1.11.0"

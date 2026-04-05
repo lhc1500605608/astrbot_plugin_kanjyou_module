@@ -45,7 +45,7 @@ class RuntimeUnitsMixin:
 
     async def _process_session(self, session_key: str, s: Dict, now: datetime, now_ts: float) -> bool:
         self._unit_rollover_counters(s, now)
-        self._recover_session_energy(s, now_ts)
+        self._recover_session_mood(s, now_ts)
 
         if self._unit_gate_next_check(session_key, s, now_ts):
             self._debug_decision(session_key, {"outcome": "skip", "reason": "next_check"})
@@ -80,14 +80,14 @@ class RuntimeUnitsMixin:
                 },
             )
             return True
-        if self._unit_gate_energy(session_key, s, now_ts):
+        if self._unit_gate_mood(session_key, s, now_ts):
             self._debug_decision(
                 session_key,
                 {
                     "outcome": "skip",
-                    "reason": "energy_low",
-                    "energy": round(float(s.get("energy", 0.0)), 2),
-                    "energy_min_trigger": round(self._energy_min_trigger(), 2),
+                    "reason": "mood_low",
+                    "mood": round(float(s.get("mood", 0.0)), 2),
+                    "mood_min_trigger": round(self._mood_min_trigger(), 2),
                 },
             )
             return True
@@ -119,7 +119,7 @@ class RuntimeUnitsMixin:
                 "reason": "send_proactive",
                 "idle_sec": int(idle_sec),
                 "decay": round(decay, 3),
-                "energy": round(float(s.get("energy", 0.0)), 2),
+                "mood": round(float(s.get("mood", 0.0)), 2),
             },
         )
         return True
@@ -239,20 +239,20 @@ class RuntimeUnitsMixin:
         )
         return True
 
-    def _unit_gate_energy(self, session_key: str, s: Dict, now_ts: float) -> bool:
-        if not self._energy_enabled():
+    def _unit_gate_mood(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if not self._mood_enabled():
             return False
-        current = float(s.get("energy", self._energy_initial()))
-        if current >= self._energy_min_trigger():
+        current = float(s.get("mood", self._mood_initial()))
+        if current >= self._mood_min_trigger():
             return False
         self._unit_defer_session(
             session_key,
             s,
             now_ts,
-            "energy_low",
+            "mood_low",
             (
-                f"session skip(energy_low) session={session_key} "
-                f"energy={current:.2f} min_trigger={self._energy_min_trigger():.2f}"
+                f"session skip(mood_low) session={session_key} "
+                f"mood={current:.2f} min_trigger={self._mood_min_trigger():.2f}"
             ),
         )
         return True
@@ -307,7 +307,7 @@ class RuntimeUnitsMixin:
         if success:
             self._global_send_history.append(now_ts)
             self._global_fail_streak = 0
-            self._consume_session_energy(s, now_ts)
+            self._consume_session_mood_by_proactive(s, now_ts)
             s["last_bot_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1

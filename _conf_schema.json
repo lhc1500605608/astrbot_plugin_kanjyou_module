@@ -127,10 +127,45 @@
     "description": "[安全] 主动消息最大长度（字符）",
     "default": 90
   },
+  "mood_enabled": {
+    "type": "bool",
+    "description": "[安全] 是否启用情绪值系统（低情绪不主动）",
+    "default": true
+  },
+  "mood_initial": {
+    "type": "float",
+    "description": "[安全] 会话初始情绪值（0-100）",
+    "default": 70.0
+  },
+  "mood_min_trigger": {
+    "type": "float",
+    "description": "[安全] 主动触发所需最低情绪值（0-100）",
+    "default": 35.0
+  },
+  "mood_cost_on_proactive": {
+    "type": "float",
+    "description": "[安全] 每次主动消息消耗的情绪值",
+    "default": 28.0
+  },
+  "mood_cost_on_dialogue": {
+    "type": "float",
+    "description": "[安全] 每次会话消息往来消耗的情绪值",
+    "default": 8.0
+  },
+  "mood_recover_per_min": {
+    "type": "float",
+    "description": "[安全] 每分钟自动恢复的情绪值",
+    "default": 1.2
+  },
   "debug_log": {
     "type": "bool",
     "description": "[调试] 是否输出详细调试日志到控制台",
     "default": false
+  },
+  "debug_decision_log": {
+    "type": "bool",
+    "description": "[调试] 是否输出结构化决策日志（JSON）",
+    "default": true
   },
   "debug_status_window_sec": {
     "type": "int",

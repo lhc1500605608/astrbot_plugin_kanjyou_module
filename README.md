@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.10.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.11.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -17,7 +17,7 @@
 - 控制台 Debug 状态指示器
 - 内置高级策略：分时段配额、未回复衰减、周末模式、近期问候去重
 - 安全与控制层：全局频率闸门、失败熔断暂停、禁用词过滤、链接开关、长度限制
-- 精力系统：主动后降精力、随时间恢复、用户互动加速恢复
+- 情绪值系统：主动与对话都会消耗情绪值，随时间恢复
 - 结构化决策日志：输出触发链路关键决策（JSON）
 
 ## 双层配置模式
@@ -65,8 +65,8 @@
 - `enable_holiday_perception` / `holiday_country` / `enable_platform_perception`
 - `security_global_hourly_cap` / `security_max_fail_streak` / `security_fail_pause_min`
 - `security_allow_links` / `security_blocked_words` / `security_max_text_length`
-- `energy_enabled` / `energy_initial` / `energy_min_trigger`
-- `energy_cost_on_proactive` / `energy_recover_per_min` / `energy_human_reply_boost`
+- `mood_enabled` / `mood_initial` / `mood_min_trigger`
+- `mood_cost_on_proactive` / `mood_cost_on_dialogue` / `mood_recover_per_min`
 - `debug_log` / `debug_decision_log` / `debug_status_window_sec`
 
 ## 推荐参数（保守）
@@ -78,8 +78,8 @@
 - `security_global_hourly_cap = 6`
 - `security_max_fail_streak = 3`
 - `security_fail_pause_min = 180`
-- `energy_initial = 70`
-- `energy_min_trigger = 35`
+- `mood_initial = 70`
+- `mood_min_trigger = 35`
 - `holiday_country = CN`
 - `debug_status_window_sec = 300`
 

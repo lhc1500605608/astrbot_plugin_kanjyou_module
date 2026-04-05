@@ -174,18 +174,21 @@ class PolicyGenerationUnitsMixin:
         return f"平台：{channel_name}，场景：{session_type}"
 
     def _should_trigger(self, idle_sec: float, now: datetime) -> bool:
+        return random.random() < self._trigger_probability(idle_sec, now)
+
+    def _trigger_probability(self, idle_sec: float, now: datetime) -> float:
         min_idle = float(self._effective_min_idle_sec(now))
         max_idle = float(self._effective_max_idle_sec(now))
 
         if idle_sec >= max_idle:
-            return True
+            return 1.0
 
         span = max(max_idle - min_idle, 1.0)
         progress = max(0.0, min(1.0, (idle_sec - min_idle) / span))
         base_prob = float(self._trigger_base_prob())  # 刚到最小 idle 时也有少量概率
         max_prob = float(self._trigger_max_prob())
         p = base_prob + (max_prob - base_prob) * progress
-        return random.random() < p
+        return max(0.0, min(1.0, p))
 
     def _min_idle_sec(self) -> int:
         return max(60, int(float(self.config["min_idle_min"]) * 60))

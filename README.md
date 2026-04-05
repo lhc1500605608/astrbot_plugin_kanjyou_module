@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.7.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.7.2-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -29,6 +29,14 @@
 - 生成层：人格、Provider、Prompt 与兜底文案
 - 安全层：频率闸门、失败熔断、禁用词、链接、长度限制
 - 调试层：debug 窗口与日志相关参数
+
+## 脚本结构
+
+- `main.py`：插件入口、生命周期、事件与管理指令
+- `kanjyou_constants.py`：默认配置、策略常量、执行顺序
+- `kanjyou_runtime_units.py`：闲时巡检调度与触发执行单元
+- `kanjyou_policy_generation_units.py`：触发策略 + 主动文案生成单元
+- `kanjyou_session_config_units.py`：会话状态、时间/安全/配置标准化单元
 
 ## 快速使用
 

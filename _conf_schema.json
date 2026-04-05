@@ -1,0 +1,118 @@
+[
+  {
+    "name": "enabled",
+    "type": "bool",
+    "description": "是否启用闲时主动回复",
+    "default": true
+  },
+  {
+    "name": "debug_log",
+    "type": "bool",
+    "description": "是否输出详细调试日志到控制台",
+    "default": false
+  },
+  {
+    "name": "timezone",
+    "type": "string",
+    "description": "时区，例如 Asia/Shanghai",
+    "default": "Asia/Shanghai"
+  },
+  {
+    "name": "sleep_start",
+    "type": "string",
+    "description": "夜间免打扰开始时间（HH:MM）",
+    "default": "23:30"
+  },
+  {
+    "name": "sleep_end",
+    "type": "string",
+    "description": "夜间免打扰结束时间（HH:MM）",
+    "default": "08:00"
+  },
+  {
+    "name": "check_interval_sec",
+    "type": "int",
+    "description": "后台巡检周期（秒）",
+    "default": 30
+  },
+  {
+    "name": "min_idle_sec",
+    "type": "int",
+    "description": "最小 idle 阈值（秒），低于此值不触发",
+    "default": 900
+  },
+  {
+    "name": "max_idle_sec",
+    "type": "int",
+    "description": "最大 idle 阈值（秒），达到后强制触发",
+    "default": 3600
+  },
+  {
+    "name": "cooldown_sec",
+    "type": "int",
+    "description": "单会话触发后的冷却时间（秒）",
+    "default": 1200
+  },
+  {
+    "name": "max_per_session_per_day",
+    "type": "int",
+    "description": "单会话每日最大主动触发次数",
+    "default": 8
+  },
+  {
+    "name": "trigger_base_prob",
+    "type": "float",
+    "description": "达到最小 idle 阈值时的基础触发概率（0-1）",
+    "default": 0.08
+  },
+  {
+    "name": "trigger_max_prob",
+    "type": "float",
+    "description": "接近最大 idle 阈值时的触发概率上限（0-1）",
+    "default": 0.55
+  },
+  {
+    "name": "private_whitelist",
+    "type": "list",
+    "description": "私聊白名单 user_id 列表",
+    "default": []
+  },
+  {
+    "name": "group_whitelist",
+    "type": "list",
+    "description": "群聊白名单 group_id 列表",
+    "default": []
+  },
+  {
+    "name": "private_topic_pool",
+    "type": "list",
+    "description": "私聊主动话题池",
+    "default": [
+      "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
+      "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
+      "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？"
+    ]
+  },
+  {
+    "name": "group_topic_pool",
+    "type": "list",
+    "description": "群聊主动话题池",
+    "default": [
+      "大家最近有没有遇到一个值得分享的小发现？",
+      "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
+      "随机话题：最近哪个工具或方法让你效率提升最明显？"
+    ]
+  },
+  {
+    "name": "topic_pool",
+    "type": "list",
+    "description": "通用回退话题池（当私聊/群聊专属池为空时使用）",
+    "default": [
+      "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
+      "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
+      "来个轻松话题：如果今天能立刻学会一个技能，你会选哪个？",
+      "我有点好奇，你最近在关注什么新鲜内容？",
+      "要不要我陪你做个两分钟的小计划，把接下来要做的事理一理？"
+    ]
+  }
+]

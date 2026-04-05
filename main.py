@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import random
 from datetime import datetime
@@ -6,19 +7,53 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from astrbot.api import logger
+from astrbot.api import AstrBotConfig, logger
 from astrbot.api.message_components import Plain
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "debug_log": False,
+    "timezone": "Asia/Shanghai",
+    "sleep_start": "23:30",
+    "sleep_end": "08:00",
+    "private_whitelist": [],
+    "group_whitelist": [],
+    "sleep_windows": [{"start": "23:30", "end": "08:00"}],
+    "check_interval_sec": 30,
+    "min_idle_sec": 15 * 60,
+    "max_idle_sec": 60 * 60,
+    "cooldown_sec": 20 * 60,
+    "max_per_session_per_day": 8,
+    "trigger_base_prob": 0.08,
+    "trigger_max_prob": 0.55,
+    "private_topic_pool": [
+        "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
+        "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
+        "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？",
+    ],
+    "group_topic_pool": [
+        "大家最近有没有遇到一个值得分享的小发现？",
+        "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
+        "随机话题：最近哪个工具或方法让你效率提升最明显？",
+    ],
+    "topic_pool": [
+        "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
+        "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
+        "来个轻松话题：如果今天能立刻学会一个技能，你会选哪个？",
+        "我有点好奇，你最近在关注什么新鲜内容？",
+        "要不要我陪你做个两分钟的小计划，把接下来要做的事理一理？",
+    ],
+}
 
-@register("kanjyou_idle_proactive", "shangtang", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.0.0")
+@register("kanjyou_idle_proactive", "shangtang", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.2.0")
 class KanjyouIdleProactivePlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self._cfg_path = Path(__file__).parent / "idle_config.json"
+        self.config = config
         self._state_path = Path(__file__).parent / "idle_state.json"
-        self._config = self._load_config()
+        self._normalize_webui_config()
         self._sessions: Dict[str, Dict] = self._load_state()
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
@@ -99,67 +134,55 @@ class KanjyouIdleProactivePlugin(Star):
         idle_sec = int(now.timestamp() - s.get("last_interaction_at", now.timestamp()))
         sleep_on = self._in_sleep_window(now)
         summary = (
-            f"enabled={self._config['enabled']} | idle={idle_sec}s | "
+            f"enabled={self.config['enabled']} | idle={idle_sec}s | "
             f"today_count={s.get('today_proactive_count', 0)} | "
             f"cooldown_until={self._fmt_ts(s.get('cooldown_until'))} | "
-            f"sleep_mode={sleep_on} | debug_log={self._config.get('debug_log', False)}"
+            f"sleep_mode={sleep_on} | debug_log={self.config.get('debug_log', False)}"
         )
         yield event.plain_result(summary)
 
     @filter.command("idle_enable")
     async def idle_enable(self, event: AstrMessageEvent):
-        self._config["enabled"] = True
-        self._save_config()
+        self.config["enabled"] = True
+        self._save_webui_config()
         yield event.plain_result("已开启闲时主动聊天。")
 
     @filter.command("idle_disable")
     async def idle_disable(self, event: AstrMessageEvent):
-        self._config["enabled"] = False
-        self._save_config()
+        self.config["enabled"] = False
+        self._save_webui_config()
         yield event.plain_result("已关闭闲时主动聊天。")
-
-    @filter.command("idle_debug_on")
-    async def idle_debug_on(self, event: AstrMessageEvent):
-        self._config["debug_log"] = True
-        self._save_config()
-        yield event.plain_result("已开启 idle debug 日志。")
-
-    @filter.command("idle_debug_off")
-    async def idle_debug_off(self, event: AstrMessageEvent):
-        self._config["debug_log"] = False
-        self._save_config()
-        yield event.plain_result("已关闭 idle debug 日志。")
 
     @filter.command("idle_wl_add_private")
     async def idle_wl_add_private(self, event: AstrMessageEvent, user_id: str):
-        wl: List[str] = self._config["private_whitelist"]
+        wl: List[str] = self.config["private_whitelist"]
         if user_id not in wl:
             wl.append(user_id)
-            self._save_config()
+            self._save_webui_config()
         yield event.plain_result(f"私聊白名单已添加: {user_id}")
 
     @filter.command("idle_wl_del_private")
     async def idle_wl_del_private(self, event: AstrMessageEvent, user_id: str):
-        wl: List[str] = self._config["private_whitelist"]
+        wl: List[str] = self.config["private_whitelist"]
         if user_id in wl:
             wl.remove(user_id)
-            self._save_config()
+            self._save_webui_config()
         yield event.plain_result(f"私聊白名单已移除: {user_id}")
 
     @filter.command("idle_wl_add_group")
     async def idle_wl_add_group(self, event: AstrMessageEvent, group_id: str):
-        wl: List[str] = self._config["group_whitelist"]
+        wl: List[str] = self.config["group_whitelist"]
         if group_id not in wl:
             wl.append(group_id)
-            self._save_config()
+            self._save_webui_config()
         yield event.plain_result(f"群聊白名单已添加: {group_id}")
 
     @filter.command("idle_wl_del_group")
     async def idle_wl_del_group(self, event: AstrMessageEvent, group_id: str):
-        wl: List[str] = self._config["group_whitelist"]
+        wl: List[str] = self.config["group_whitelist"]
         if group_id in wl:
             wl.remove(group_id)
-            self._save_config()
+            self._save_webui_config()
         yield event.plain_result(f"群聊白名单已移除: {group_id}")
 
     @filter.command("idle_sleep_set")
@@ -167,8 +190,10 @@ class KanjyouIdleProactivePlugin(Star):
         if not self._is_hhmm(start_hm) or not self._is_hhmm(end_hm):
             yield event.plain_result("格式错误，请使用 HH:MM，例如 /idle_sleep_set 23:30 08:00")
             return
-        self._config["sleep_windows"] = [{"start": start_hm, "end": end_hm}]
-        self._save_config()
+        self.config["sleep_start"] = start_hm
+        self.config["sleep_end"] = end_hm
+        self.config["sleep_windows"] = [{"start": start_hm, "end": end_hm}]
+        self._save_webui_config()
         yield event.plain_result(f"免打扰时段已设置为 {start_hm}-{end_hm}")
 
     @filter.command("idle_test")
@@ -182,7 +207,7 @@ class KanjyouIdleProactivePlugin(Star):
     async def _idle_loop(self):
         while True:
             try:
-                await asyncio.sleep(self._config["check_interval_sec"])
+                await asyncio.sleep(self.config["check_interval_sec"])
                 await self._check_sessions()
             except asyncio.CancelledError:
                 raise
@@ -190,7 +215,7 @@ class KanjyouIdleProactivePlugin(Star):
                 logger.error(f"[idle-proactive] idle loop error: {exc}")
 
     async def _check_sessions(self):
-        if not self._config.get("enabled", True):
+        if not self.config.get("enabled", True):
             self._debug("loop skip: plugin disabled")
             return
 
@@ -220,7 +245,7 @@ class KanjyouIdleProactivePlugin(Star):
                     )
                     continue
 
-                if s.get("today_proactive_count", 0) >= self._config["max_per_session_per_day"]:
+                if s.get("today_proactive_count", 0) >= self.config["max_per_session_per_day"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
                     self._debug(
@@ -229,11 +254,11 @@ class KanjyouIdleProactivePlugin(Star):
                     continue
 
                 idle_sec = now_ts - s.get("last_interaction_at", now_ts)
-                if idle_sec < self._config["min_idle_sec"]:
+                if idle_sec < self.config["min_idle_sec"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
                     self._debug(
-                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self._config['min_idle_sec']}"
+                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self.config['min_idle_sec']}"
                     )
                     continue
 
@@ -259,7 +284,7 @@ class KanjyouIdleProactivePlugin(Star):
                     s["last_bot_at"] = now_ts
                     s["last_interaction_at"] = now_ts
                     s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
-                    s["cooldown_until"] = now_ts + self._config["cooldown_sec"]
+                    s["cooldown_until"] = now_ts + self.config["cooldown_sec"]
                     self._debug(
                         f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']}"
                     )
@@ -294,16 +319,16 @@ class KanjyouIdleProactivePlugin(Star):
                 return False
 
     def _should_trigger(self, idle_sec: float) -> bool:
-        min_idle = float(self._config["min_idle_sec"])
-        max_idle = float(self._config["max_idle_sec"])
+        min_idle = float(self.config["min_idle_sec"])
+        max_idle = float(self.config["max_idle_sec"])
 
         if idle_sec >= max_idle:
             return True
 
         span = max(max_idle - min_idle, 1.0)
         progress = max(0.0, min(1.0, (idle_sec - min_idle) / span))
-        base_prob = float(self._config["trigger_base_prob"])  # 刚到最小 idle 时也有少量概率
-        max_prob = float(self._config["trigger_max_prob"])
+        base_prob = float(self.config["trigger_base_prob"])  # 刚到最小 idle 时也有少量概率
+        max_prob = float(self.config["trigger_max_prob"])
         p = base_prob + (max_prob - base_prob) * progress
         return random.random() < p
 
@@ -316,8 +341,8 @@ class KanjyouIdleProactivePlugin(Star):
         sender_id = str(getattr(getattr(msg_obj, "sender", None), "user_id", "") or event.get_sender_id())
 
         if group_id:
-            return group_id in self._config["group_whitelist"]
-        return sender_id in self._config["private_whitelist"]
+            return group_id in self.config["group_whitelist"]
+        return sender_id in self.config["private_whitelist"]
 
     def _session_key(self, event: AstrMessageEvent) -> str:
         msg_obj = getattr(event, "message_obj", None)
@@ -331,11 +356,11 @@ class KanjyouIdleProactivePlugin(Star):
         return f"private:{sender_id}"
 
     def _pick_topic(self, session_key: str) -> str:
-        if session_key.startswith("private:") and self._config.get("private_topic_pool"):
-            return random.choice(self._config["private_topic_pool"])
-        if session_key.startswith("group:") and self._config.get("group_topic_pool"):
-            return random.choice(self._config["group_topic_pool"])
-        return random.choice(self._config["topic_pool"])
+        if session_key.startswith("private:") and self.config.get("private_topic_pool"):
+            return random.choice(self.config["private_topic_pool"])
+        if session_key.startswith("group:") and self.config.get("group_topic_pool"):
+            return random.choice(self.config["group_topic_pool"])
+        return random.choice(self.config["topic_pool"])
 
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
         key = self._session_key(event)
@@ -365,7 +390,15 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _in_sleep_window(self, now: datetime) -> bool:
         hm = now.strftime("%H:%M")
-        for wnd in self._config["sleep_windows"]:
+        windows = []
+        start = self.config.get("sleep_start")
+        end = self.config.get("sleep_end")
+        if isinstance(start, str) and isinstance(end, str) and self._is_hhmm(start) and self._is_hhmm(end):
+            windows.append({"start": start, "end": end})
+        elif isinstance(self.config.get("sleep_windows"), list):
+            windows = self.config["sleep_windows"]
+
+        for wnd in windows:
             start = wnd["start"]
             end = wnd["end"]
             if start <= end:
@@ -378,7 +411,7 @@ class KanjyouIdleProactivePlugin(Star):
         return False
 
     def _randomized_interval(self) -> int:
-        base = int(self._config["check_interval_sec"])
+        base = int(self.config["check_interval_sec"])
         low = max(5, int(base * 0.85))
         high = max(low + 1, int(base * 1.25))
         return random.randint(low, high)
@@ -391,70 +424,58 @@ class KanjyouIdleProactivePlugin(Star):
             return False
 
     def _now(self) -> datetime:
-        tz = ZoneInfo(self._config["timezone"])
+        tz = ZoneInfo(self.config["timezone"])
         return datetime.now(tz)
 
     def _fmt_ts(self, ts: Optional[float]) -> str:
         if not ts:
             return "-"
-        return datetime.fromtimestamp(ts, ZoneInfo(self._config["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp(ts, ZoneInfo(self.config["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
 
-    def _load_config(self) -> Dict:
-        default = {
-            "enabled": True,
-            "debug_log": False,
-            "timezone": "Asia/Shanghai",
-            "private_whitelist": [],
-            "group_whitelist": [],
-            "sleep_windows": [{"start": "23:30", "end": "08:00"}],
-            "check_interval_sec": 30,
-            "min_idle_sec": 15 * 60,
-            "max_idle_sec": 60 * 60,
-            "cooldown_sec": 20 * 60,
-            "max_per_session_per_day": 8,
-            "trigger_base_prob": 0.08,
-            "trigger_max_prob": 0.55,
-            "private_topic_pool": [
-                "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
-                "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
-                "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？",
-            ],
-            "group_topic_pool": [
-                "大家最近有没有遇到一个值得分享的小发现？",
-                "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
-                "随机话题：最近哪个工具或方法让你效率提升最明显？",
-            ],
-            "topic_pool": [
-                "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
-                "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
-                "来个轻松话题：如果今天能立刻学会一个技能，你会选哪个？",
-                "我有点好奇，你最近在关注什么新鲜内容？",
-                "要不要我陪你做个两分钟的小计划，把接下来要做的事理一理？",
-            ],
-        }
+    def _normalize_webui_config(self):
+        changed = False
+        for key, value in DEFAULT_CONFIG.items():
+            if self.config.get(key) is None:
+                self.config[key] = copy.deepcopy(value)
+                changed = True
 
-        if not self._cfg_path.exists():
-            self._write_json(self._cfg_path, default)
-            return default
+        if not isinstance(self.config.get("private_whitelist"), list):
+            self.config["private_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["private_whitelist"])
+            changed = True
+        if not isinstance(self.config.get("group_whitelist"), list):
+            self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])
+            changed = True
+        if not isinstance(self.config.get("sleep_windows"), list) or not self.config["sleep_windows"]:
+            start = self.config.get("sleep_start", DEFAULT_CONFIG["sleep_start"])
+            end = self.config.get("sleep_end", DEFAULT_CONFIG["sleep_end"])
+            self.config["sleep_windows"] = [{"start": start, "end": end}]
+            changed = True
+        if not isinstance(self.config.get("sleep_start"), str):
+            self.config["sleep_start"] = DEFAULT_CONFIG["sleep_start"]
+            changed = True
+        if not isinstance(self.config.get("sleep_end"), str):
+            self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
+            changed = True
+        if not isinstance(self.config.get("private_topic_pool"), list) or not self.config["private_topic_pool"]:
+            self.config["private_topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["private_topic_pool"])
+            changed = True
+        if not isinstance(self.config.get("group_topic_pool"), list) or not self.config["group_topic_pool"]:
+            self.config["group_topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["group_topic_pool"])
+            changed = True
+        if not isinstance(self.config.get("topic_pool"), list) or not self.config["topic_pool"]:
+            self.config["topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["topic_pool"])
+            changed = True
 
-        try:
-            loaded = self._read_json(self._cfg_path)
-            merged = {**default, **loaded}
-            if not isinstance(merged.get("sleep_windows"), list) or not merged["sleep_windows"]:
-                merged["sleep_windows"] = default["sleep_windows"]
-            if not isinstance(merged.get("private_topic_pool"), list) or not merged["private_topic_pool"]:
-                merged["private_topic_pool"] = default["private_topic_pool"]
-            if not isinstance(merged.get("group_topic_pool"), list) or not merged["group_topic_pool"]:
-                merged["group_topic_pool"] = default["group_topic_pool"]
-            if not isinstance(merged.get("topic_pool"), list) or not merged["topic_pool"]:
-                merged["topic_pool"] = default["topic_pool"]
-            return merged
-        except Exception as exc:
-            logger.error(f"[idle-proactive] load config failed: {exc}")
-            return default
+        if changed:
+            self._save_webui_config()
 
-    def _save_config(self):
-        self._write_json(self._cfg_path, self._config)
+    def _save_webui_config(self):
+        save_func = getattr(self.config, "save_config", None)
+        if callable(save_func):
+            try:
+                save_func()
+            except Exception as exc:
+                logger.error(f"[idle-proactive] save webui config failed: {exc}")
 
     def _load_state(self) -> Dict[str, Dict]:
         if not self._state_path.exists():
@@ -480,5 +501,5 @@ class KanjyouIdleProactivePlugin(Star):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _debug(self, msg: str):
-        if self._config.get("debug_log", False):
+        if self.config.get("debug_log", False):
             logger.info(f"[idle-proactive][debug] {msg}")

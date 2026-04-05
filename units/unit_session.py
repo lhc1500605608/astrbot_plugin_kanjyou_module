@@ -293,7 +293,7 @@ class SessionConfigUnitsMixin:
             )
             changed = True
 
-        for key in ("enabled", "lifecycle_log", "debug_log", "advanced_group_expand"):
+        for key in ("enabled", "lifecycle_log", "debug_log"):
             if not isinstance(self.config.get(key), bool):
                 self.config[key] = self._to_bool(self.config.get(key), DEFAULT_CONFIG[key])
                 changed = True

@@ -11,11 +11,9 @@
   },
   "advanced_group_expand": {
     "type": "bool",
-    "description": "[基础] 展开高级参数分组",
+    "description": "[兼容] 旧版二级折叠字段（已废弃）",
     "default": false,
-    "condition": {
-      "advanced_enabled": true
-    }
+    "invisible": true
   },
   "config_mode": {
     "type": "string",
@@ -32,8 +30,7 @@
     "description": "[仅 advanced] 单会话每日最大主动触发次数",
     "default": 8,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "trigger_base_prob": {
@@ -41,8 +38,7 @@
     "description": "[仅 advanced] 基础触发概率（0-1）",
     "default": 0.02,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "trigger_max_prob": {
@@ -50,8 +46,7 @@
     "description": "[仅 advanced] 上限触发概率（0-1）",
     "default": 0.18,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "require_human_reply_before_next_proactive": {
@@ -59,8 +54,7 @@
     "description": "[仅 advanced] 主动发言后必须等待用户回复",
     "default": true,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "period_quota_enabled": {
@@ -68,8 +62,7 @@
     "description": "[仅 advanced] 是否启用分时段主动配额",
     "default": true,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "period_quota_morning_max": {
@@ -77,8 +70,7 @@
     "description": "[仅 advanced] 上午最大主动次数",
     "default": 1,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "period_quota_afternoon_max": {
@@ -86,8 +78,7 @@
     "description": "[仅 advanced] 下午最大主动次数",
     "default": 1,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "period_quota_evening_max": {
@@ -95,8 +86,7 @@
     "description": "[仅 advanced] 晚间最大主动次数",
     "default": 1,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "no_reply_decay_enabled": {
@@ -104,8 +94,7 @@
     "description": "[仅 advanced] 是否启用未回复衰减",
     "default": true,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "no_reply_decay_factor": {
@@ -113,8 +102,7 @@
     "description": "[仅 advanced] 每次未回复的衰减系数",
     "default": 1.6,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "no_reply_decay_max_factor": {
@@ -122,8 +110,7 @@
     "description": "[仅 advanced] 衰减系数上限",
     "default": 4.0,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "weekend_mode_enabled": {
@@ -131,8 +118,7 @@
     "description": "[仅 advanced] 是否启用周末模式",
     "default": true,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "weekend_min_idle_multiplier": {
@@ -140,8 +126,7 @@
     "description": "[仅 advanced] 周末 idle 倍率",
     "default": 1.25,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "weekend_cooldown_multiplier": {
@@ -149,8 +134,7 @@
     "description": "[仅 advanced] 周末冷却倍率",
     "default": 1.35,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "weekend_quota_multiplier": {
@@ -158,8 +142,7 @@
     "description": "[仅 advanced] 周末配额倍率",
     "default": 0.8,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "quality_dedupe_enabled": {
@@ -167,8 +150,7 @@
     "description": "[仅 advanced] 是否启用近期问候去重",
     "default": true,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "quality_history_size": {
@@ -176,8 +158,7 @@
     "description": "[仅 advanced] 去重记忆条数",
     "default": 6,
     "condition": {
-      "advanced_enabled": true,
-      "advanced_group_expand": true
+      "advanced_enabled": true
     }
   },
   "private_whitelist": {
@@ -330,17 +311,23 @@
   },
   "debug_log": {
     "type": "bool",
-    "description": "[调试] 是否输出详细调试日志到控制台",
+    "description": "[调试] 是否开启调试分组（开启后显示调试子选项）",
     "default": false
   },
   "debug_decision_log": {
     "type": "bool",
     "description": "[调试] 是否输出结构化决策日志（JSON）",
-    "default": true
+    "default": true,
+    "condition": {
+      "debug_log": true
+    }
   },
   "debug_status_window_sec": {
     "type": "int",
     "description": "[调试] 状态摘要输出窗口（秒），建议 300 或 600",
-    "default": 300
+    "default": 300,
+    "condition": {
+      "debug_log": true
+    }
   }
 }

@@ -23,8 +23,7 @@
 ## 双层配置模式
 
 - `advanced_enabled=false`（默认，推荐）：只需配置核心参数，插件自动使用内置稳妥策略
-- `advanced_enabled=true`：显示“高级参数分组”开关
-- `advanced_group_expand=true`：展开并编辑高级参数（配额/衰减/周末/去重等）
+- `advanced_enabled=true`：展开并编辑高级参数（配额/衰减/周末/去重等）
 
 ## 配置执行单元
 
@@ -56,7 +55,6 @@
 
 - `enabled`
 - `advanced_enabled`
-- `advanced_group_expand`
 - `lifecycle_log`
 - `timezone`
 - `sleep_start` / `sleep_end`
@@ -69,12 +67,11 @@
 - `security_allow_links` / `security_blocked_words` / `security_max_text_length`
 - `mood_enabled` / `mood_initial` / `mood_min_trigger`
 - `mood_cost_on_proactive` / `mood_cost_on_dialogue` / `mood_recover_per_min`
-- `debug_log` / `debug_decision_log` / `debug_status_window_sec`
+- `debug_log`（开启后显示）`debug_decision_log` / `debug_status_window_sec`
 
 ## 推荐参数（保守）
 
 - `advanced_enabled = false`
-- `advanced_group_expand = false`
 - `min_idle_min = 45`
 - `max_idle_min = 180`
 - `cooldown_min = 90`

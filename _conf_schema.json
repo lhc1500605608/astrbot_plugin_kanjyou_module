@@ -49,6 +49,26 @@
     "description": "单会话触发后的冷却时间（分钟）",
     "default": 90
   },
+  "period_quota_enabled": {
+    "type": "bool",
+    "description": "是否启用分时段主动配额（上午/下午/晚间）",
+    "default": true
+  },
+  "period_quota_morning_max": {
+    "type": "int",
+    "description": "上午(06:00-11:59)最大主动次数（每会话每天）",
+    "default": 1
+  },
+  "period_quota_afternoon_max": {
+    "type": "int",
+    "description": "下午(12:00-17:59)最大主动次数（每会话每天）",
+    "default": 1
+  },
+  "period_quota_evening_max": {
+    "type": "int",
+    "description": "晚间(18:00-22:59)最大主动次数（每会话每天）",
+    "default": 1
+  },
   "max_per_session_per_day": {
     "type": "int",
     "description": "单会话每日最大主动触发次数",
@@ -68,6 +88,21 @@
     "type": "bool",
     "description": "主动发言后，未收到用户回复前不再连续主动发言",
     "default": true
+  },
+  "no_reply_decay_enabled": {
+    "type": "bool",
+    "description": "是否启用“连续未回复衰减”",
+    "default": true
+  },
+  "no_reply_decay_factor": {
+    "type": "float",
+    "description": "每次未回复后，idle/cooldown 乘以该系数（>=1）",
+    "default": 1.6
+  },
+  "no_reply_decay_max_factor": {
+    "type": "float",
+    "description": "衰减系数上限",
+    "default": 4.0
   },
   "private_whitelist": {
     "type": "list",

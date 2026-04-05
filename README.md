@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.4.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.5.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -27,6 +27,8 @@
 - `min_idle_min` / `max_idle_min` / `cooldown_min`
 - `trigger_base_prob` / `trigger_max_prob`
 - `require_human_reply_before_next_proactive`
+- `period_quota_enabled` / `period_quota_morning_max` / `period_quota_afternoon_max` / `period_quota_evening_max`
+- `no_reply_decay_enabled` / `no_reply_decay_factor` / `no_reply_decay_max_factor`
 - `persona_id` / `proactive_provider_id`
 - `proactive_prompt_template` / `fallback_proactive_text`
 
@@ -38,6 +40,10 @@
 - `trigger_base_prob = 0.02`
 - `trigger_max_prob = 0.18`
 - `require_human_reply_before_next_proactive = true`
+- `period_quota_enabled = true`（上午/下午/晚间默认各 1 次）
+- `no_reply_decay_enabled = true`
+- `no_reply_decay_factor = 1.6`
+- `no_reply_decay_max_factor = 4.0`
 
 ## 指令
 

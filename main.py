@@ -30,6 +30,13 @@ DEFAULT_CONFIG = {
     "trigger_base_prob": 0.02,
     "trigger_max_prob": 0.18,
     "require_human_reply_before_next_proactive": True,
+    "period_quota_enabled": True,
+    "period_quota_morning_max": 1,
+    "period_quota_afternoon_max": 1,
+    "period_quota_evening_max": 1,
+    "no_reply_decay_enabled": True,
+    "no_reply_decay_factor": 1.6,
+    "no_reply_decay_max_factor": 4.0,
     "persona_id": "",
     "proactive_provider_id": "",
     "proactive_prompt_template": (
@@ -47,7 +54,7 @@ DEFAULT_CONFIG = {
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.4.1")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.5.0")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -93,6 +100,7 @@ class KanjyouIdleProactivePlugin(Star):
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["pending_human_reply"] = False
+            s["no_reply_streak"] = 0
             s["next_check_at"] = now_ts + self._randomized_interval()
             self._sessions[session_key] = s
             self._save_state()
@@ -239,6 +247,7 @@ class KanjyouIdleProactivePlugin(Star):
         async with self._lock:
             for session_key, s in list(self._sessions.items()):
                 self._rollover_daily_counter(s, now)
+                self._rollover_period_counter(s, now)
 
                 if now_ts < s.get("next_check_at", 0):
                     self._maybe_log_status(session_key, s, now_ts, "waiting_next_check")
@@ -274,13 +283,32 @@ class KanjyouIdleProactivePlugin(Star):
                     self._debug(f"session skip(await_human_reply) session={session_key}")
                     continue
 
+                period = self._get_period(now)
+                if self.config.get("period_quota_enabled", True) and period:
+                    counters = s.get("period_proactive_count")
+                    if not isinstance(counters, dict):
+                        counters = {"morning": 0, "afternoon": 0, "evening": 0}
+                        s["period_proactive_count"] = counters
+                    current_period_count = int(counters.get(period, 0))
+                    period_limit = self._get_period_quota_limit(period)
+                    if current_period_count >= period_limit:
+                        s["next_check_at"] = now_ts + self._randomized_interval()
+                        changed = True
+                        self._maybe_log_status(session_key, s, now_ts, f"period_limit_{period}")
+                        self._debug(
+                            f"session skip(period_limit) session={session_key} period={period} count={current_period_count} limit={period_limit}"
+                        )
+                        continue
+
                 idle_sec = now_ts - s.get("last_interaction_at", now_ts)
-                if idle_sec < self._min_idle_sec():
+                decay = self._no_reply_decay_factor(s)
+                needed_idle_sec = int(self._min_idle_sec() * decay)
+                if idle_sec < needed_idle_sec:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
                     self._maybe_log_status(session_key, s, now_ts, "idle_not_enough")
                     self._debug(
-                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self._min_idle_sec()}"
+                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={needed_idle_sec} decay={decay:.2f}"
                     )
                     continue
 
@@ -308,10 +336,12 @@ class KanjyouIdleProactivePlugin(Star):
                     s["last_bot_at"] = now_ts
                     s["last_interaction_at"] = now_ts
                     s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
-                    s["cooldown_until"] = now_ts + self._cooldown_sec()
+                    s["cooldown_until"] = now_ts + int(self._cooldown_sec() * decay)
                     s["pending_human_reply"] = True
+                    s["no_reply_streak"] = int(s.get("no_reply_streak", 0)) + 1
+                    self._inc_period_count(s, period)
                     self._debug(
-                        f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']}"
+                        f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']} no_reply_streak={s.get('no_reply_streak', 0)} decay={decay:.2f}"
                     )
                     self._maybe_log_status(session_key, s, now_ts, "trigger_success", force=True)
                 else:
@@ -408,6 +438,36 @@ class KanjyouIdleProactivePlugin(Star):
     def _cooldown_sec(self) -> int:
         return max(60, int(float(self.config["cooldown_min"]) * 60))
 
+    def _get_period(self, now: datetime) -> str:
+        hm = now.strftime("%H:%M")
+        if "06:00" <= hm <= "11:59":
+            return "morning"
+        if "12:00" <= hm <= "17:59":
+            return "afternoon"
+        if "18:00" <= hm <= "22:59":
+            return "evening"
+        return "offhours"
+
+    def _get_period_quota_limit(self, period: str) -> int:
+        mapping = {
+            "morning": int(self.config.get("period_quota_morning_max", 1)),
+            "afternoon": int(self.config.get("period_quota_afternoon_max", 1)),
+            "evening": int(self.config.get("period_quota_evening_max", 1)),
+            "offhours": 0,
+        }
+        return max(0, mapping.get(period, 0))
+
+    def _no_reply_decay_factor(self, session: Dict) -> float:
+        if not self.config.get("no_reply_decay_enabled", True):
+            return 1.0
+        streak = max(0, int(session.get("no_reply_streak", 0)))
+        if streak <= 0:
+            return 1.0
+        base = max(1.0, float(self.config.get("no_reply_decay_factor", 1.6)))
+        max_factor = max(1.0, float(self.config.get("no_reply_decay_max_factor", 4.0)))
+        factor = base ** streak
+        return min(max_factor, factor)
+
     def _is_whitelisted(self, event: AstrMessageEvent) -> bool:
         msg_obj = getattr(event, "message_obj", None)
         if msg_obj is None:
@@ -492,6 +552,9 @@ class KanjyouIdleProactivePlugin(Star):
             "counter_date": self._now().strftime("%Y-%m-%d"),
             "cooldown_until": 0.0,
             "pending_human_reply": False,
+            "no_reply_streak": 0,
+            "period_counter_date": self._now().strftime("%Y-%m-%d"),
+            "period_proactive_count": {"morning": 0, "afternoon": 0, "evening": 0},
         }
 
     def _rollover_daily_counter(self, session: Dict, now: datetime):
@@ -499,6 +562,26 @@ class KanjyouIdleProactivePlugin(Star):
         if session.get("counter_date") != today:
             session["counter_date"] = today
             session["today_proactive_count"] = 0
+            session["period_counter_date"] = today
+            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+
+    def _rollover_period_counter(self, session: Dict, now: datetime):
+        today = now.strftime("%Y-%m-%d")
+        if session.get("period_counter_date") != today:
+            session["period_counter_date"] = today
+            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+            return
+        if not isinstance(session.get("period_proactive_count"), dict):
+            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+
+    def _inc_period_count(self, session: Dict, period: str):
+        if period not in {"morning", "afternoon", "evening"}:
+            return
+        counters = session.get("period_proactive_count")
+        if not isinstance(counters, dict):
+            counters = {"morning": 0, "afternoon": 0, "evening": 0}
+        counters[period] = int(counters.get(period, 0)) + 1
+        session["period_proactive_count"] = counters
 
     def _in_sleep_window(self, now: datetime) -> bool:
         hm = now.strftime("%H:%M")
@@ -582,6 +665,31 @@ class KanjyouIdleProactivePlugin(Star):
                 float(self.config["min_idle_min"]) + 30, float(DEFAULT_CONFIG["max_idle_min"])
             )
             changed = True
+        if not isinstance(self.config.get("period_quota_enabled"), bool):
+            self.config["period_quota_enabled"] = DEFAULT_CONFIG["period_quota_enabled"]
+            changed = True
+        for k in ("period_quota_morning_max", "period_quota_afternoon_max", "period_quota_evening_max"):
+            if not isinstance(self.config.get(k), (int, float)):
+                self.config[k] = DEFAULT_CONFIG[k]
+                changed = True
+            if int(self.config[k]) < 0:
+                self.config[k] = 0
+                changed = True
+        if not isinstance(self.config.get("no_reply_decay_enabled"), bool):
+            self.config["no_reply_decay_enabled"] = DEFAULT_CONFIG["no_reply_decay_enabled"]
+            changed = True
+        if not isinstance(self.config.get("no_reply_decay_factor"), (int, float)):
+            self.config["no_reply_decay_factor"] = DEFAULT_CONFIG["no_reply_decay_factor"]
+            changed = True
+        if not isinstance(self.config.get("no_reply_decay_max_factor"), (int, float)):
+            self.config["no_reply_decay_max_factor"] = DEFAULT_CONFIG["no_reply_decay_max_factor"]
+            changed = True
+        if float(self.config["no_reply_decay_factor"]) < 1.0:
+            self.config["no_reply_decay_factor"] = 1.0
+            changed = True
+        if float(self.config["no_reply_decay_max_factor"]) < float(self.config["no_reply_decay_factor"]):
+            self.config["no_reply_decay_max_factor"] = float(self.config["no_reply_decay_factor"])
+            changed = True
         if not isinstance(self.config.get("debug_status_window_sec"), int):
             self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
             changed = True
@@ -661,11 +769,14 @@ class KanjyouIdleProactivePlugin(Star):
         min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(self._min_idle_sec())
         earliest_trigger_at = max(next_check_at, float(s.get("cooldown_until", 0)), min_idle_at)
         earliest_trigger_in = max(0, int(earliest_trigger_at - now_ts))
+        no_reply_streak = int(s.get("no_reply_streak", 0))
+        decay = self._no_reply_decay_factor(s)
 
         self._debug(
             "status "
             f"reason={reason} session={session_key} "
             f"idle={idle_sec}s cooldown_left={cooldown_left}s "
+            f"no_reply_streak={no_reply_streak} decay={decay:.2f} "
             f"next_check={self._fmt_ts(next_check_at)}(+{next_check_in}s) "
             f"next_trigger_earliest={self._fmt_ts(earliest_trigger_at)}(+{earliest_trigger_in}s)"
         )

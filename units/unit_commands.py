@@ -64,9 +64,13 @@ class CommandUnitsMixin:
             self._save_webui_config()
         yield event.plain_result(f"群聊白名单已移除: {group_id}")
 
-    async def _cmd_idle_sleep_set(self, event: AstrMessageEvent, start_hm: str, end_hm: str):
+    async def _cmd_idle_sleep_set(
+        self, event: AstrMessageEvent, start_hm: str, end_hm: str
+    ):
         if not self._is_hhmm(start_hm) or not self._is_hhmm(end_hm):
-            yield event.plain_result("格式错误，请使用 HH:MM，例如 /idle_sleep_set 23:30 08:00")
+            yield event.plain_result(
+                "格式错误，请使用 HH:MM，例如 /idle_sleep_set 23:30 08:00"
+            )
             return
         self.config["sleep_start"] = start_hm
         self.config["sleep_end"] = end_hm
@@ -77,5 +81,7 @@ class CommandUnitsMixin:
         if not self._is_whitelisted(event):
             yield event.plain_result("当前会话不在白名单，先加入白名单再测试。")
             return
-        await self._send_proactive(event.unified_msg_origin, event, self._session_key(event), 0, None)
+        await self._send_proactive(
+            event.unified_msg_origin, event, self._session_key(event), 0, None
+        )
         yield event.plain_result("已发送一条主动话题测试消息。")

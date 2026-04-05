@@ -16,10 +16,17 @@ except Exception:
 
 class PolicyGenerationUnitsMixin:
     async def _generate_proactive_text(
-        self, unified_msg_origin: str, session_key: str, idle_sec: float, session: Optional[Dict]
+        self,
+        unified_msg_origin: str,
+        session_key: str,
+        idle_sec: float,
+        session: Optional[Dict],
     ) -> str:
         fallback = self._sanitize_outgoing_text(
-            str(self.config.get("fallback_proactive_text") or DEFAULT_CONFIG["fallback_proactive_text"]).strip()
+            str(
+                self.config.get("fallback_proactive_text")
+                or DEFAULT_CONFIG["fallback_proactive_text"]
+            ).strip()
         )
         try:
             session_type = "私聊" if session_key.startswith("private:") else "群聊"
@@ -28,7 +35,8 @@ class PolicyGenerationUnitsMixin:
             style_hint = self._style_hint(session_key, session, idle_sec)
             recent_history = self._recent_history_text(session)
             prompt_tpl = str(
-                self.config.get("proactive_prompt_template") or DEFAULT_CONFIG["proactive_prompt_template"]
+                self.config.get("proactive_prompt_template")
+                or DEFAULT_CONFIG["proactive_prompt_template"]
             )
             prompt = prompt_tpl.format(
                 persona=persona_text,
@@ -42,13 +50,17 @@ class PolicyGenerationUnitsMixin:
 
             provider_id = str(self.config.get("proactive_provider_id") or "").strip()
             if not provider_id:
-                provider_id = await self.context.get_current_chat_provider_id(unified_msg_origin)
+                provider_id = await self.context.get_current_chat_provider_id(
+                    unified_msg_origin
+                )
 
             if not provider_id:
                 self._debug("generate skip: provider_id unavailable, use fallback")
                 return fallback
 
-            completion = await self.context.llm_generate(chat_provider_id=provider_id, prompt=prompt)
+            completion = await self.context.llm_generate(
+                chat_provider_id=provider_id, prompt=prompt
+            )
             text = self._completion_to_text(completion)
             if not text:
                 self._debug("generate empty completion, use fallback")
@@ -60,7 +72,9 @@ class PolicyGenerationUnitsMixin:
             if self._is_repetitive(cleaned, session):
                 self._debug("generate repetitive text, use fallback")
                 return fallback
-            self._debug(f"generate ok provider={provider_id} session={session_key} text={cleaned}")
+            self._debug(
+                f"generate ok provider={provider_id} session={session_key} text={cleaned}"
+            )
             return cleaned
         except Exception as exc:
             logger.error(f"[idle-proactive] generate proactive text failed: {exc}")
@@ -101,10 +115,15 @@ class PolicyGenerationUnitsMixin:
 
     def _holiday_perception_text(self, now: datetime) -> str:
         if not self._to_bool(
-            self.config.get("enable_holiday_perception"), DEFAULT_CONFIG["enable_holiday_perception"]
+            self.config.get("enable_holiday_perception"),
+            DEFAULT_CONFIG["enable_holiday_perception"],
         ):
             return ""
-        country = str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"])).upper().strip()
+        country = (
+            str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"]))
+            .upper()
+            .strip()
+        )
         if country != "CN":
             return ""
         if _cc is None:
@@ -132,9 +151,12 @@ class PolicyGenerationUnitsMixin:
         except Exception:
             return ""
 
-    def _platform_perception_text(self, unified_msg_origin: str, session_key: str) -> str:
+    def _platform_perception_text(
+        self, unified_msg_origin: str, session_key: str
+    ) -> str:
         if not self._to_bool(
-            self.config.get("enable_platform_perception"), DEFAULT_CONFIG["enable_platform_perception"]
+            self.config.get("enable_platform_perception"),
+            DEFAULT_CONFIG["enable_platform_perception"],
         ):
             return ""
         raw = (unified_msg_origin or "").strip()
@@ -169,7 +191,9 @@ class PolicyGenerationUnitsMixin:
         return max(60, int(float(self.config["min_idle_min"]) * 60))
 
     def _max_idle_sec(self) -> int:
-        return max(self._min_idle_sec() + 60, int(float(self.config["max_idle_min"]) * 60))
+        return max(
+            self._min_idle_sec() + 60, int(float(self.config["max_idle_min"]) * 60)
+        )
 
     def _effective_max_idle_sec(self, now: datetime) -> int:
         base = float(self._max_idle_sec())
@@ -233,10 +257,12 @@ class PolicyGenerationUnitsMixin:
             return 1.0
         base = max(1.0, float(self._no_reply_decay_factor_base()))
         max_factor = max(1.0, float(self._no_reply_decay_max_factor()))
-        factor = base ** streak
+        factor = base**streak
         return min(max_factor, factor)
 
-    def _style_hint(self, session_key: str, session: Optional[Dict], idle_sec: float) -> str:
+    def _style_hint(
+        self, session_key: str, session: Optional[Dict], idle_sec: float
+    ) -> str:
         if session_key.startswith("group:"):
             if idle_sec > 6 * 3600:
                 return "群聊里简短自然、轻松抛题，不要过度热情"
@@ -287,7 +313,10 @@ class PolicyGenerationUnitsMixin:
             return False
 
         group_id = str(getattr(msg_obj, "group_id", "") or "")
-        sender_id = str(getattr(getattr(msg_obj, "sender", None), "user_id", "") or event.get_sender_id())
+        sender_id = str(
+            getattr(getattr(msg_obj, "sender", None), "user_id", "")
+            or event.get_sender_id()
+        )
 
         if group_id:
             return group_id in self.config["group_whitelist"]
@@ -299,7 +328,10 @@ class PolicyGenerationUnitsMixin:
             return ""
 
         group_id = str(getattr(msg_obj, "group_id", "") or "")
-        sender_id = str(getattr(getattr(msg_obj, "sender", None), "user_id", "") or event.get_sender_id())
+        sender_id = str(
+            getattr(getattr(msg_obj, "sender", None), "user_id", "")
+            or event.get_sender_id()
+        )
         if group_id:
             return f"group:{group_id}"
         return f"private:{sender_id}"
@@ -342,7 +374,15 @@ class PolicyGenerationUnitsMixin:
         lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
         if lines:
             cleaned = lines[0]
-        max_len = max(20, int(self.config.get("security_max_text_length", DEFAULT_CONFIG["security_max_text_length"])))
+        max_len = max(
+            20,
+            int(
+                self.config.get(
+                    "security_max_text_length",
+                    DEFAULT_CONFIG["security_max_text_length"],
+                )
+            ),
+        )
         if len(cleaned) > max_len:
             cleaned = cleaned[:max_len].rstrip("，,。.!?？") + "。"
         return cleaned

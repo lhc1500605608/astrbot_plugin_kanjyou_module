@@ -11,6 +11,7 @@ from astrbot.api.event import AstrMessageEvent
 
 from config import DEFAULT_CONFIG
 
+
 class SessionConfigUnitsMixin:
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
         key = self._session_key(event)
@@ -47,12 +48,18 @@ class SessionConfigUnitsMixin:
         if "period_counter_date" not in session:
             session["period_counter_date"] = self._now().strftime("%Y-%m-%d")
         if not isinstance(session.get("period_proactive_count"), dict):
-            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+            session["period_proactive_count"] = {
+                "morning": 0,
+                "afternoon": 0,
+                "evening": 0,
+            }
         if not isinstance(session.get("recent_proactive_texts"), list):
             session["recent_proactive_texts"] = []
         if "mood" not in session and isinstance(session.get("energy"), (int, float)):
             session["mood"] = float(session.get("energy"))
-        if "mood_updated_at" not in session and isinstance(session.get("energy_updated_at"), (int, float)):
+        if "mood_updated_at" not in session and isinstance(
+            session.get("energy_updated_at"), (int, float)
+        ):
             session["mood_updated_at"] = float(session.get("energy_updated_at"))
         if not isinstance(session.get("mood"), (int, float)):
             session["mood"] = float(self._mood_initial())
@@ -65,16 +72,28 @@ class SessionConfigUnitsMixin:
             session["counter_date"] = today
             session["today_proactive_count"] = 0
             session["period_counter_date"] = today
-            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+            session["period_proactive_count"] = {
+                "morning": 0,
+                "afternoon": 0,
+                "evening": 0,
+            }
 
     def _rollover_period_counter(self, session: Dict, now: datetime):
         today = now.strftime("%Y-%m-%d")
         if session.get("period_counter_date") != today:
             session["period_counter_date"] = today
-            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+            session["period_proactive_count"] = {
+                "morning": 0,
+                "afternoon": 0,
+                "evening": 0,
+            }
             return
         if not isinstance(session.get("period_proactive_count"), dict):
-            session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
+            session["period_proactive_count"] = {
+                "morning": 0,
+                "afternoon": 0,
+                "evening": 0,
+            }
 
     def _inc_period_count(self, session: Dict, period: str):
         if period not in {"morning", "afternoon", "evening"}:
@@ -89,7 +108,12 @@ class SessionConfigUnitsMixin:
         hm = now.strftime("%H:%M")
         start = self.config.get("sleep_start")
         end = self.config.get("sleep_end")
-        if not (isinstance(start, str) and isinstance(end, str) and self._is_hhmm(start) and self._is_hhmm(end)):
+        if not (
+            isinstance(start, str)
+            and isinstance(end, str)
+            and self._is_hhmm(start)
+            and self._is_hhmm(end)
+        ):
             start = DEFAULT_CONFIG["sleep_start"]
             end = DEFAULT_CONFIG["sleep_end"]
 
@@ -122,22 +146,41 @@ class SessionConfigUnitsMixin:
     def _fmt_ts(self, ts: Optional[float]) -> str:
         if not ts:
             return "-"
-        return datetime.fromtimestamp(ts, ZoneInfo(self.config["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp(ts, ZoneInfo(self.config["timezone"])).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
     def _trim_global_send_history(self, now_ts: float):
         window_start = now_ts - 3600
-        self._global_send_history = [ts for ts in self._global_send_history if ts >= window_start]
+        self._global_send_history = [
+            ts for ts in self._global_send_history if ts >= window_start
+        ]
 
     def _mood_enabled(self) -> bool:
-        return self._to_bool(self.config.get("mood_enabled"), DEFAULT_CONFIG["mood_enabled"])
+        return self._to_bool(
+            self.config.get("mood_enabled"), DEFAULT_CONFIG["mood_enabled"]
+        )
 
     def _mood_initial(self) -> float:
-        return max(0.0, min(100.0, float(self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"]))))
+        return max(
+            0.0,
+            min(
+                100.0,
+                float(self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"])),
+            ),
+        )
 
     def _mood_min_trigger(self) -> float:
         return max(
             0.0,
-            min(100.0, float(self.config.get("mood_min_trigger", DEFAULT_CONFIG["mood_min_trigger"]))),
+            min(
+                100.0,
+                float(
+                    self.config.get(
+                        "mood_min_trigger", DEFAULT_CONFIG["mood_min_trigger"]
+                    )
+                ),
+            ),
         )
 
     def _mood_cost_on_proactive(self) -> float:
@@ -145,7 +188,12 @@ class SessionConfigUnitsMixin:
             0.0,
             min(
                 100.0,
-                float(self.config.get("mood_cost_on_proactive", DEFAULT_CONFIG["mood_cost_on_proactive"])),
+                float(
+                    self.config.get(
+                        "mood_cost_on_proactive",
+                        DEFAULT_CONFIG["mood_cost_on_proactive"],
+                    )
+                ),
             ),
         )
 
@@ -154,13 +202,22 @@ class SessionConfigUnitsMixin:
             0.0,
             min(
                 100.0,
-                float(self.config.get("mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"])),
+                float(
+                    self.config.get(
+                        "mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"]
+                    )
+                ),
             ),
         )
 
     def _mood_recover_per_min(self) -> float:
         return max(
-            0.0, float(self.config.get("mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]))
+            0.0,
+            float(
+                self.config.get(
+                    "mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]
+                )
+            ),
         )
 
     def _mood_clamp(self, value: float) -> float:
@@ -175,7 +232,9 @@ class SessionConfigUnitsMixin:
         recover = ((now_ts - last) / 60.0) * self._mood_recover_per_min()
         if recover <= 0:
             return
-        s["mood"] = self._mood_clamp(float(s.get("mood", self._mood_initial())) + recover)
+        s["mood"] = self._mood_clamp(
+            float(s.get("mood", self._mood_initial())) + recover
+        )
         s["mood_updated_at"] = now_ts
 
     def _consume_session_mood_by_dialogue(self, s: Dict, now_ts: float):
@@ -227,22 +286,53 @@ class SessionConfigUnitsMixin:
         self._consume_session_mood_by_dialogue(s, now_ts)
 
     def _security_global_hourly_cap(self) -> int:
-        return max(1, int(self.config.get("security_global_hourly_cap", DEFAULT_CONFIG["security_global_hourly_cap"])))
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "security_global_hourly_cap",
+                    DEFAULT_CONFIG["security_global_hourly_cap"],
+                )
+            ),
+        )
 
     def _security_max_fail_streak(self) -> int:
-        return max(1, int(self.config.get("security_max_fail_streak", DEFAULT_CONFIG["security_max_fail_streak"])))
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "security_max_fail_streak",
+                    DEFAULT_CONFIG["security_max_fail_streak"],
+                )
+            ),
+        )
 
     def _security_fail_pause_sec(self) -> int:
-        return max(300, int(float(self.config.get("security_fail_pause_min", DEFAULT_CONFIG["security_fail_pause_min"])) * 60))
+        return max(
+            300,
+            int(
+                float(
+                    self.config.get(
+                        "security_fail_pause_min",
+                        DEFAULT_CONFIG["security_fail_pause_min"],
+                    )
+                )
+                * 60
+            ),
+        )
 
     def _security_allow_links(self) -> bool:
         return self._to_bool(
-            self.config.get("security_allow_links", DEFAULT_CONFIG["security_allow_links"]),
+            self.config.get(
+                "security_allow_links", DEFAULT_CONFIG["security_allow_links"]
+            ),
             DEFAULT_CONFIG["security_allow_links"],
         )
 
     def _security_blocked_words(self) -> List[str]:
-        raw = self.config.get("security_blocked_words", DEFAULT_CONFIG["security_blocked_words"])
+        raw = self.config.get(
+            "security_blocked_words", DEFAULT_CONFIG["security_blocked_words"]
+        )
         if not isinstance(raw, list):
             return []
         out: List[str] = []
@@ -268,7 +358,9 @@ class SessionConfigUnitsMixin:
         return default
 
     def _debug_decision_enabled(self) -> bool:
-        return self._to_bool(self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"])
+        return self._to_bool(
+            self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"]
+        )
 
     def _debug_decision(self, session_key: str, payload: Dict):
         if not self.config.get("debug_log", False):
@@ -306,10 +398,14 @@ class SessionConfigUnitsMixin:
     def _normalize_basic_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("private_whitelist"), list):
-            self.config["private_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["private_whitelist"])
+            self.config["private_whitelist"] = copy.deepcopy(
+                DEFAULT_CONFIG["private_whitelist"]
+            )
             changed = True
         if not isinstance(self.config.get("group_whitelist"), list):
-            self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])
+            self.config["group_whitelist"] = copy.deepcopy(
+                DEFAULT_CONFIG["group_whitelist"]
+            )
             changed = True
 
         # Backward compatibility: migrate legacy config_mode -> advanced_enabled.
@@ -325,7 +421,9 @@ class SessionConfigUnitsMixin:
 
         for key in ("enabled", "lifecycle_log", "debug_log"):
             if not isinstance(self.config.get(key), bool):
-                self.config[key] = self._to_bool(self.config.get(key), DEFAULT_CONFIG[key])
+                self.config[key] = self._to_bool(
+                    self.config.get(key), DEFAULT_CONFIG[key]
+                )
                 changed = True
         return changed
 
@@ -339,14 +437,26 @@ class SessionConfigUnitsMixin:
             changed = True
 
         # 兼容旧版秒级配置，自动迁移为分钟配置。
-        if self.config.get("min_idle_min") is None and isinstance(self.config.get("min_idle_sec"), (int, float)):
-            self.config["min_idle_min"] = max(1, int(float(self.config["min_idle_sec"]) // 60))
+        if self.config.get("min_idle_min") is None and isinstance(
+            self.config.get("min_idle_sec"), (int, float)
+        ):
+            self.config["min_idle_min"] = max(
+                1, int(float(self.config["min_idle_sec"]) // 60)
+            )
             changed = True
-        if self.config.get("max_idle_min") is None and isinstance(self.config.get("max_idle_sec"), (int, float)):
-            self.config["max_idle_min"] = max(1, int(float(self.config["max_idle_sec"]) // 60))
+        if self.config.get("max_idle_min") is None and isinstance(
+            self.config.get("max_idle_sec"), (int, float)
+        ):
+            self.config["max_idle_min"] = max(
+                1, int(float(self.config["max_idle_sec"]) // 60)
+            )
             changed = True
-        if self.config.get("cooldown_min") is None and isinstance(self.config.get("cooldown_sec"), (int, float)):
-            self.config["cooldown_min"] = max(1, int(float(self.config["cooldown_sec"]) // 60))
+        if self.config.get("cooldown_min") is None and isinstance(
+            self.config.get("cooldown_sec"), (int, float)
+        ):
+            self.config["cooldown_min"] = max(
+                1, int(float(self.config["cooldown_sec"]) // 60)
+            )
             changed = True
 
         if not isinstance(self.config.get("min_idle_min"), (int, float)):
@@ -361,7 +471,8 @@ class SessionConfigUnitsMixin:
 
         if float(self.config["max_idle_min"]) <= float(self.config["min_idle_min"]):
             self.config["max_idle_min"] = max(
-                float(self.config["min_idle_min"]) + 30, float(DEFAULT_CONFIG["max_idle_min"])
+                float(self.config["min_idle_min"]) + 30,
+                float(DEFAULT_CONFIG["max_idle_min"]),
             )
             changed = True
         return changed
@@ -372,40 +483,56 @@ class SessionConfigUnitsMixin:
             self.config["persona_id"] = DEFAULT_CONFIG["persona_id"]
             changed = True
         if not isinstance(self.config.get("proactive_provider_id"), str):
-            self.config["proactive_provider_id"] = DEFAULT_CONFIG["proactive_provider_id"]
+            self.config["proactive_provider_id"] = DEFAULT_CONFIG[
+                "proactive_provider_id"
+            ]
             changed = True
-        if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config[
-            "proactive_prompt_template"
-        ].strip():
-            self.config["proactive_prompt_template"] = DEFAULT_CONFIG["proactive_prompt_template"]
+        if (
+            not isinstance(self.config.get("proactive_prompt_template"), str)
+            or not self.config["proactive_prompt_template"].strip()
+        ):
+            self.config["proactive_prompt_template"] = DEFAULT_CONFIG[
+                "proactive_prompt_template"
+            ]
             changed = True
-        if not isinstance(self.config.get("fallback_proactive_text"), str) or not self.config[
-            "fallback_proactive_text"
-        ].strip():
-            self.config["fallback_proactive_text"] = DEFAULT_CONFIG["fallback_proactive_text"]
+        if (
+            not isinstance(self.config.get("fallback_proactive_text"), str)
+            or not self.config["fallback_proactive_text"].strip()
+        ):
+            self.config["fallback_proactive_text"] = DEFAULT_CONFIG[
+                "fallback_proactive_text"
+            ]
             changed = True
         if not isinstance(self.config.get("enable_holiday_perception"), bool):
             self.config["enable_holiday_perception"] = self._to_bool(
-                self.config.get("enable_holiday_perception"), DEFAULT_CONFIG["enable_holiday_perception"]
+                self.config.get("enable_holiday_perception"),
+                DEFAULT_CONFIG["enable_holiday_perception"],
             )
             changed = True
         if not isinstance(self.config.get("enable_platform_perception"), bool):
             self.config["enable_platform_perception"] = self._to_bool(
-                self.config.get("enable_platform_perception"), DEFAULT_CONFIG["enable_platform_perception"]
+                self.config.get("enable_platform_perception"),
+                DEFAULT_CONFIG["enable_platform_perception"],
             )
             changed = True
-        if not isinstance(self.config.get("holiday_country"), str) or not self.config.get("holiday_country", "").strip():
+        if (
+            not isinstance(self.config.get("holiday_country"), str)
+            or not self.config.get("holiday_country", "").strip()
+        ):
             self.config["holiday_country"] = DEFAULT_CONFIG["holiday_country"]
             changed = True
         else:
-            self.config["holiday_country"] = str(self.config["holiday_country"]).upper().strip()
+            self.config["holiday_country"] = (
+                str(self.config["holiday_country"]).upper().strip()
+            )
         return changed
 
     def _normalize_security_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("security_allow_links"), bool):
             self.config["security_allow_links"] = self._to_bool(
-                self.config.get("security_allow_links"), DEFAULT_CONFIG["security_allow_links"]
+                self.config.get("security_allow_links"),
+                DEFAULT_CONFIG["security_allow_links"],
             )
             changed = True
         # Backward compatibility: migrate legacy energy_* keys to mood_* when mood_* is missing.
@@ -417,7 +544,10 @@ class SessionConfigUnitsMixin:
             "energy_recover_per_min": "mood_recover_per_min",
         }
         for old_key, new_key in legacy_map.items():
-            if self.config.get(new_key) is None and self.config.get(old_key) is not None:
+            if (
+                self.config.get(new_key) is None
+                and self.config.get(old_key) is not None
+            ):
                 self.config[new_key] = self.config.get(old_key)
                 changed = True
 
@@ -428,33 +558,44 @@ class SessionConfigUnitsMixin:
             changed = True
         if not isinstance(self.config.get("debug_decision_log"), bool):
             self.config["debug_decision_log"] = self._to_bool(
-                self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"]
+                self.config.get("debug_decision_log"),
+                DEFAULT_CONFIG["debug_decision_log"],
             )
             changed = True
         if not isinstance(self.config.get("security_blocked_words"), list):
-            self.config["security_blocked_words"] = copy.deepcopy(DEFAULT_CONFIG["security_blocked_words"])
+            self.config["security_blocked_words"] = copy.deepcopy(
+                DEFAULT_CONFIG["security_blocked_words"]
+            )
             changed = True
 
         if not isinstance(self.config.get("security_global_hourly_cap"), (int, float)):
-            self.config["security_global_hourly_cap"] = DEFAULT_CONFIG["security_global_hourly_cap"]
+            self.config["security_global_hourly_cap"] = DEFAULT_CONFIG[
+                "security_global_hourly_cap"
+            ]
             changed = True
         if int(self.config.get("security_global_hourly_cap", 0)) < 1:
             self.config["security_global_hourly_cap"] = 1
             changed = True
         if not isinstance(self.config.get("security_max_fail_streak"), (int, float)):
-            self.config["security_max_fail_streak"] = DEFAULT_CONFIG["security_max_fail_streak"]
+            self.config["security_max_fail_streak"] = DEFAULT_CONFIG[
+                "security_max_fail_streak"
+            ]
             changed = True
         if int(self.config.get("security_max_fail_streak", 0)) < 1:
             self.config["security_max_fail_streak"] = 1
             changed = True
         if not isinstance(self.config.get("security_fail_pause_min"), (int, float)):
-            self.config["security_fail_pause_min"] = DEFAULT_CONFIG["security_fail_pause_min"]
+            self.config["security_fail_pause_min"] = DEFAULT_CONFIG[
+                "security_fail_pause_min"
+            ]
             changed = True
         if float(self.config.get("security_fail_pause_min", 0)) < 5:
             self.config["security_fail_pause_min"] = 5
             changed = True
         if not isinstance(self.config.get("security_max_text_length"), (int, float)):
-            self.config["security_max_text_length"] = DEFAULT_CONFIG["security_max_text_length"]
+            self.config["security_max_text_length"] = DEFAULT_CONFIG[
+                "security_max_text_length"
+            ]
             changed = True
         if int(self.config.get("security_max_text_length", 0)) < 20:
             self.config["security_max_text_length"] = 20
@@ -466,26 +607,41 @@ class SessionConfigUnitsMixin:
             self.config["mood_min_trigger"] = DEFAULT_CONFIG["mood_min_trigger"]
             changed = True
         if not isinstance(self.config.get("mood_cost_on_proactive"), (int, float)):
-            self.config["mood_cost_on_proactive"] = DEFAULT_CONFIG["mood_cost_on_proactive"]
+            self.config["mood_cost_on_proactive"] = DEFAULT_CONFIG[
+                "mood_cost_on_proactive"
+            ]
             changed = True
         if not isinstance(self.config.get("mood_cost_on_dialogue"), (int, float)):
-            self.config["mood_cost_on_dialogue"] = DEFAULT_CONFIG["mood_cost_on_dialogue"]
+            self.config["mood_cost_on_dialogue"] = DEFAULT_CONFIG[
+                "mood_cost_on_dialogue"
+            ]
             changed = True
         if not isinstance(self.config.get("mood_recover_per_min"), (int, float)):
             self.config["mood_recover_per_min"] = DEFAULT_CONFIG["mood_recover_per_min"]
             changed = True
-        self.config["mood_initial"] = self._mood_clamp(self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"]))
+        self.config["mood_initial"] = self._mood_clamp(
+            self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"])
+        )
         self.config["mood_min_trigger"] = self._mood_clamp(
             self.config.get("mood_min_trigger", DEFAULT_CONFIG["mood_min_trigger"])
         )
         self.config["mood_cost_on_proactive"] = self._mood_clamp(
-            self.config.get("mood_cost_on_proactive", DEFAULT_CONFIG["mood_cost_on_proactive"])
+            self.config.get(
+                "mood_cost_on_proactive", DEFAULT_CONFIG["mood_cost_on_proactive"]
+            )
         )
         self.config["mood_cost_on_dialogue"] = self._mood_clamp(
-            self.config.get("mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"])
+            self.config.get(
+                "mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"]
+            )
         )
         self.config["mood_recover_per_min"] = max(
-            0.0, float(self.config.get("mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]))
+            0.0,
+            float(
+                self.config.get(
+                    "mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]
+                )
+            ),
         )
         if self.config["mood_min_trigger"] > self.config["mood_initial"]:
             self.config["mood_initial"] = self.config["mood_min_trigger"]
@@ -495,7 +651,9 @@ class SessionConfigUnitsMixin:
     def _normalize_debug_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("debug_status_window_sec"), int):
-            self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
+            self.config["debug_status_window_sec"] = DEFAULT_CONFIG[
+                "debug_status_window_sec"
+            ]
             changed = True
         if int(self.config.get("debug_status_window_sec", 0)) < 60:
             self.config["debug_status_window_sec"] = 60
@@ -537,7 +695,9 @@ class SessionConfigUnitsMixin:
         if self.config.get("debug_log", False):
             logger.debug(f"[idle-proactive] {msg}")
 
-    def _maybe_log_status(self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False):
+    def _maybe_log_status(
+        self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False
+    ):
         if not self.config.get("debug_log", False):
             return
 
@@ -552,8 +712,12 @@ class SessionConfigUnitsMixin:
         next_check_at = float(s.get("next_check_at", now_ts))
         next_check_in = max(0, int(next_check_at - now_ts))
         now_dt = self._now()
-        min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(self._effective_min_idle_sec(now_dt))
-        earliest_trigger_at = max(next_check_at, float(s.get("cooldown_until", 0)), min_idle_at)
+        min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(
+            self._effective_min_idle_sec(now_dt)
+        )
+        earliest_trigger_at = max(
+            next_check_at, float(s.get("cooldown_until", 0)), min_idle_at
+        )
         earliest_trigger_in = max(0, int(earliest_trigger_at - now_ts))
         no_reply_streak = int(s.get("no_reply_streak", 0))
         decay = self._no_reply_decay_factor(s)

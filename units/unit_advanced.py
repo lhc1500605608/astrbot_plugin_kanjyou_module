@@ -25,7 +25,11 @@ class AdvancedPolicyUnitsMixin:
                 return max(1, int(raw))
             if key in {"trigger_base_prob", "trigger_max_prob"}:
                 return min(1.0, max(0.0, float(raw)))
-            if key in {"period_quota_morning_max", "period_quota_afternoon_max", "period_quota_evening_max"}:
+            if key in {
+                "period_quota_morning_max",
+                "period_quota_afternoon_max",
+                "period_quota_evening_max",
+            }:
                 return max(0, int(raw))
             if key in {"no_reply_decay_factor", "no_reply_decay_max_factor"}:
                 return max(1.0, float(raw))

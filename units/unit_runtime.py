@@ -7,6 +7,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
+
 class RuntimeUnitsMixin:
     async def _idle_loop(self):
         while True:
@@ -36,34 +37,45 @@ class RuntimeUnitsMixin:
 
         async with self._lock:
             for session_key, s in list(self._sessions.items()):
-                session_changed = await self._process_session(session_key, s, now, now_ts)
+                session_changed = await self._process_session(
+                    session_key, s, now, now_ts
+                )
                 changed = changed or session_changed
 
             if changed:
                 self._save_state()
                 self._debug("state persisted")
 
-    async def _process_session(self, session_key: str, s: Dict, now: datetime, now_ts: float) -> bool:
+    async def _process_session(
+        self, session_key: str, s: Dict, now: datetime, now_ts: float
+    ) -> bool:
         self._unit_rollover_counters(s, now)
         self._recover_session_mood(s, now_ts)
 
         if self._unit_gate_next_check(session_key, s, now_ts):
-            self._debug_decision(session_key, {"outcome": "skip", "reason": "next_check"})
+            self._debug_decision(
+                session_key, {"outcome": "skip", "reason": "next_check"}
+            )
             return False
         if self._unit_gate_cooldown(session_key, s, now_ts):
             self._debug_decision(session_key, {"outcome": "skip", "reason": "cooldown"})
             return True
         if self._unit_gate_daily_limit(session_key, s, now_ts):
-            self._debug_decision(session_key, {"outcome": "skip", "reason": "daily_limit"})
+            self._debug_decision(
+                session_key, {"outcome": "skip", "reason": "daily_limit"}
+            )
             return True
         if self._unit_gate_pending_reply(session_key, s, now_ts):
-            self._debug_decision(session_key, {"outcome": "skip", "reason": "await_human_reply"})
+            self._debug_decision(
+                session_key, {"outcome": "skip", "reason": "await_human_reply"}
+            )
             return True
 
         period = self._get_period(now)
         if self._unit_gate_period_limit(session_key, s, period, now, now_ts):
             self._debug_decision(
-                session_key, {"outcome": "skip", "reason": "period_limit", "period": period}
+                session_key,
+                {"outcome": "skip", "reason": "period_limit", "period": period},
             )
             return True
 
@@ -91,7 +103,9 @@ class RuntimeUnitsMixin:
                 },
             )
             return True
-        blocked_by_prob, prob_info = self._unit_gate_probability(session_key, s, idle_sec, now, now_ts)
+        blocked_by_prob, prob_info = self._unit_gate_probability(
+            session_key, s, idle_sec, now, now_ts
+        )
         self._debug_decision(
             session_key,
             {
@@ -107,11 +121,17 @@ class RuntimeUnitsMixin:
 
         umo = s.get("unified_msg_origin")
         if self._unit_gate_origin(session_key, s, umo, now_ts):
-            self._debug_decision(session_key, {"outcome": "skip", "reason": "missing_origin"})
+            self._debug_decision(
+                session_key, {"outcome": "skip", "reason": "missing_origin"}
+            )
             return True
 
-        success, sent_text = await self._unit_execute_send(umo, session_key, idle_sec, s)
-        self._unit_finalize_result(session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts)
+        success, sent_text = await self._unit_execute_send(
+            umo, session_key, idle_sec, s
+        )
+        self._unit_finalize_result(
+            session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts
+        )
         self._debug_decision(
             session_key,
             {
@@ -153,7 +173,9 @@ class RuntimeUnitsMixin:
         )
         return True
 
-    def _unit_defer_session(self, session_key: str, s: Dict, now_ts: float, reason: str, debug_msg: str):
+    def _unit_defer_session(
+        self, session_key: str, s: Dict, now_ts: float, reason: str, debug_msg: str
+    ):
         s["next_check_at"] = now_ts + self._randomized_interval()
         self._maybe_log_status(session_key, s, now_ts, reason)
         self._debug(debug_msg)
@@ -182,7 +204,9 @@ class RuntimeUnitsMixin:
         )
         return True
 
-    def _unit_gate_pending_reply(self, session_key: str, s: Dict, now_ts: float) -> bool:
+    def _unit_gate_pending_reply(
+        self, session_key: str, s: Dict, now_ts: float
+    ) -> bool:
         if not self._require_human_reply_before_next_proactive():
             return False
         if not s.get("pending_human_reply", False):
@@ -222,7 +246,13 @@ class RuntimeUnitsMixin:
         return True
 
     def _unit_gate_idle(
-        self, session_key: str, s: Dict, idle_sec: float, decay: float, now: datetime, now_ts: float
+        self,
+        session_key: str,
+        s: Dict,
+        idle_sec: float,
+        decay: float,
+        now: datetime,
+        now_ts: float,
     ) -> bool:
         needed_idle_sec = int(self._effective_min_idle_sec(now) * decay)
         if idle_sec >= needed_idle_sec:
@@ -276,7 +306,9 @@ class RuntimeUnitsMixin:
         )
         return True, {"probability": round(p, 4), "roll": round(roll, 4)}
 
-    def _unit_gate_origin(self, session_key: str, s: Dict, umo: str, now_ts: float) -> bool:
+    def _unit_gate_origin(
+        self, session_key: str, s: Dict, umo: str, now_ts: float
+    ) -> bool:
         if umo:
             return False
         self._unit_defer_session(
@@ -288,7 +320,9 @@ class RuntimeUnitsMixin:
         )
         return True
 
-    async def _unit_execute_send(self, umo: str, session_key: str, idle_sec: float, s: Dict) -> tuple[bool, str]:
+    async def _unit_execute_send(
+        self, umo: str, session_key: str, idle_sec: float, s: Dict
+    ) -> tuple[bool, str]:
         return await self._send_proactive(umo, None, session_key, idle_sec, s)
 
     def _unit_finalize_result(
@@ -311,7 +345,9 @@ class RuntimeUnitsMixin:
             s["last_bot_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
-            s["cooldown_until"] = now_ts + int(self._effective_cooldown_sec(now) * decay)
+            s["cooldown_until"] = now_ts + int(
+                self._effective_cooldown_sec(now) * decay
+            )
             s["pending_human_reply"] = True
             s["no_reply_streak"] = int(s.get("no_reply_streak", 0)) + 1
             self._inc_period_count(s, period)
@@ -320,7 +356,9 @@ class RuntimeUnitsMixin:
                 f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} "
                 f"today_count={s['today_proactive_count']} no_reply_streak={s.get('no_reply_streak', 0)} decay={decay:.2f}"
             )
-            self._maybe_log_status(session_key, s, now_ts, "trigger_success", force=True)
+            self._maybe_log_status(
+                session_key, s, now_ts, "trigger_success", force=True
+            )
             return
 
         self._global_fail_streak += 1
@@ -340,7 +378,9 @@ class RuntimeUnitsMixin:
         idle_sec: float = 0.0,
         session: Optional[Dict] = None,
     ) -> tuple[bool, str]:
-        topic = await self._generate_proactive_text(unified_msg_origin, session_key, idle_sec, session)
+        topic = await self._generate_proactive_text(
+            unified_msg_origin, session_key, idle_sec, session
+        )
         try:
             chain = MessageChain().message(topic)
             await self.context.send_message(unified_msg_origin, chain)
@@ -350,11 +390,17 @@ class RuntimeUnitsMixin:
             try:
                 # 兼容部分适配器对 MessageChain 构造差异
                 await self.context.send_message(unified_msg_origin, [Plain(topic)])
-                self._debug(f"send proactive ok(fallback) session={session_key} topic={topic}")
+                self._debug(
+                    f"send proactive ok(fallback) session={session_key} topic={topic}"
+                )
                 return True, topic
             except Exception as exc:
                 logger.error(f"[idle-proactive] send failed: {exc}")
                 self._debug(f"send proactive failed session={session_key} err={exc}")
                 if event:
-                    await event.send(event.plain_result("主动消息发送失败，请检查适配器是否支持主动消息。"))
+                    await event.send(
+                        event.plain_result(
+                            "主动消息发送失败，请检查适配器是否支持主动消息。"
+                        )
+                    )
                 return False, ""

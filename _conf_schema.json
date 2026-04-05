@@ -104,6 +104,36 @@
     "description": "衰减系数上限",
     "default": 4.0
   },
+  "weekend_mode_enabled": {
+    "type": "bool",
+    "description": "是否启用周末模式（周六/周日）",
+    "default": true
+  },
+  "weekend_min_idle_multiplier": {
+    "type": "float",
+    "description": "周末最小触发间隔倍率（>=1）",
+    "default": 1.25
+  },
+  "weekend_cooldown_multiplier": {
+    "type": "float",
+    "description": "周末冷却时间倍率（>=1）",
+    "default": 1.35
+  },
+  "weekend_quota_multiplier": {
+    "type": "float",
+    "description": "周末分时段配额倍率（0~1 建议更安静）",
+    "default": 0.8
+  },
+  "quality_dedupe_enabled": {
+    "type": "bool",
+    "description": "是否启用近期主动问候去重",
+    "default": true
+  },
+  "quality_history_size": {
+    "type": "int",
+    "description": "最近主动问候记忆条数（用于去重）",
+    "default": 6
+  },
   "private_whitelist": {
     "type": "list",
     "description": "私聊白名单 user_id 列表",
@@ -128,9 +158,9 @@
   },
   "proactive_prompt_template": {
     "type": "string",
-    "description": "用于生成主动问候的 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds}",
+    "description": "用于生成主动问候的 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
     "editor_mode": true,
-    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。"
+    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。"
   },
   "fallback_proactive_text": {
     "type": "string",

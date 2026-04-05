@@ -9,6 +9,11 @@
     "description": "是否输出详细调试日志到控制台",
     "default": false
   },
+  "debug_status_window_sec": {
+    "type": "int",
+    "description": "调试状态摘要输出窗口（秒），建议 300 或 600",
+    "default": 300
+  },
   "timezone": {
     "type": "string",
     "description": "时区，例如 Asia/Shanghai",

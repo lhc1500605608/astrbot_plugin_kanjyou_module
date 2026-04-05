@@ -16,6 +16,7 @@ from astrbot.api.star import Context, Star, register
 DEFAULT_CONFIG = {
     "enabled": True,
     "debug_log": False,
+    "debug_status_window_sec": 300,
     "timezone": "Asia/Shanghai",
     "sleep_start": "23:30",
     "sleep_end": "08:00",
@@ -54,6 +55,7 @@ class KanjyouIdleProactivePlugin(Star):
         self._state_path = Path(__file__).parent / "idle_state.json"
         self._normalize_webui_config()
         self._sessions: Dict[str, Dict] = self._load_state()
+        self._debug_status_last: Dict[str, float] = {}
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
@@ -136,7 +138,7 @@ class KanjyouIdleProactivePlugin(Star):
             f"enabled={self.config['enabled']} | idle={idle_sec}s | "
             f"today_count={s.get('today_proactive_count', 0)} | "
             f"cooldown_until={self._fmt_ts(s.get('cooldown_until'))} | "
-            f"sleep_mode={sleep_on} | debug_log={self.config.get('debug_log', False)}"
+            f"sleep_mode={sleep_on}"
         )
         yield event.plain_result(summary)
 
@@ -231,6 +233,7 @@ class KanjyouIdleProactivePlugin(Star):
                 self._rollover_daily_counter(s, now)
 
                 if now_ts < s.get("next_check_at", 0):
+                    self._maybe_log_status(session_key, s, now_ts, "waiting_next_check")
                     self._debug(
                         f"session skip(next_check) session={session_key} next_check={self._fmt_ts(s.get('next_check_at'))}"
                     )
@@ -239,6 +242,7 @@ class KanjyouIdleProactivePlugin(Star):
                 if now_ts < s.get("cooldown_until", 0):
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "cooldown")
                     self._debug(
                         f"session skip(cooldown) session={session_key} cooldown_until={self._fmt_ts(s.get('cooldown_until'))}"
                     )
@@ -247,6 +251,7 @@ class KanjyouIdleProactivePlugin(Star):
                 if s.get("today_proactive_count", 0) >= self.config["max_per_session_per_day"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "daily_limit")
                     self._debug(
                         f"session skip(limit) session={session_key} today_count={s.get('today_proactive_count', 0)}"
                     )
@@ -256,6 +261,7 @@ class KanjyouIdleProactivePlugin(Star):
                 if idle_sec < self.config["min_idle_sec"]:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "idle_not_enough")
                     self._debug(
                         f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self.config['min_idle_sec']}"
                     )
@@ -265,6 +271,7 @@ class KanjyouIdleProactivePlugin(Star):
                 if not should_trigger:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "probability_miss")
                     self._debug(
                         f"session skip(probability) session={session_key} idle_sec={int(idle_sec)}"
                     )
@@ -274,6 +281,7 @@ class KanjyouIdleProactivePlugin(Star):
                 if not umo:
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "missing_origin")
                     self._debug(f"session skip(no_origin) session={session_key}")
                     continue
 
@@ -287,8 +295,10 @@ class KanjyouIdleProactivePlugin(Star):
                     self._debug(
                         f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']}"
                     )
+                    self._maybe_log_status(session_key, s, now_ts, "trigger_success", force=True)
                 else:
                     self._debug(f"session trigger(failed) session={session_key}")
+                    self._maybe_log_status(session_key, s, now_ts, "trigger_failed", force=True)
                 changed = True
 
             if changed:
@@ -530,6 +540,12 @@ class KanjyouIdleProactivePlugin(Star):
         if not isinstance(self.config.get("sleep_end"), str):
             self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
             changed = True
+        if not isinstance(self.config.get("debug_status_window_sec"), int):
+            self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
+            changed = True
+        if int(self.config.get("debug_status_window_sec", 0)) < 60:
+            self.config["debug_status_window_sec"] = 60
+            changed = True
         if not isinstance(self.config.get("persona_id"), str):
             self.config["persona_id"] = DEFAULT_CONFIG["persona_id"]
             changed = True
@@ -580,3 +596,29 @@ class KanjyouIdleProactivePlugin(Star):
     def _debug(self, msg: str):
         if self.config.get("debug_log", False):
             logger.info(f"[idle-proactive][debug] {msg}")
+
+    def _maybe_log_status(self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False):
+        if not self.config.get("debug_log", False):
+            return
+
+        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
+        last = self._debug_status_last.get(session_key, 0.0)
+        if not force and (now_ts - last) < window:
+            return
+
+        self._debug_status_last[session_key] = now_ts
+        idle_sec = max(0, int(now_ts - s.get("last_interaction_at", now_ts)))
+        cooldown_left = max(0, int(s.get("cooldown_until", 0) - now_ts))
+        next_check_at = float(s.get("next_check_at", now_ts))
+        next_check_in = max(0, int(next_check_at - now_ts))
+        min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(self.config["min_idle_sec"])
+        earliest_trigger_at = max(next_check_at, float(s.get("cooldown_until", 0)), min_idle_at)
+        earliest_trigger_in = max(0, int(earliest_trigger_at - now_ts))
+
+        self._debug(
+            "status "
+            f"reason={reason} session={session_key} "
+            f"idle={idle_sec}s cooldown_left={cooldown_left}s "
+            f"next_check={self._fmt_ts(next_check_at)}(+{next_check_in}s) "
+            f"next_trigger_earliest={self._fmt_ts(earliest_trigger_at)}(+{earliest_trigger_in}s)"
+        )

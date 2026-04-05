@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.6.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.6.2-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -16,6 +16,11 @@
 - 控制台 Debug 状态指示器
 - 内置高级策略：分时段配额、未回复衰减、周末模式、近期问候去重
 
+## 双层配置模式
+
+- `config_mode=basic`（默认，推荐）：只需配置核心参数，插件自动使用内置稳妥策略
+- `config_mode=advanced`：开启高级参数自定义（配额/衰减/周末/去重等）
+
 ## 快速使用
 
 1. 安装并启用插件
@@ -26,6 +31,7 @@
 ## 精简配置（WebUI）
 
 - `enabled`
+- `config_mode`
 - `timezone`
 - `sleep_start` / `sleep_end`
 - `private_whitelist` / `group_whitelist`
@@ -36,6 +42,7 @@
 
 ## 推荐参数（保守）
 
+- `config_mode = basic`
 - `min_idle_min = 45`
 - `max_idle_min = 180`
 - `cooldown_min = 90`

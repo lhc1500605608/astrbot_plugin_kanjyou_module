@@ -4,6 +4,11 @@
     "description": "是否启用闲时主动回复",
     "default": true
   },
+  "config_mode": {
+    "type": "string",
+    "description": "配置模式：basic（推荐）或 advanced（高级参数生效）",
+    "default": "basic"
+  },
   "debug_log": {
     "type": "bool",
     "description": "是否输出详细调试日志到控制台",
@@ -81,5 +86,90 @@
     "type": "string",
     "description": "当模型生成失败时的兜底主动问候",
     "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
+  },
+  "max_per_session_per_day": {
+    "type": "int",
+    "description": "[仅 advanced] 单会话每日最大主动触发次数",
+    "default": 8
+  },
+  "trigger_base_prob": {
+    "type": "float",
+    "description": "[仅 advanced] 基础触发概率（0-1）",
+    "default": 0.02
+  },
+  "trigger_max_prob": {
+    "type": "float",
+    "description": "[仅 advanced] 上限触发概率（0-1）",
+    "default": 0.18
+  },
+  "require_human_reply_before_next_proactive": {
+    "type": "bool",
+    "description": "[仅 advanced] 主动发言后必须等待用户回复",
+    "default": true
+  },
+  "period_quota_enabled": {
+    "type": "bool",
+    "description": "[仅 advanced] 是否启用分时段主动配额",
+    "default": true
+  },
+  "period_quota_morning_max": {
+    "type": "int",
+    "description": "[仅 advanced] 上午最大主动次数",
+    "default": 1
+  },
+  "period_quota_afternoon_max": {
+    "type": "int",
+    "description": "[仅 advanced] 下午最大主动次数",
+    "default": 1
+  },
+  "period_quota_evening_max": {
+    "type": "int",
+    "description": "[仅 advanced] 晚间最大主动次数",
+    "default": 1
+  },
+  "no_reply_decay_enabled": {
+    "type": "bool",
+    "description": "[仅 advanced] 是否启用未回复衰减",
+    "default": true
+  },
+  "no_reply_decay_factor": {
+    "type": "float",
+    "description": "[仅 advanced] 每次未回复的衰减系数",
+    "default": 1.6
+  },
+  "no_reply_decay_max_factor": {
+    "type": "float",
+    "description": "[仅 advanced] 衰减系数上限",
+    "default": 4.0
+  },
+  "weekend_mode_enabled": {
+    "type": "bool",
+    "description": "[仅 advanced] 是否启用周末模式",
+    "default": true
+  },
+  "weekend_min_idle_multiplier": {
+    "type": "float",
+    "description": "[仅 advanced] 周末 idle 倍率",
+    "default": 1.25
+  },
+  "weekend_cooldown_multiplier": {
+    "type": "float",
+    "description": "[仅 advanced] 周末冷却倍率",
+    "default": 1.35
+  },
+  "weekend_quota_multiplier": {
+    "type": "float",
+    "description": "[仅 advanced] 周末配额倍率",
+    "default": 0.8
+  },
+  "quality_dedupe_enabled": {
+    "type": "bool",
+    "description": "[仅 advanced] 是否启用近期问候去重",
+    "default": true
+  },
+  "quality_history_size": {
+    "type": "int",
+    "description": "[仅 advanced] 去重记忆条数",
+    "default": 6
   }
 }

@@ -15,6 +15,7 @@ from astrbot.api.star import Context, Star, register
 
 DEFAULT_CONFIG = {
     "enabled": True,
+    "config_mode": "basic",
     "debug_log": False,
     "debug_status_window_sec": 300,
     "timezone": "Asia/Shanghai",
@@ -66,7 +67,7 @@ INTERNAL_POLICY = {
     "quality_history_size": 6,
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.1")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.2")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -472,7 +473,42 @@ class KanjyouIdleProactivePlugin(Star):
         return max(60, int(float(self.config["cooldown_min"]) * 60))
 
     def _policy(self, key: str):
-        return INTERNAL_POLICY[key]
+        default = INTERNAL_POLICY[key]
+        if not self._advanced_mode():
+            return default
+        raw = self.config.get(key)
+        if raw is None:
+            return default
+
+        try:
+            if key in {
+                "require_human_reply_before_next_proactive",
+                "period_quota_enabled",
+                "no_reply_decay_enabled",
+                "weekend_mode_enabled",
+                "quality_dedupe_enabled",
+            }:
+                return bool(raw)
+            if key == "max_per_session_per_day":
+                return max(1, int(raw))
+            if key in {"trigger_base_prob", "trigger_max_prob"}:
+                return min(1.0, max(0.0, float(raw)))
+            if key in {"period_quota_morning_max", "period_quota_afternoon_max", "period_quota_evening_max"}:
+                return max(0, int(raw))
+            if key in {"no_reply_decay_factor", "no_reply_decay_max_factor"}:
+                return max(1.0, float(raw))
+            if key in {"weekend_min_idle_multiplier", "weekend_cooldown_multiplier"}:
+                return max(1.0, float(raw))
+            if key == "weekend_quota_multiplier":
+                return max(0.0, float(raw))
+            if key == "quality_history_size":
+                return max(1, int(raw))
+        except Exception:
+            return default
+        return default
+
+    def _advanced_mode(self) -> bool:
+        return str(self.config.get("config_mode", "basic")).lower() == "advanced"
 
     def _max_per_session_per_day(self) -> int:
         return int(self._policy("max_per_session_per_day"))
@@ -481,7 +517,7 @@ class KanjyouIdleProactivePlugin(Star):
         return float(self._policy("trigger_base_prob"))
 
     def _trigger_max_prob(self) -> float:
-        return float(self._policy("trigger_max_prob"))
+        return max(self._trigger_base_prob(), float(self._policy("trigger_max_prob")))
 
     def _require_human_reply_before_next_proactive(self) -> bool:
         return bool(self._policy("require_human_reply_before_next_proactive"))
@@ -801,6 +837,10 @@ class KanjyouIdleProactivePlugin(Star):
 
         if not isinstance(self.config.get("private_whitelist"), list):
             self.config["private_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["private_whitelist"])
+            changed = True
+        mode = str(self.config.get("config_mode", "basic")).lower()
+        if mode not in {"basic", "advanced"}:
+            self.config["config_mode"] = "basic"
             changed = True
         if not isinstance(self.config.get("group_whitelist"), list):
             self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])

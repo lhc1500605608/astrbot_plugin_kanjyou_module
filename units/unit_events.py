@@ -1,9 +1,8 @@
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent
 
 
 class EventUnitsMixin:
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_all_message(self, event: AstrMessageEvent):
+    async def _evt_on_all_message(self, event: AstrMessageEvent):
         session_key = self._session_key(event)
         if not session_key:
             self._debug("skip message: session key unavailable")
@@ -28,8 +27,7 @@ class EventUnitsMixin:
                 f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
             )
 
-    @filter.after_message_sent()
-    async def after_message_sent(self, event: AstrMessageEvent):
+    async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)
         if not session_key:
             return

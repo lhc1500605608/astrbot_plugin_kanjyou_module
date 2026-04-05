@@ -83,4 +83,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "1.8.4"
+PLUGIN_VERSION = "1.8.5"

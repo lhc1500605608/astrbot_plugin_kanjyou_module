@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.8.4-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.8.5-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：

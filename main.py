@@ -68,6 +68,14 @@ class KanjyouIdleProactivePlugin(
             logger.info("[idle-proactive] terminated")
         self._debug("plugin terminate complete")
 
+    @filter.event_message_type(filter.EventMessageType.ALL)
+    async def on_all_message(self, event: AstrMessageEvent):
+        await self._evt_on_all_message(event)
+
+    @filter.after_message_sent()
+    async def after_message_sent(self, event: AstrMessageEvent):
+        await self._evt_after_message_sent(event)
+
     @filter.command("idle_status")
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_status(self, event: AstrMessageEvent):

@@ -196,6 +196,31 @@ class SessionConfigUnitsMixin:
         )
         s["mood_updated_at"] = now_ts
 
+    # Backward compatibility for legacy runtime calls that still reference energy_* APIs.
+    def _energy_enabled(self) -> bool:
+        return self._mood_enabled()
+
+    def _energy_initial(self) -> float:
+        return self._mood_initial()
+
+    def _energy_min_trigger(self) -> float:
+        return self._mood_min_trigger()
+
+    def _energy_cost_on_proactive(self) -> float:
+        return self._mood_cost_on_proactive()
+
+    def _energy_recover_per_min(self) -> float:
+        return self._mood_recover_per_min()
+
+    def _recover_session_energy(self, s: Dict, now_ts: float):
+        self._recover_session_mood(s, now_ts)
+
+    def _consume_session_energy_by_dialogue(self, s: Dict, now_ts: float):
+        self._consume_session_mood_by_dialogue(s, now_ts)
+
+    def _consume_session_energy_by_proactive(self, s: Dict, now_ts: float):
+        self._consume_session_mood_by_proactive(s, now_ts)
+
     def _security_global_hourly_cap(self) -> int:
         return max(1, int(self.config.get("security_global_hourly_cap", DEFAULT_CONFIG["security_global_hourly_cap"])))
 

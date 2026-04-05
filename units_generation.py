@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from kanjyou_constants import DEFAULT_CONFIG
+from config import DEFAULT_CONFIG
 
 class PolicyGenerationUnitsMixin:
     async def _generate_proactive_text(

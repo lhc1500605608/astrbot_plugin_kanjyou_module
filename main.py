@@ -3,20 +3,21 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
-from kanjyou_advanced_policy_units import AdvancedPolicyUnitsMixin
-from kanjyou_command_units import CommandUnitsMixin
-from kanjyou_constants import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
-from kanjyou_policy_generation_units import PolicyGenerationUnitsMixin
-from kanjyou_runtime_units import RuntimeUnitsMixin
-from kanjyou_session_config_units import SessionConfigUnitsMixin
+from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
+from units_advanced import AdvancedPolicyUnitsMixin
+from units_commands import CommandUnitsMixin
+from units_events import EventUnitsMixin
+from units_generation import PolicyGenerationUnitsMixin
+from units_runtime import RuntimeUnitsMixin
+from units_session import SessionConfigUnitsMixin
 
 
 @register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", PLUGIN_VERSION)
 class KanjyouIdleProactivePlugin(
     CommandUnitsMixin,
+    EventUnitsMixin,
     SessionConfigUnitsMixin,
     AdvancedPolicyUnitsMixin,
     PolicyGenerationUnitsMixin,
@@ -56,50 +57,3 @@ class KanjyouIdleProactivePlugin(
         if self.config.get("lifecycle_log", True):
             logger.info("[idle-proactive] terminated")
         self._debug("plugin terminate complete")
-
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_all_message(self, event: AstrMessageEvent):
-        session_key = self._session_key(event)
-        if not session_key:
-            self._debug("skip message: session key unavailable")
-            return
-
-        if not self._is_whitelisted(event):
-            self._debug(f"skip message: not in whitelist session={session_key}")
-            return
-
-        now_ts = self._now().timestamp()
-        async with self._lock:
-            s = self._get_or_create_session(event)
-            self._ensure_session_shape(s)
-            s["last_human_at"] = now_ts
-            s["last_interaction_at"] = now_ts
-            s["pending_human_reply"] = False
-            s["no_reply_streak"] = 0
-            s["next_check_at"] = now_ts + self._randomized_interval()
-            self._sessions[session_key] = s
-            self._save_state()
-            self._debug(
-                f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
-            )
-
-    @filter.after_message_sent()
-    async def after_message_sent(self, event: AstrMessageEvent):
-        session_key = self._session_key(event)
-        if not session_key:
-            return
-
-        if not self._is_whitelisted(event):
-            return
-
-        now_ts = self._now().timestamp()
-        async with self._lock:
-            s = self._get_or_create_session(event)
-            self._ensure_session_shape(s)
-            s["last_bot_at"] = now_ts
-            s["last_interaction_at"] = now_ts
-            self._sessions[session_key] = s
-            self._save_state()
-            self._debug(
-                f"touch by bot session={session_key} last_interaction={self._fmt_ts(now_ts)}"
-            )

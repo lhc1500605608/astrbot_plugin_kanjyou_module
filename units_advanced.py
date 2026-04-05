@@ -1,4 +1,4 @@
-from kanjyou_constants import INTERNAL_POLICY
+from config import INTERNAL_POLICY
 
 
 class AdvancedPolicyUnitsMixin:

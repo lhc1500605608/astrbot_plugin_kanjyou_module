@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from kanjyou_constants import DEFAULT_CONFIG
+from config import DEFAULT_CONFIG
 
 class SessionConfigUnitsMixin:
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:

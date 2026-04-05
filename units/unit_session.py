@@ -221,6 +221,11 @@ class SessionConfigUnitsMixin:
     def _consume_session_energy_by_proactive(self, s: Dict, now_ts: float):
         self._consume_session_mood_by_proactive(s, now_ts)
 
+    def _boost_energy_by_human(self, s: Dict, now_ts: float):
+        # Legacy compatibility: old event units may still call this method.
+        # Keep behavior aligned with the new mood system: dialogue consumes mood.
+        self._consume_session_mood_by_dialogue(s, now_ts)
+
     def _security_global_hourly_cap(self) -> int:
         return max(1, int(self.config.get("security_global_hourly_cap", DEFAULT_CONFIG["security_global_hourly_cap"])))
 

@@ -46,6 +46,12 @@ DEFAULT_CONFIG = {
         "5) 和最近问候不重复。"
     ),
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
+    "security_global_hourly_cap": 6,
+    "security_max_fail_streak": 3,
+    "security_fail_pause_min": 180,
+    "security_allow_links": False,
+    "security_blocked_words": [],
+    "security_max_text_length": 90,
 }
 
 INTERNAL_POLICY = {
@@ -68,7 +74,31 @@ INTERNAL_POLICY = {
     "quality_history_size": 6,
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.3")
+EXECUTION_ORDER = (
+    "unit_global_guard",
+    "unit_rollover_counters",
+    "unit_gate_next_check",
+    "unit_gate_cooldown",
+    "unit_gate_daily_limit",
+    "unit_gate_pending_reply",
+    "unit_gate_period_limit",
+    "unit_gate_idle",
+    "unit_gate_probability",
+    "unit_gate_origin",
+    "unit_execute_send",
+    "unit_finalize_result",
+)
+
+CONFIG_EXECUTION_ORDER = (
+    "config_defaults",
+    "config_basic_layer",
+    "config_timing_layer",
+    "config_generation_layer",
+    "config_security_layer",
+    "config_debug_layer",
+)
+
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.7.1")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -77,6 +107,9 @@ class KanjyouIdleProactivePlugin(Star):
         self._normalize_webui_config()
         self._sessions: Dict[str, Dict] = self._load_state()
         self._debug_status_last: Dict[str, float] = {}
+        self._global_send_history: List[float] = []
+        self._global_fail_streak: int = 0
+        self._global_pause_until: float = 0.0
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
@@ -85,6 +118,8 @@ class KanjyouIdleProactivePlugin(Star):
             self._loop_task = asyncio.create_task(self._idle_loop())
         if self.config.get("lifecycle_log", True):
             logger.info("[idle-proactive] initialized")
+        self._debug(f"execution order: {' -> '.join(EXECUTION_ORDER)}")
+        self._debug(f"config order: {' -> '.join(CONFIG_EXECUTION_ORDER)}")
         self._debug("plugin initialize complete")
 
     async def terminate(self):
@@ -147,6 +182,7 @@ class KanjyouIdleProactivePlugin(Star):
             )
 
     @filter.command("idle_status")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_status(self, event: AstrMessageEvent):
         now = self._now()
         session_key = self._session_key(event)
@@ -260,118 +296,234 @@ class KanjyouIdleProactivePlugin(Star):
             return
 
         now_ts = now.timestamp()
+        if not self._unit_global_guard(now_ts):
+            return
+
         changed = False
 
         async with self._lock:
             for session_key, s in list(self._sessions.items()):
-                self._ensure_session_shape(s)
-                self._rollover_daily_counter(s, now)
-                self._rollover_period_counter(s, now)
-
-                if now_ts < s.get("next_check_at", 0):
-                    self._maybe_log_status(session_key, s, now_ts, "waiting_next_check")
-                    self._debug(
-                        f"session skip(next_check) session={session_key} next_check={self._fmt_ts(s.get('next_check_at'))}"
-                    )
-                    continue
-
-                if now_ts < s.get("cooldown_until", 0):
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "cooldown")
-                    self._debug(
-                        f"session skip(cooldown) session={session_key} cooldown_until={self._fmt_ts(s.get('cooldown_until'))}"
-                    )
-                    continue
-
-                if s.get("today_proactive_count", 0) >= self._max_per_session_per_day():
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "daily_limit")
-                    self._debug(
-                        f"session skip(limit) session={session_key} today_count={s.get('today_proactive_count', 0)}"
-                    )
-                    continue
-
-                if self._require_human_reply_before_next_proactive() and s.get(
-                    "pending_human_reply", False
-                ):
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "await_human_reply")
-                    self._debug(f"session skip(await_human_reply) session={session_key}")
-                    continue
-
-                period = self._get_period(now)
-                if self._period_quota_enabled() and period:
-                    counters = s.get("period_proactive_count")
-                    if not isinstance(counters, dict):
-                        counters = {"morning": 0, "afternoon": 0, "evening": 0}
-                        s["period_proactive_count"] = counters
-                    current_period_count = int(counters.get(period, 0))
-                    period_limit = self._effective_period_quota_limit(period, now)
-                    if current_period_count >= period_limit:
-                        s["next_check_at"] = now_ts + self._randomized_interval()
-                        changed = True
-                        self._maybe_log_status(session_key, s, now_ts, f"period_limit_{period}")
-                        self._debug(
-                            f"session skip(period_limit) session={session_key} period={period} count={current_period_count} limit={period_limit}"
-                        )
-                        continue
-
-                idle_sec = now_ts - s.get("last_interaction_at", now_ts)
-                decay = self._no_reply_decay_factor(s)
-                needed_idle_sec = int(self._effective_min_idle_sec(now) * decay)
-                if idle_sec < needed_idle_sec:
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "idle_not_enough")
-                    self._debug(
-                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={needed_idle_sec} decay={decay:.2f}"
-                    )
-                    continue
-
-                should_trigger = self._should_trigger(float(idle_sec), now)
-                if not should_trigger:
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "probability_miss")
-                    self._debug(
-                        f"session skip(probability) session={session_key} idle_sec={int(idle_sec)}"
-                    )
-                    continue
-
-                umo = s.get("unified_msg_origin")
-                if not umo:
-                    s["next_check_at"] = now_ts + self._randomized_interval()
-                    changed = True
-                    self._maybe_log_status(session_key, s, now_ts, "missing_origin")
-                    self._debug(f"session skip(no_origin) session={session_key}")
-                    continue
-
-                success, sent_text = await self._send_proactive(umo, None, session_key, idle_sec, s)
-                s["next_check_at"] = now_ts + self._randomized_interval()
-                if success:
-                    s["last_bot_at"] = now_ts
-                    s["last_interaction_at"] = now_ts
-                    s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
-                    s["cooldown_until"] = now_ts + int(self._effective_cooldown_sec(now) * decay)
-                    s["pending_human_reply"] = True
-                    s["no_reply_streak"] = int(s.get("no_reply_streak", 0)) + 1
-                    self._inc_period_count(s, period)
-                    self._push_proactive_history(s, sent_text)
-                    self._debug(
-                        f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']} no_reply_streak={s.get('no_reply_streak', 0)} decay={decay:.2f}"
-                    )
-                    self._maybe_log_status(session_key, s, now_ts, "trigger_success", force=True)
-                else:
-                    self._debug(f"session trigger(failed) session={session_key}")
-                    self._maybe_log_status(session_key, s, now_ts, "trigger_failed", force=True)
-                changed = True
+                session_changed = await self._process_session(session_key, s, now, now_ts)
+                changed = changed or session_changed
 
             if changed:
                 self._save_state()
                 self._debug("state persisted")
+
+    async def _process_session(self, session_key: str, s: Dict, now: datetime, now_ts: float) -> bool:
+        self._unit_rollover_counters(s, now)
+
+        if self._unit_gate_next_check(session_key, s, now_ts):
+            return False
+        if self._unit_gate_cooldown(session_key, s, now_ts):
+            return True
+        if self._unit_gate_daily_limit(session_key, s, now_ts):
+            return True
+        if self._unit_gate_pending_reply(session_key, s, now_ts):
+            return True
+
+        period = self._get_period(now)
+        if self._unit_gate_period_limit(session_key, s, period, now, now_ts):
+            return True
+
+        idle_sec = now_ts - s.get("last_interaction_at", now_ts)
+        decay = self._no_reply_decay_factor(s)
+        if self._unit_gate_idle(session_key, s, idle_sec, decay, now, now_ts):
+            return True
+        if self._unit_gate_probability(session_key, s, idle_sec, now, now_ts):
+            return True
+
+        umo = s.get("unified_msg_origin")
+        if self._unit_gate_origin(session_key, s, umo, now_ts):
+            return True
+
+        success, sent_text = await self._unit_execute_send(umo, session_key, idle_sec, s)
+        self._unit_finalize_result(session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts)
+        return True
+
+    def _unit_global_guard(self, now_ts: float) -> bool:
+        if now_ts < self._global_pause_until:
+            self._debug(
+                f"loop skip: global pause active until={self._fmt_ts(self._global_pause_until)}"
+            )
+            return False
+
+        self._trim_global_send_history(now_ts)
+        if len(self._global_send_history) >= self._security_global_hourly_cap():
+            self._debug(
+                f"loop skip: global hourly cap reached count={len(self._global_send_history)} cap={self._security_global_hourly_cap()}"
+            )
+            return False
+        return True
+
+    def _unit_rollover_counters(self, s: Dict, now: datetime):
+        self._ensure_session_shape(s)
+        self._rollover_daily_counter(s, now)
+        self._rollover_period_counter(s, now)
+
+    def _unit_gate_next_check(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if now_ts >= s.get("next_check_at", 0):
+            return False
+        self._maybe_log_status(session_key, s, now_ts, "waiting_next_check")
+        self._debug(
+            f"session skip(next_check) session={session_key} next_check={self._fmt_ts(s.get('next_check_at'))}"
+        )
+        return True
+
+    def _unit_defer_session(self, session_key: str, s: Dict, now_ts: float, reason: str, debug_msg: str):
+        s["next_check_at"] = now_ts + self._randomized_interval()
+        self._maybe_log_status(session_key, s, now_ts, reason)
+        self._debug(debug_msg)
+
+    def _unit_gate_cooldown(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if now_ts >= s.get("cooldown_until", 0):
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "cooldown",
+            f"session skip(cooldown) session={session_key} cooldown_until={self._fmt_ts(s.get('cooldown_until'))}",
+        )
+        return True
+
+    def _unit_gate_daily_limit(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if s.get("today_proactive_count", 0) < self._max_per_session_per_day():
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "daily_limit",
+            f"session skip(limit) session={session_key} today_count={s.get('today_proactive_count', 0)}",
+        )
+        return True
+
+    def _unit_gate_pending_reply(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if not self._require_human_reply_before_next_proactive():
+            return False
+        if not s.get("pending_human_reply", False):
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "await_human_reply",
+            f"session skip(await_human_reply) session={session_key}",
+        )
+        return True
+
+    def _unit_gate_period_limit(
+        self, session_key: str, s: Dict, period: str, now: datetime, now_ts: float
+    ) -> bool:
+        if not self._period_quota_enabled() or not period:
+            return False
+        counters = s.get("period_proactive_count")
+        if not isinstance(counters, dict):
+            counters = {"morning": 0, "afternoon": 0, "evening": 0}
+            s["period_proactive_count"] = counters
+        current_period_count = int(counters.get(period, 0))
+        period_limit = self._effective_period_quota_limit(period, now)
+        if current_period_count < period_limit:
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            f"period_limit_{period}",
+            (
+                f"session skip(period_limit) session={session_key} "
+                f"period={period} count={current_period_count} limit={period_limit}"
+            ),
+        )
+        return True
+
+    def _unit_gate_idle(
+        self, session_key: str, s: Dict, idle_sec: float, decay: float, now: datetime, now_ts: float
+    ) -> bool:
+        needed_idle_sec = int(self._effective_min_idle_sec(now) * decay)
+        if idle_sec >= needed_idle_sec:
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "idle_not_enough",
+            (
+                f"session skip(idle_short) session={session_key} "
+                f"idle_sec={int(idle_sec)} min_idle={needed_idle_sec} decay={decay:.2f}"
+            ),
+        )
+        return True
+
+    def _unit_gate_probability(
+        self, session_key: str, s: Dict, idle_sec: float, now: datetime, now_ts: float
+    ) -> bool:
+        if self._should_trigger(float(idle_sec), now):
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "probability_miss",
+            f"session skip(probability) session={session_key} idle_sec={int(idle_sec)}",
+        )
+        return True
+
+    def _unit_gate_origin(self, session_key: str, s: Dict, umo: str, now_ts: float) -> bool:
+        if umo:
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "missing_origin",
+            f"session skip(no_origin) session={session_key}",
+        )
+        return True
+
+    async def _unit_execute_send(self, umo: str, session_key: str, idle_sec: float, s: Dict) -> tuple[bool, str]:
+        return await self._send_proactive(umo, None, session_key, idle_sec, s)
+
+    def _unit_finalize_result(
+        self,
+        session_key: str,
+        s: Dict,
+        success: bool,
+        sent_text: str,
+        period: str,
+        idle_sec: float,
+        decay: float,
+        now: datetime,
+        now_ts: float,
+    ):
+        s["next_check_at"] = now_ts + self._randomized_interval()
+        if success:
+            self._global_send_history.append(now_ts)
+            self._global_fail_streak = 0
+            s["last_bot_at"] = now_ts
+            s["last_interaction_at"] = now_ts
+            s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
+            s["cooldown_until"] = now_ts + int(self._effective_cooldown_sec(now) * decay)
+            s["pending_human_reply"] = True
+            s["no_reply_streak"] = int(s.get("no_reply_streak", 0)) + 1
+            self._inc_period_count(s, period)
+            self._push_proactive_history(s, sent_text)
+            self._debug(
+                f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} "
+                f"today_count={s['today_proactive_count']} no_reply_streak={s.get('no_reply_streak', 0)} decay={decay:.2f}"
+            )
+            self._maybe_log_status(session_key, s, now_ts, "trigger_success", force=True)
+            return
+
+        self._global_fail_streak += 1
+        if self._global_fail_streak >= self._security_max_fail_streak():
+            self._global_pause_until = now_ts + self._security_fail_pause_sec()
+            self._debug(
+                f"trigger safety pause fail_streak={self._global_fail_streak} pause_until={self._fmt_ts(self._global_pause_until)}"
+            )
+        self._debug(f"session trigger(failed) session={session_key}")
+        self._maybe_log_status(session_key, s, now_ts, "trigger_failed", force=True)
 
     async def _send_proactive(
         self,
@@ -403,7 +555,9 @@ class KanjyouIdleProactivePlugin(Star):
     async def _generate_proactive_text(
         self, unified_msg_origin: str, session_key: str, idle_sec: float, session: Optional[Dict]
     ) -> str:
-        fallback = str(self.config.get("fallback_proactive_text") or DEFAULT_CONFIG["fallback_proactive_text"]).strip()
+        fallback = self._sanitize_outgoing_text(
+            str(self.config.get("fallback_proactive_text") or DEFAULT_CONFIG["fallback_proactive_text"]).strip()
+        )
         try:
             session_type = "私聊" if session_key.startswith("private:") else "群聊"
             persona_text = await self._resolve_persona_prompt()
@@ -435,6 +589,9 @@ class KanjyouIdleProactivePlugin(Star):
                 self._debug("generate empty completion, use fallback")
                 return fallback
             cleaned = self._clean_generated_text(text)
+            if not self._is_safe_proactive_text(cleaned):
+                self._debug("generate unsafe text blocked, use fallback")
+                return fallback
             if self._is_repetitive(cleaned, session):
                 self._debug("generate repetitive text, use fallback")
                 return fallback
@@ -491,7 +648,7 @@ class KanjyouIdleProactivePlugin(Star):
                 "weekend_mode_enabled",
                 "quality_dedupe_enabled",
             }:
-                return bool(raw)
+                return self._to_bool(raw, default)
             if key == "max_per_session_per_day":
                 return max(1, int(raw))
             if key in {"trigger_base_prob", "trigger_max_prob"}:
@@ -721,13 +878,35 @@ class KanjyouIdleProactivePlugin(Star):
         return str(completion).strip()
 
     def _clean_generated_text(self, text: str) -> str:
-        cleaned = text.strip().strip('"').strip("'")
+        cleaned = self._sanitize_outgoing_text(text.strip().strip('"').strip("'"))
         lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
         if lines:
             cleaned = lines[0]
-        if len(cleaned) > 120:
-            cleaned = cleaned[:120].rstrip("，,。.!?？") + "。"
+        max_len = max(20, int(self.config.get("security_max_text_length", DEFAULT_CONFIG["security_max_text_length"])))
+        if len(cleaned) > max_len:
+            cleaned = cleaned[:max_len].rstrip("，,。.!?？") + "。"
         return cleaned
+
+    def _sanitize_outgoing_text(self, text: str) -> str:
+        cleaned = text or ""
+        if not self._security_allow_links():
+            lowered = cleaned.lower()
+            if "http://" in lowered or "https://" in lowered or "www." in lowered:
+                cleaned = "刚刚想到你，今天有哪件小事值得被夸一下？"
+        return cleaned.strip()
+
+    def _is_safe_proactive_text(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        if not self._security_allow_links():
+            if "http://" in lowered or "https://" in lowered or "www." in lowered:
+                return False
+        blocked_words = self._security_blocked_words()
+        for w in blocked_words:
+            if w and w in text:
+                return False
+        return True
 
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
         key = self._session_key(event)
@@ -831,29 +1010,100 @@ class KanjyouIdleProactivePlugin(Star):
             return "-"
         return datetime.fromtimestamp(ts, ZoneInfo(self.config["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
 
+    def _trim_global_send_history(self, now_ts: float):
+        window_start = now_ts - 3600
+        self._global_send_history = [ts for ts in self._global_send_history if ts >= window_start]
+
+    def _security_global_hourly_cap(self) -> int:
+        return max(1, int(self.config.get("security_global_hourly_cap", DEFAULT_CONFIG["security_global_hourly_cap"])))
+
+    def _security_max_fail_streak(self) -> int:
+        return max(1, int(self.config.get("security_max_fail_streak", DEFAULT_CONFIG["security_max_fail_streak"])))
+
+    def _security_fail_pause_sec(self) -> int:
+        return max(300, int(float(self.config.get("security_fail_pause_min", DEFAULT_CONFIG["security_fail_pause_min"])) * 60))
+
+    def _security_allow_links(self) -> bool:
+        return self._to_bool(
+            self.config.get("security_allow_links", DEFAULT_CONFIG["security_allow_links"]),
+            DEFAULT_CONFIG["security_allow_links"],
+        )
+
+    def _security_blocked_words(self) -> List[str]:
+        raw = self.config.get("security_blocked_words", DEFAULT_CONFIG["security_blocked_words"])
+        if not isinstance(raw, list):
+            return []
+        out: List[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            token = item.strip()
+            if token:
+                out.append(token)
+        return out
+
+    def _to_bool(self, value, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in {"1", "true", "yes", "on"}:
+                return True
+            if v in {"0", "false", "no", "off"}:
+                return False
+        return default
+
     def _normalize_webui_config(self):
+        changed = False
+        changed = self._normalize_defaults() or changed
+        changed = self._normalize_basic_layer() or changed
+        changed = self._normalize_timing_layer() or changed
+        changed = self._normalize_generation_layer() or changed
+        changed = self._normalize_security_layer() or changed
+        changed = self._normalize_debug_layer() or changed
+
+        if changed:
+            self._save_webui_config()
+
+    def _normalize_defaults(self) -> bool:
         changed = False
         for key, value in DEFAULT_CONFIG.items():
             if self.config.get(key) is None:
                 self.config[key] = copy.deepcopy(value)
                 changed = True
+        return changed
 
+    def _normalize_basic_layer(self) -> bool:
+        changed = False
         if not isinstance(self.config.get("private_whitelist"), list):
             self.config["private_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["private_whitelist"])
-            changed = True
-        mode = str(self.config.get("config_mode", "basic")).lower()
-        if mode not in {"basic", "advanced"}:
-            self.config["config_mode"] = "basic"
             changed = True
         if not isinstance(self.config.get("group_whitelist"), list):
             self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])
             changed = True
+
+        mode = str(self.config.get("config_mode", "basic")).lower()
+        if mode not in {"basic", "advanced"}:
+            self.config["config_mode"] = "basic"
+            changed = True
+
+        for key in ("enabled", "lifecycle_log", "debug_log"):
+            if not isinstance(self.config.get(key), bool):
+                self.config[key] = self._to_bool(self.config.get(key), DEFAULT_CONFIG[key])
+                changed = True
+        return changed
+
+    def _normalize_timing_layer(self) -> bool:
+        changed = False
         if not isinstance(self.config.get("sleep_start"), str):
             self.config["sleep_start"] = DEFAULT_CONFIG["sleep_start"]
             changed = True
         if not isinstance(self.config.get("sleep_end"), str):
             self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
             changed = True
+
         # 兼容旧版秒级配置，自动迁移为分钟配置。
         if self.config.get("min_idle_min") is None and isinstance(self.config.get("min_idle_sec"), (int, float)):
             self.config["min_idle_min"] = max(1, int(float(self.config["min_idle_sec"]) // 60))
@@ -864,6 +1114,7 @@ class KanjyouIdleProactivePlugin(Star):
         if self.config.get("cooldown_min") is None and isinstance(self.config.get("cooldown_sec"), (int, float)):
             self.config["cooldown_min"] = max(1, int(float(self.config["cooldown_sec"]) // 60))
             changed = True
+
         if not isinstance(self.config.get("min_idle_min"), (int, float)):
             self.config["min_idle_min"] = DEFAULT_CONFIG["min_idle_min"]
             changed = True
@@ -873,32 +1124,80 @@ class KanjyouIdleProactivePlugin(Star):
         if not isinstance(self.config.get("cooldown_min"), (int, float)):
             self.config["cooldown_min"] = DEFAULT_CONFIG["cooldown_min"]
             changed = True
+
         if float(self.config["max_idle_min"]) <= float(self.config["min_idle_min"]):
             self.config["max_idle_min"] = max(
                 float(self.config["min_idle_min"]) + 30, float(DEFAULT_CONFIG["max_idle_min"])
             )
             changed = True
-        if not isinstance(self.config.get("debug_status_window_sec"), int):
-            self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
-            changed = True
-        if int(self.config.get("debug_status_window_sec", 0)) < 60:
-            self.config["debug_status_window_sec"] = 60
-            changed = True
+        return changed
+
+    def _normalize_generation_layer(self) -> bool:
+        changed = False
         if not isinstance(self.config.get("persona_id"), str):
             self.config["persona_id"] = DEFAULT_CONFIG["persona_id"]
             changed = True
         if not isinstance(self.config.get("proactive_provider_id"), str):
             self.config["proactive_provider_id"] = DEFAULT_CONFIG["proactive_provider_id"]
             changed = True
-        if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config["proactive_prompt_template"].strip():
+        if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config[
+            "proactive_prompt_template"
+        ].strip():
             self.config["proactive_prompt_template"] = DEFAULT_CONFIG["proactive_prompt_template"]
             changed = True
-        if not isinstance(self.config.get("fallback_proactive_text"), str) or not self.config["fallback_proactive_text"].strip():
+        if not isinstance(self.config.get("fallback_proactive_text"), str) or not self.config[
+            "fallback_proactive_text"
+        ].strip():
             self.config["fallback_proactive_text"] = DEFAULT_CONFIG["fallback_proactive_text"]
             changed = True
+        return changed
 
-        if changed:
-            self._save_webui_config()
+    def _normalize_security_layer(self) -> bool:
+        changed = False
+        if not isinstance(self.config.get("security_allow_links"), bool):
+            self.config["security_allow_links"] = self._to_bool(
+                self.config.get("security_allow_links"), DEFAULT_CONFIG["security_allow_links"]
+            )
+            changed = True
+        if not isinstance(self.config.get("security_blocked_words"), list):
+            self.config["security_blocked_words"] = copy.deepcopy(DEFAULT_CONFIG["security_blocked_words"])
+            changed = True
+
+        if not isinstance(self.config.get("security_global_hourly_cap"), (int, float)):
+            self.config["security_global_hourly_cap"] = DEFAULT_CONFIG["security_global_hourly_cap"]
+            changed = True
+        if int(self.config.get("security_global_hourly_cap", 0)) < 1:
+            self.config["security_global_hourly_cap"] = 1
+            changed = True
+        if not isinstance(self.config.get("security_max_fail_streak"), (int, float)):
+            self.config["security_max_fail_streak"] = DEFAULT_CONFIG["security_max_fail_streak"]
+            changed = True
+        if int(self.config.get("security_max_fail_streak", 0)) < 1:
+            self.config["security_max_fail_streak"] = 1
+            changed = True
+        if not isinstance(self.config.get("security_fail_pause_min"), (int, float)):
+            self.config["security_fail_pause_min"] = DEFAULT_CONFIG["security_fail_pause_min"]
+            changed = True
+        if float(self.config.get("security_fail_pause_min", 0)) < 5:
+            self.config["security_fail_pause_min"] = 5
+            changed = True
+        if not isinstance(self.config.get("security_max_text_length"), (int, float)):
+            self.config["security_max_text_length"] = DEFAULT_CONFIG["security_max_text_length"]
+            changed = True
+        if int(self.config.get("security_max_text_length", 0)) < 20:
+            self.config["security_max_text_length"] = 20
+            changed = True
+        return changed
+
+    def _normalize_debug_layer(self) -> bool:
+        changed = False
+        if not isinstance(self.config.get("debug_status_window_sec"), int):
+            self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
+            changed = True
+        if int(self.config.get("debug_status_window_sec", 0)) < 60:
+            self.config["debug_status_window_sec"] = 60
+            changed = True
+        return changed
 
     def _save_webui_config(self):
         save_func = getattr(self.config, "save_config", None)

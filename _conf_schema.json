@@ -1,96 +1,126 @@
 {
   "enabled": {
     "type": "bool",
-    "description": "是否启用闲时主动回复",
+    "description": "[基础] 是否启用闲时主动回复",
     "default": true
   },
   "config_mode": {
     "type": "string",
-    "description": "配置模式：basic（推荐）或 advanced（高级参数生效）",
+    "description": "[基础] 配置模式：basic（推荐）或 advanced（高级参数生效）",
     "default": "basic"
   },
   "lifecycle_log": {
     "type": "bool",
-    "description": "是否输出插件生命周期日志（initialized/terminated）",
+    "description": "[基础] 是否输出插件生命周期日志（initialized/terminated）",
     "default": true
   },
   "debug_log": {
     "type": "bool",
-    "description": "是否输出详细调试日志到控制台",
+    "description": "[调试] 是否输出详细调试日志到控制台",
     "default": false
   },
   "debug_status_window_sec": {
     "type": "int",
-    "description": "调试状态摘要输出窗口（秒），建议 300 或 600",
+    "description": "[调试] 状态摘要输出窗口（秒），建议 300 或 600",
     "default": 300
   },
   "timezone": {
     "type": "string",
-    "description": "时区，例如 Asia/Shanghai",
+    "description": "[时间] 时区，例如 Asia/Shanghai",
     "default": "Asia/Shanghai"
   },
   "sleep_start": {
     "type": "string",
-    "description": "夜间免打扰开始时间（HH:MM）",
+    "description": "[时间] 夜间免打扰开始时间（HH:MM）",
     "default": "23:30"
   },
   "sleep_end": {
     "type": "string",
-    "description": "夜间免打扰结束时间（HH:MM）",
+    "description": "[时间] 夜间免打扰结束时间（HH:MM）",
     "default": "08:00"
   },
   "check_interval_sec": {
     "type": "int",
-    "description": "后台巡检周期（秒）",
+    "description": "[时间] 后台巡检周期（秒）",
     "default": 30
   },
   "min_idle_min": {
     "type": "int",
-    "description": "最小 idle 阈值（分钟），低于此值不触发",
+    "description": "[时间] 最小 idle 阈值（分钟），低于此值不触发",
     "default": 45
   },
   "max_idle_min": {
     "type": "int",
-    "description": "最大 idle 阈值（分钟），达到后强制触发",
+    "description": "[时间] 最大 idle 阈值（分钟），达到后强制触发",
     "default": 180
   },
   "cooldown_min": {
     "type": "int",
-    "description": "单会话触发后的冷却时间（分钟）",
+    "description": "[时间] 单会话触发后的冷却时间（分钟）",
     "default": 90
   },
   "private_whitelist": {
     "type": "list",
-    "description": "私聊白名单 user_id 列表",
+    "description": "[基础] 私聊白名单 user_id 列表",
     "default": []
   },
   "group_whitelist": {
     "type": "list",
-    "description": "群聊白名单 group_id 列表",
+    "description": "[基础] 群聊白名单 group_id 列表",
     "default": []
   },
   "persona_id": {
     "type": "string",
-    "description": "主动问候使用的人格（留空则按默认语气）",
+    "description": "[生成] 主动问候使用的人格（留空则按默认语气）",
     "_special": "select_persona",
     "default": ""
   },
   "proactive_provider_id": {
     "type": "string",
-    "description": "主动问候生成使用的模型提供商（留空则跟随当前会话）",
+    "description": "[生成] 主动问候生成使用的模型提供商（留空则跟随当前会话）",
     "_special": "select_provider",
     "default": ""
   },
   "proactive_prompt_template": {
     "type": "string",
-    "description": "用于生成主动问候的 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
+    "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
     "editor_mode": true,
     "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。"
   },
   "fallback_proactive_text": {
     "type": "string",
-    "description": "当模型生成失败时的兜底主动问候",
+    "description": "[生成] 模型生成失败时的兜底主动问候",
     "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
+  },
+  "security_global_hourly_cap": {
+    "type": "int",
+    "description": "[安全] 全插件每小时最大主动消息数",
+    "default": 6
+  },
+  "security_max_fail_streak": {
+    "type": "int",
+    "description": "[安全] 连续发送失败达到此值时暂停主动消息",
+    "default": 3
+  },
+  "security_fail_pause_min": {
+    "type": "int",
+    "description": "[安全] 熔断后暂停时长（分钟）",
+    "default": 180
+  },
+  "security_allow_links": {
+    "type": "bool",
+    "description": "[安全] 是否允许主动消息包含链接",
+    "default": false
+  },
+  "security_blocked_words": {
+    "type": "list",
+    "description": "[安全] 主动消息禁用词列表（命中即拦截并改用兜底文案）",
+    "default": []
+  },
+  "security_max_text_length": {
+    "type": "int",
+    "description": "[安全] 主动消息最大长度（字符）",
+    "default": 90
   },
   "max_per_session_per_day": {
     "type": "int",

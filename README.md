@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.6.3-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.7.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -15,11 +15,20 @@
 - 白名单控制（仅指定私聊/群聊生效）
 - 控制台 Debug 状态指示器
 - 内置高级策略：分时段配额、未回复衰减、周末模式、近期问候去重
+- 安全与控制层：全局频率闸门、失败熔断暂停、禁用词过滤、链接开关、长度限制
 
 ## 双层配置模式
 
 - `config_mode=basic`（默认，推荐）：只需配置核心参数，插件自动使用内置稳妥策略
 - `config_mode=advanced`：开启高级参数自定义（配额/衰减/周末/去重等）
+
+## 配置执行单元
+
+- 基础层：开关、白名单、模式与基础布尔修正
+- 时间层：免打扰 + idle/cooldown 分钟参数与旧版迁移
+- 生成层：人格、Provider、Prompt 与兜底文案
+- 安全层：频率闸门、失败熔断、禁用词、链接、长度限制
+- 调试层：debug 窗口与日志相关参数
 
 ## 快速使用
 
@@ -39,6 +48,8 @@
 - `min_idle_min` / `max_idle_min` / `cooldown_min`
 - `persona_id` / `proactive_provider_id`
 - `proactive_prompt_template` / `fallback_proactive_text`
+- `security_global_hourly_cap` / `security_max_fail_streak` / `security_fail_pause_min`
+- `security_allow_links` / `security_blocked_words` / `security_max_text_length`
 - `debug_log` / `debug_status_window_sec`
 
 ## 推荐参数（保守）
@@ -47,11 +58,14 @@
 - `min_idle_min = 45`
 - `max_idle_min = 180`
 - `cooldown_min = 90`
+- `security_global_hourly_cap = 6`
+- `security_max_fail_streak = 3`
+- `security_fail_pause_min = 180`
 - `debug_status_window_sec = 300`
 
 ## 指令
 
-- 管理指令默认仅 AstrBot 管理员可调用（自动使用 AstrBot 全局管理员配置）
+- 所有插件指令默认仅 AstrBot 管理员可调用（自动使用 AstrBot 全局管理员配置）
 - `/idle_status`
 - `/idle_enable` / `/idle_disable`
 - `/idle_wl_add_private <user_id>` / `/idle_wl_del_private <user_id>`

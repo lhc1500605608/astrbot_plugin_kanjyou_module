@@ -22,7 +22,6 @@ DEFAULT_CONFIG = {
     "sleep_end": "08:00",
     "private_whitelist": [],
     "group_whitelist": [],
-    "sleep_windows": [{"start": "23:30", "end": "08:00"}],
     "check_interval_sec": 30,
     "min_idle_sec": 15 * 60,
     "max_idle_sec": 60 * 60,
@@ -193,7 +192,6 @@ class KanjyouIdleProactivePlugin(Star):
             return
         self.config["sleep_start"] = start_hm
         self.config["sleep_end"] = end_hm
-        self.config["sleep_windows"] = [{"start": start_hm, "end": end_hm}]
         self._save_webui_config()
         yield event.plain_result(f"免打扰时段已设置为 {start_hm}-{end_hm}")
 
@@ -474,24 +472,19 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _in_sleep_window(self, now: datetime) -> bool:
         hm = now.strftime("%H:%M")
-        windows = []
         start = self.config.get("sleep_start")
         end = self.config.get("sleep_end")
-        if isinstance(start, str) and isinstance(end, str) and self._is_hhmm(start) and self._is_hhmm(end):
-            windows.append({"start": start, "end": end})
-        elif isinstance(self.config.get("sleep_windows"), list):
-            windows = self.config["sleep_windows"]
+        if not (isinstance(start, str) and isinstance(end, str) and self._is_hhmm(start) and self._is_hhmm(end)):
+            start = DEFAULT_CONFIG["sleep_start"]
+            end = DEFAULT_CONFIG["sleep_end"]
 
-        for wnd in windows:
-            start = wnd["start"]
-            end = wnd["end"]
-            if start <= end:
-                if start <= hm <= end:
-                    return True
-            else:
-                # 跨天窗口，例如 23:30-08:00
-                if hm >= start or hm <= end:
-                    return True
+        if start <= end:
+            if start <= hm <= end:
+                return True
+        else:
+            # 跨天窗口，例如 23:30-08:00
+            if hm >= start or hm <= end:
+                return True
         return False
 
     def _randomized_interval(self) -> int:
@@ -528,11 +521,6 @@ class KanjyouIdleProactivePlugin(Star):
             changed = True
         if not isinstance(self.config.get("group_whitelist"), list):
             self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])
-            changed = True
-        if not isinstance(self.config.get("sleep_windows"), list) or not self.config["sleep_windows"]:
-            start = self.config.get("sleep_start", DEFAULT_CONFIG["sleep_start"])
-            end = self.config.get("sleep_end", DEFAULT_CONFIG["sleep_end"])
-            self.config["sleep_windows"] = [{"start": start, "end": end}]
             changed = True
         if not isinstance(self.config.get("sleep_start"), str):
             self.config["sleep_start"] = DEFAULT_CONFIG["sleep_start"]

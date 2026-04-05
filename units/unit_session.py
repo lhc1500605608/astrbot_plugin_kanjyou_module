@@ -35,6 +35,8 @@ class SessionConfigUnitsMixin:
             "period_counter_date": self._now().strftime("%Y-%m-%d"),
             "period_proactive_count": {"morning": 0, "afternoon": 0, "evening": 0},
             "recent_proactive_texts": [],
+            "energy": float(self._energy_initial()),
+            "energy_updated_at": now_ts,
         }
 
     def _ensure_session_shape(self, session: Dict):
@@ -48,6 +50,10 @@ class SessionConfigUnitsMixin:
             session["period_proactive_count"] = {"morning": 0, "afternoon": 0, "evening": 0}
         if not isinstance(session.get("recent_proactive_texts"), list):
             session["recent_proactive_texts"] = []
+        if not isinstance(session.get("energy"), (int, float)):
+            session["energy"] = float(self._energy_initial())
+        if not isinstance(session.get("energy_updated_at"), (int, float)):
+            session["energy_updated_at"] = self._now().timestamp()
 
     def _rollover_daily_counter(self, session: Dict, now: datetime):
         today = now.strftime("%Y-%m-%d")
@@ -118,6 +124,74 @@ class SessionConfigUnitsMixin:
         window_start = now_ts - 3600
         self._global_send_history = [ts for ts in self._global_send_history if ts >= window_start]
 
+    def _energy_enabled(self) -> bool:
+        return self._to_bool(self.config.get("energy_enabled"), DEFAULT_CONFIG["energy_enabled"])
+
+    def _energy_initial(self) -> float:
+        return max(0.0, min(100.0, float(self.config.get("energy_initial", DEFAULT_CONFIG["energy_initial"]))))
+
+    def _energy_min_trigger(self) -> float:
+        return max(
+            0.0,
+            min(100.0, float(self.config.get("energy_min_trigger", DEFAULT_CONFIG["energy_min_trigger"]))),
+        )
+
+    def _energy_cost_on_proactive(self) -> float:
+        return max(
+            0.0,
+            min(
+                100.0,
+                float(self.config.get("energy_cost_on_proactive", DEFAULT_CONFIG["energy_cost_on_proactive"])),
+            ),
+        )
+
+    def _energy_recover_per_min(self) -> float:
+        return max(
+            0.0, float(self.config.get("energy_recover_per_min", DEFAULT_CONFIG["energy_recover_per_min"]))
+        )
+
+    def _energy_human_reply_boost(self) -> float:
+        return max(
+            0.0,
+            min(
+                100.0,
+                float(self.config.get("energy_human_reply_boost", DEFAULT_CONFIG["energy_human_reply_boost"])),
+            ),
+        )
+
+    def _energy_clamp(self, value: float) -> float:
+        return max(0.0, min(100.0, float(value)))
+
+    def _recover_session_energy(self, s: Dict, now_ts: float):
+        if not self._energy_enabled():
+            return
+        last = float(s.get("energy_updated_at", now_ts))
+        if now_ts <= last:
+            return
+        recover = ((now_ts - last) / 60.0) * self._energy_recover_per_min()
+        if recover <= 0:
+            return
+        s["energy"] = self._energy_clamp(float(s.get("energy", self._energy_initial())) + recover)
+        s["energy_updated_at"] = now_ts
+
+    def _boost_energy_by_human(self, s: Dict, now_ts: float):
+        if not self._energy_enabled():
+            return
+        self._recover_session_energy(s, now_ts)
+        s["energy"] = self._energy_clamp(
+            float(s.get("energy", self._energy_initial())) + self._energy_human_reply_boost()
+        )
+        s["energy_updated_at"] = now_ts
+
+    def _consume_session_energy(self, s: Dict, now_ts: float):
+        if not self._energy_enabled():
+            return
+        self._recover_session_energy(s, now_ts)
+        s["energy"] = self._energy_clamp(
+            float(s.get("energy", self._energy_initial())) - self._energy_cost_on_proactive()
+        )
+        s["energy_updated_at"] = now_ts
+
     def _security_global_hourly_cap(self) -> int:
         return max(1, int(self.config.get("security_global_hourly_cap", DEFAULT_CONFIG["security_global_hourly_cap"])))
 
@@ -158,6 +232,22 @@ class SessionConfigUnitsMixin:
             if v in {"0", "false", "no", "off"}:
                 return False
         return default
+
+    def _debug_decision_enabled(self) -> bool:
+        return self._to_bool(self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"])
+
+    def _debug_decision(self, session_key: str, payload: Dict):
+        if not self.config.get("debug_log", False):
+            return
+        if not self._debug_decision_enabled():
+            return
+        normalized = {"session": session_key}
+        normalized.update(payload or {})
+        try:
+            line = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+        except Exception:
+            line = str(normalized)
+        self._debug(f"decision {line}")
 
     def _normalize_webui_config(self):
         changed = False
@@ -278,6 +368,16 @@ class SessionConfigUnitsMixin:
                 self.config.get("security_allow_links"), DEFAULT_CONFIG["security_allow_links"]
             )
             changed = True
+        if not isinstance(self.config.get("energy_enabled"), bool):
+            self.config["energy_enabled"] = self._to_bool(
+                self.config.get("energy_enabled"), DEFAULT_CONFIG["energy_enabled"]
+            )
+            changed = True
+        if not isinstance(self.config.get("debug_decision_log"), bool):
+            self.config["debug_decision_log"] = self._to_bool(
+                self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"]
+            )
+            changed = True
         if not isinstance(self.config.get("security_blocked_words"), list):
             self.config["security_blocked_words"] = copy.deepcopy(DEFAULT_CONFIG["security_blocked_words"])
             changed = True
@@ -305,6 +405,39 @@ class SessionConfigUnitsMixin:
             changed = True
         if int(self.config.get("security_max_text_length", 0)) < 20:
             self.config["security_max_text_length"] = 20
+            changed = True
+        if not isinstance(self.config.get("energy_initial"), (int, float)):
+            self.config["energy_initial"] = DEFAULT_CONFIG["energy_initial"]
+            changed = True
+        if not isinstance(self.config.get("energy_min_trigger"), (int, float)):
+            self.config["energy_min_trigger"] = DEFAULT_CONFIG["energy_min_trigger"]
+            changed = True
+        if not isinstance(self.config.get("energy_cost_on_proactive"), (int, float)):
+            self.config["energy_cost_on_proactive"] = DEFAULT_CONFIG["energy_cost_on_proactive"]
+            changed = True
+        if not isinstance(self.config.get("energy_recover_per_min"), (int, float)):
+            self.config["energy_recover_per_min"] = DEFAULT_CONFIG["energy_recover_per_min"]
+            changed = True
+        if not isinstance(self.config.get("energy_human_reply_boost"), (int, float)):
+            self.config["energy_human_reply_boost"] = DEFAULT_CONFIG["energy_human_reply_boost"]
+            changed = True
+        self.config["energy_initial"] = self._energy_clamp(
+            self.config.get("energy_initial", DEFAULT_CONFIG["energy_initial"])
+        )
+        self.config["energy_min_trigger"] = self._energy_clamp(
+            self.config.get("energy_min_trigger", DEFAULT_CONFIG["energy_min_trigger"])
+        )
+        self.config["energy_cost_on_proactive"] = self._energy_clamp(
+            self.config.get("energy_cost_on_proactive", DEFAULT_CONFIG["energy_cost_on_proactive"])
+        )
+        self.config["energy_human_reply_boost"] = self._energy_clamp(
+            self.config.get("energy_human_reply_boost", DEFAULT_CONFIG["energy_human_reply_boost"])
+        )
+        self.config["energy_recover_per_min"] = max(
+            0.0, float(self.config.get("energy_recover_per_min", DEFAULT_CONFIG["energy_recover_per_min"]))
+        )
+        if self.config["energy_min_trigger"] > self.config["energy_initial"]:
+            self.config["energy_initial"] = self.config["energy_min_trigger"]
             changed = True
         return changed
 
@@ -373,12 +506,13 @@ class SessionConfigUnitsMixin:
         earliest_trigger_in = max(0, int(earliest_trigger_at - now_ts))
         no_reply_streak = int(s.get("no_reply_streak", 0))
         decay = self._no_reply_decay_factor(s)
+        energy = float(s.get("energy", self._energy_initial()))
 
         self._debug(
             "status "
             f"reason={reason} session={session_key} "
             f"idle={idle_sec}s cooldown_left={cooldown_left}s "
-            f"no_reply_streak={no_reply_streak} decay={decay:.2f} "
+            f"no_reply_streak={no_reply_streak} decay={decay:.2f} energy={energy:.2f} "
             f"next_check={self._fmt_ts(next_check_at)}(+{next_check_in}s) "
             f"next_trigger_earliest={self._fmt_ts(earliest_trigger_at)}(+{earliest_trigger_in}s)"
         )

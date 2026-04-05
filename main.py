@@ -47,7 +47,7 @@ DEFAULT_CONFIG = {
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.4.0")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.4.1")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -144,18 +144,21 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(summary)
 
     @filter.command("idle_enable")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_enable(self, event: AstrMessageEvent):
         self.config["enabled"] = True
         self._save_webui_config()
         yield event.plain_result("已开启闲时主动聊天。")
 
     @filter.command("idle_disable")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_disable(self, event: AstrMessageEvent):
         self.config["enabled"] = False
         self._save_webui_config()
         yield event.plain_result("已关闭闲时主动聊天。")
 
     @filter.command("idle_wl_add_private")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_wl_add_private(self, event: AstrMessageEvent, user_id: str):
         wl: List[str] = self.config["private_whitelist"]
         if user_id not in wl:
@@ -164,6 +167,7 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(f"私聊白名单已添加: {user_id}")
 
     @filter.command("idle_wl_del_private")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_wl_del_private(self, event: AstrMessageEvent, user_id: str):
         wl: List[str] = self.config["private_whitelist"]
         if user_id in wl:
@@ -172,6 +176,7 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(f"私聊白名单已移除: {user_id}")
 
     @filter.command("idle_wl_add_group")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_wl_add_group(self, event: AstrMessageEvent, group_id: str):
         wl: List[str] = self.config["group_whitelist"]
         if group_id not in wl:
@@ -180,6 +185,7 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(f"群聊白名单已添加: {group_id}")
 
     @filter.command("idle_wl_del_group")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_wl_del_group(self, event: AstrMessageEvent, group_id: str):
         wl: List[str] = self.config["group_whitelist"]
         if group_id in wl:
@@ -188,6 +194,7 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(f"群聊白名单已移除: {group_id}")
 
     @filter.command("idle_sleep_set")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_sleep_set(self, event: AstrMessageEvent, start_hm: str, end_hm: str):
         if not self._is_hhmm(start_hm) or not self._is_hhmm(end_hm):
             yield event.plain_result("格式错误，请使用 HH:MM，例如 /idle_sleep_set 23:30 08:00")
@@ -198,6 +205,7 @@ class KanjyouIdleProactivePlugin(Star):
         yield event.plain_result(f"免打扰时段已设置为 {start_hm}-{end_hm}")
 
     @filter.command("idle_test")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_test(self, event: AstrMessageEvent):
         if not self._is_whitelisted(event):
             yield event.plain_result("当前会话不在白名单，先加入白名单再测试。")

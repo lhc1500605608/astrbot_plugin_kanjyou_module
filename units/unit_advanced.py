@@ -40,6 +40,9 @@ class AdvancedPolicyUnitsMixin:
         return default
 
     def _advanced_mode(self) -> bool:
+        # Preferred flag: advanced_enabled (bool). Legacy fallback: config_mode == advanced.
+        if self.config.get("advanced_enabled") is not None:
+            return self._to_bool(self.config.get("advanced_enabled"), False)
         return str(self.config.get("config_mode", "basic")).lower() == "advanced"
 
     def _max_per_session_per_day(self) -> int:

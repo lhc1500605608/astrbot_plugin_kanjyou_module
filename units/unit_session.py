@@ -282,12 +282,18 @@ class SessionConfigUnitsMixin:
             self.config["group_whitelist"] = copy.deepcopy(DEFAULT_CONFIG["group_whitelist"])
             changed = True
 
-        mode = str(self.config.get("config_mode", "basic")).lower()
-        if mode not in {"basic", "advanced"}:
-            self.config["config_mode"] = "basic"
+        # Backward compatibility: migrate legacy config_mode -> advanced_enabled.
+        if self.config.get("advanced_enabled") is None:
+            mode = str(self.config.get("config_mode", "basic")).lower()
+            self.config["advanced_enabled"] = mode == "advanced"
+            changed = True
+        if not isinstance(self.config.get("advanced_enabled"), bool):
+            self.config["advanced_enabled"] = self._to_bool(
+                self.config.get("advanced_enabled"), DEFAULT_CONFIG["advanced_enabled"]
+            )
             changed = True
 
-        for key in ("enabled", "lifecycle_log", "debug_log"):
+        for key in ("enabled", "lifecycle_log", "debug_log", "advanced_group_expand"):
             if not isinstance(self.config.get(key), bool):
                 self.config[key] = self._to_bool(self.config.get(key), DEFAULT_CONFIG[key])
                 changed = True

@@ -1,6 +1,7 @@
 DEFAULT_CONFIG = {
     "enabled": True,
-    "config_mode": "basic",
+    "advanced_enabled": False,
+    "advanced_group_expand": False,
     "lifecycle_log": True,
     "debug_log": False,
     "debug_status_window_sec": 300,

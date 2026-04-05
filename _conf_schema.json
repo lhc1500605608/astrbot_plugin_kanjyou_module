@@ -34,20 +34,20 @@
     "description": "后台巡检周期（秒）",
     "default": 30
   },
-  "min_idle_sec": {
+  "min_idle_min": {
     "type": "int",
-    "description": "最小 idle 阈值（秒），低于此值不触发",
-    "default": 900
+    "description": "最小 idle 阈值（分钟），低于此值不触发",
+    "default": 45
   },
-  "max_idle_sec": {
+  "max_idle_min": {
     "type": "int",
-    "description": "最大 idle 阈值（秒），达到后强制触发",
-    "default": 3600
+    "description": "最大 idle 阈值（分钟），达到后强制触发",
+    "default": 180
   },
-  "cooldown_sec": {
+  "cooldown_min": {
     "type": "int",
-    "description": "单会话触发后的冷却时间（秒）",
-    "default": 1200
+    "description": "单会话触发后的冷却时间（分钟）",
+    "default": 90
   },
   "max_per_session_per_day": {
     "type": "int",
@@ -57,12 +57,17 @@
   "trigger_base_prob": {
     "type": "float",
     "description": "达到最小 idle 阈值时的基础触发概率（0-1）",
-    "default": 0.08
+    "default": 0.02
   },
   "trigger_max_prob": {
     "type": "float",
     "description": "接近最大 idle 阈值时的触发概率上限（0-1）",
-    "default": 0.55
+    "default": 0.18
+  },
+  "require_human_reply_before_next_proactive": {
+    "type": "bool",
+    "description": "主动发言后，未收到用户回复前不再连续主动发言",
+    "default": true
   },
   "private_whitelist": {
     "type": "list",

@@ -23,12 +23,13 @@ DEFAULT_CONFIG = {
     "private_whitelist": [],
     "group_whitelist": [],
     "check_interval_sec": 30,
-    "min_idle_sec": 15 * 60,
-    "max_idle_sec": 60 * 60,
-    "cooldown_sec": 20 * 60,
+    "min_idle_min": 45,
+    "max_idle_min": 180,
+    "cooldown_min": 90,
     "max_per_session_per_day": 8,
-    "trigger_base_prob": 0.08,
-    "trigger_max_prob": 0.55,
+    "trigger_base_prob": 0.02,
+    "trigger_max_prob": 0.18,
+    "require_human_reply_before_next_proactive": True,
     "persona_id": "",
     "proactive_provider_id": "",
     "proactive_prompt_template": (
@@ -46,7 +47,7 @@ DEFAULT_CONFIG = {
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.3.0")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.4.0")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -91,6 +92,7 @@ class KanjyouIdleProactivePlugin(Star):
             s = self._get_or_create_session(event)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
+            s["pending_human_reply"] = False
             s["next_check_at"] = now_ts + self._randomized_interval()
             self._sessions[session_key] = s
             self._save_state()
@@ -255,13 +257,22 @@ class KanjyouIdleProactivePlugin(Star):
                     )
                     continue
 
+                if self.config.get("require_human_reply_before_next_proactive", True) and s.get(
+                    "pending_human_reply", False
+                ):
+                    s["next_check_at"] = now_ts + self._randomized_interval()
+                    changed = True
+                    self._maybe_log_status(session_key, s, now_ts, "await_human_reply")
+                    self._debug(f"session skip(await_human_reply) session={session_key}")
+                    continue
+
                 idle_sec = now_ts - s.get("last_interaction_at", now_ts)
-                if idle_sec < self.config["min_idle_sec"]:
+                if idle_sec < self._min_idle_sec():
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
                     self._maybe_log_status(session_key, s, now_ts, "idle_not_enough")
                     self._debug(
-                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self.config['min_idle_sec']}"
+                        f"session skip(idle_short) session={session_key} idle_sec={int(idle_sec)} min_idle={self._min_idle_sec()}"
                     )
                     continue
 
@@ -289,7 +300,8 @@ class KanjyouIdleProactivePlugin(Star):
                     s["last_bot_at"] = now_ts
                     s["last_interaction_at"] = now_ts
                     s["today_proactive_count"] = int(s.get("today_proactive_count", 0)) + 1
-                    s["cooldown_until"] = now_ts + self.config["cooldown_sec"]
+                    s["cooldown_until"] = now_ts + self._cooldown_sec()
+                    s["pending_human_reply"] = True
                     self._debug(
                         f"session trigger(success) session={session_key} idle_sec={int(idle_sec)} today_count={s['today_proactive_count']}"
                     )
@@ -366,8 +378,8 @@ class KanjyouIdleProactivePlugin(Star):
             return fallback
 
     def _should_trigger(self, idle_sec: float) -> bool:
-        min_idle = float(self.config["min_idle_sec"])
-        max_idle = float(self.config["max_idle_sec"])
+        min_idle = float(self._min_idle_sec())
+        max_idle = float(self._max_idle_sec())
 
         if idle_sec >= max_idle:
             return True
@@ -378,6 +390,15 @@ class KanjyouIdleProactivePlugin(Star):
         max_prob = float(self.config["trigger_max_prob"])
         p = base_prob + (max_prob - base_prob) * progress
         return random.random() < p
+
+    def _min_idle_sec(self) -> int:
+        return max(60, int(float(self.config["min_idle_min"]) * 60))
+
+    def _max_idle_sec(self) -> int:
+        return max(self._min_idle_sec() + 60, int(float(self.config["max_idle_min"]) * 60))
+
+    def _cooldown_sec(self) -> int:
+        return max(60, int(float(self.config["cooldown_min"]) * 60))
 
     def _is_whitelisted(self, event: AstrMessageEvent) -> bool:
         msg_obj = getattr(event, "message_obj", None)
@@ -462,6 +483,7 @@ class KanjyouIdleProactivePlugin(Star):
             "today_proactive_count": 0,
             "counter_date": self._now().strftime("%Y-%m-%d"),
             "cooldown_until": 0.0,
+            "pending_human_reply": False,
         }
 
     def _rollover_daily_counter(self, session: Dict, now: datetime):
@@ -528,6 +550,30 @@ class KanjyouIdleProactivePlugin(Star):
         if not isinstance(self.config.get("sleep_end"), str):
             self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
             changed = True
+        # 兼容旧版秒级配置，自动迁移为分钟配置。
+        if self.config.get("min_idle_min") is None and isinstance(self.config.get("min_idle_sec"), (int, float)):
+            self.config["min_idle_min"] = max(1, int(float(self.config["min_idle_sec"]) // 60))
+            changed = True
+        if self.config.get("max_idle_min") is None and isinstance(self.config.get("max_idle_sec"), (int, float)):
+            self.config["max_idle_min"] = max(1, int(float(self.config["max_idle_sec"]) // 60))
+            changed = True
+        if self.config.get("cooldown_min") is None and isinstance(self.config.get("cooldown_sec"), (int, float)):
+            self.config["cooldown_min"] = max(1, int(float(self.config["cooldown_sec"]) // 60))
+            changed = True
+        if not isinstance(self.config.get("min_idle_min"), (int, float)):
+            self.config["min_idle_min"] = DEFAULT_CONFIG["min_idle_min"]
+            changed = True
+        if not isinstance(self.config.get("max_idle_min"), (int, float)):
+            self.config["max_idle_min"] = DEFAULT_CONFIG["max_idle_min"]
+            changed = True
+        if not isinstance(self.config.get("cooldown_min"), (int, float)):
+            self.config["cooldown_min"] = DEFAULT_CONFIG["cooldown_min"]
+            changed = True
+        if float(self.config["max_idle_min"]) <= float(self.config["min_idle_min"]):
+            self.config["max_idle_min"] = max(
+                float(self.config["min_idle_min"]) + 30, float(DEFAULT_CONFIG["max_idle_min"])
+            )
+            changed = True
         if not isinstance(self.config.get("debug_status_window_sec"), int):
             self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
             changed = True
@@ -539,6 +585,11 @@ class KanjyouIdleProactivePlugin(Star):
             changed = True
         if not isinstance(self.config.get("proactive_provider_id"), str):
             self.config["proactive_provider_id"] = DEFAULT_CONFIG["proactive_provider_id"]
+            changed = True
+        if not isinstance(self.config.get("require_human_reply_before_next_proactive"), bool):
+            self.config["require_human_reply_before_next_proactive"] = DEFAULT_CONFIG[
+                "require_human_reply_before_next_proactive"
+            ]
             changed = True
         if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config["proactive_prompt_template"].strip():
             self.config["proactive_prompt_template"] = DEFAULT_CONFIG["proactive_prompt_template"]
@@ -599,7 +650,7 @@ class KanjyouIdleProactivePlugin(Star):
         cooldown_left = max(0, int(s.get("cooldown_until", 0) - now_ts))
         next_check_at = float(s.get("next_check_at", now_ts))
         next_check_in = max(0, int(next_check_at - now_ts))
-        min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(self.config["min_idle_sec"])
+        min_idle_at = float(s.get("last_interaction_at", now_ts)) + float(self._min_idle_sec())
         earliest_trigger_at = max(next_check_at, float(s.get("cooldown_until", 0)), min_idle_at)
         earliest_trigger_in = max(0, int(earliest_trigger_at - now_ts))
 

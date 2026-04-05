@@ -6,22 +6,28 @@ from typing import Dict, List, Optional
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
-from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
 
-# Ensure local plugin modules are importable under AstrBot's runtime loader.
-PLUGIN_DIR = Path(__file__).parent
-if str(PLUGIN_DIR) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_DIR))
-UNITS_DIR = PLUGIN_DIR / "units"
-if str(UNITS_DIR) not in sys.path:
-    sys.path.insert(0, str(UNITS_DIR))
-
-from unit_advanced import AdvancedPolicyUnitsMixin  # noqa: E402  # type: ignore[import]
-from unit_commands import CommandUnitsMixin  # noqa: E402  # type: ignore[import]
-from unit_events import EventUnitsMixin  # noqa: E402  # type: ignore[import]
-from unit_generation import PolicyGenerationUnitsMixin  # noqa: E402  # type: ignore[import]
-from unit_runtime import RuntimeUnitsMixin  # noqa: E402  # type: ignore[import]
-from unit_session import SessionConfigUnitsMixin  # noqa: E402  # type: ignore[import]
+try:
+    # Preferred package imports when AstrBot loads plugin as a package.
+    from .config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
+    from .units.unit_advanced import AdvancedPolicyUnitsMixin
+    from .units.unit_commands import CommandUnitsMixin
+    from .units.unit_events import EventUnitsMixin
+    from .units.unit_generation import PolicyGenerationUnitsMixin
+    from .units.unit_runtime import RuntimeUnitsMixin
+    from .units.unit_session import SessionConfigUnitsMixin
+except ImportError:
+    # Fallback for script-style loading in some runtimes.
+    PLUGIN_DIR = Path(__file__).parent
+    if str(PLUGIN_DIR) not in sys.path:
+        sys.path.insert(0, str(PLUGIN_DIR))
+    from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
+    from units.unit_advanced import AdvancedPolicyUnitsMixin
+    from units.unit_commands import CommandUnitsMixin
+    from units.unit_events import EventUnitsMixin
+    from units.unit_generation import PolicyGenerationUnitsMixin
+    from units.unit_runtime import RuntimeUnitsMixin
+    from units.unit_session import SessionConfigUnitsMixin
 
 
 @register(

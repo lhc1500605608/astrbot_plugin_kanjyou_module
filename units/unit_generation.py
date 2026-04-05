@@ -6,7 +6,10 @@ from typing import Dict, Optional
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from config import DEFAULT_CONFIG
+try:
+    from ..config import DEFAULT_CONFIG
+except ImportError:
+    from config import DEFAULT_CONFIG
 
 try:
     import chinese_calendar as _cc

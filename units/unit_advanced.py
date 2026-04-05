@@ -1,4 +1,7 @@
-from config import INTERNAL_POLICY
+try:
+    from ..config import INTERNAL_POLICY
+except ImportError:
+    from config import INTERNAL_POLICY
 
 
 class AdvancedPolicyUnitsMixin:

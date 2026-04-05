@@ -9,7 +9,10 @@ from zoneinfo import ZoneInfo
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from config import DEFAULT_CONFIG
+try:
+    from ..config import DEFAULT_CONFIG
+except ImportError:
+    from config import DEFAULT_CONFIG
 
 
 class SessionConfigUnitsMixin:

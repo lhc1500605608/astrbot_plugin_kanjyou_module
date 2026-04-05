@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.8.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v1.8.3-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -34,12 +34,12 @@
 
 - `main.py`：插件入口、生命周期、消息事件钩子
 - `config.py`：默认配置、策略常量、执行顺序、版本
-- `units/commands.py`：管理指令单元（管理员命令）
-- `units/events.py`：消息事件钩子单元（会话触达更新）
-- `units/runtime.py`：闲时巡检调度与触发执行单元
-- `units/advanced.py`：高级参数策略单元（advanced 模式）
-- `units/generation.py`：触发策略 + 主动文案生成单元
-- `units/session.py`：会话状态、时间/安全/配置标准化单元
+- `units/unit_commands.py`：管理指令单元（管理员命令）
+- `units/unit_events.py`：消息事件钩子单元（会话触达更新）
+- `units/unit_runtime.py`：闲时巡检调度与触发执行单元
+- `units/unit_advanced.py`：高级参数策略单元（advanced 模式）
+- `units/unit_generation.py`：触发策略 + 主动文案生成单元
+- `units/unit_session.py`：会话状态、时间/安全/配置标准化单元
 
 ## 快速使用
 

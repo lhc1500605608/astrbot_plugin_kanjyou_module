@@ -6,12 +6,12 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.star import Context, Star, register
 
 from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
-from units_advanced import AdvancedPolicyUnitsMixin
-from units_commands import CommandUnitsMixin
-from units_events import EventUnitsMixin
-from units_generation import PolicyGenerationUnitsMixin
-from units_runtime import RuntimeUnitsMixin
-from units_session import SessionConfigUnitsMixin
+from units.advanced import AdvancedPolicyUnitsMixin
+from units.commands import CommandUnitsMixin
+from units.events import EventUnitsMixin
+from units.generation import PolicyGenerationUnitsMixin
+from units.runtime import RuntimeUnitsMixin
+from units.session import SessionConfigUnitsMixin
 
 
 @register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", PLUGIN_VERSION)

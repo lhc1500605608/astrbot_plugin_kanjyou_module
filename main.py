@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import inspect
 import json
 import random
 from datetime import datetime
@@ -28,26 +29,24 @@ DEFAULT_CONFIG = {
     "max_per_session_per_day": 8,
     "trigger_base_prob": 0.08,
     "trigger_max_prob": 0.55,
-    "private_topic_pool": [
-        "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
-        "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
-        "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？",
-    ],
-    "group_topic_pool": [
-        "大家最近有没有遇到一个值得分享的小发现？",
-        "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
-        "随机话题：最近哪个工具或方法让你效率提升最明显？",
-    ],
-    "topic_pool": [
-        "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
-        "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
-        "来个轻松话题：如果今天能立刻学会一个技能，你会选哪个？",
-        "我有点好奇，你最近在关注什么新鲜内容？",
-        "要不要我陪你做个两分钟的小计划，把接下来要做的事理一理？",
-    ],
+    "persona_id": "",
+    "proactive_provider_id": "",
+    "proactive_prompt_template": (
+        "你是一个在聊天中主动关怀用户的助手。"
+        "请严格基于下方人格设定进行表达，不要脱离人格。\n"
+        "人格设定：\n{persona}\n\n"
+        "当前会话类型：{session_type}\n"
+        "距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n"
+        "请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n"
+        "1) 语气自然、有温度，不要机械。\n"
+        "2) 结尾带一个轻量开放问题，促进继续对话。\n"
+        "3) 避免重复“在吗/你好”。\n"
+        "4) 长度 20-60 字。"
+    ),
+    "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
 }
 
-@register("kanjyou_idle_proactive", "shangtang", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.2.0")
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.3.0")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -201,7 +200,7 @@ class KanjyouIdleProactivePlugin(Star):
         if not self._is_whitelisted(event):
             yield event.plain_result("当前会话不在白名单，先加入白名单再测试。")
             return
-        await self._send_proactive(event.unified_msg_origin, event)
+        await self._send_proactive(event.unified_msg_origin, event, self._session_key(event), 0)
         yield event.plain_result("已发送一条主动话题测试消息。")
 
     async def _idle_loop(self):
@@ -278,7 +277,7 @@ class KanjyouIdleProactivePlugin(Star):
                     self._debug(f"session skip(no_origin) session={session_key}")
                     continue
 
-                success = await self._send_proactive(umo, None, session_key)
+                success = await self._send_proactive(umo, None, session_key, idle_sec)
                 s["next_check_at"] = now_ts + self._randomized_interval()
                 if success:
                     s["last_bot_at"] = now_ts
@@ -297,9 +296,13 @@ class KanjyouIdleProactivePlugin(Star):
                 self._debug("state persisted")
 
     async def _send_proactive(
-        self, unified_msg_origin: str, event: Optional[AstrMessageEvent], session_key: str = ""
+        self,
+        unified_msg_origin: str,
+        event: Optional[AstrMessageEvent],
+        session_key: str = "",
+        idle_sec: float = 0.0,
     ) -> bool:
-        topic = self._pick_topic(session_key)
+        topic = await self._generate_proactive_text(unified_msg_origin, session_key, idle_sec)
         try:
             chain = MessageChain().message(topic)
             await self.context.send_message(unified_msg_origin, chain)
@@ -317,6 +320,42 @@ class KanjyouIdleProactivePlugin(Star):
                 if event:
                     await event.send(event.plain_result("主动消息发送失败，请检查适配器是否支持主动消息。"))
                 return False
+
+    async def _generate_proactive_text(self, unified_msg_origin: str, session_key: str, idle_sec: float) -> str:
+        fallback = str(self.config.get("fallback_proactive_text") or DEFAULT_CONFIG["fallback_proactive_text"]).strip()
+        try:
+            session_type = "私聊" if session_key.startswith("private:") else "群聊"
+            persona_text = await self._resolve_persona_prompt()
+            prompt_tpl = str(
+                self.config.get("proactive_prompt_template") or DEFAULT_CONFIG["proactive_prompt_template"]
+            )
+            prompt = prompt_tpl.format(
+                persona=persona_text,
+                session_type=session_type,
+                idle_seconds=int(idle_sec),
+                idle_minutes=max(1, int(idle_sec // 60)),
+            )
+
+            provider_id = str(self.config.get("proactive_provider_id") or "").strip()
+            if not provider_id:
+                provider_id = await self.context.get_current_chat_provider_id(unified_msg_origin)
+
+            if not provider_id:
+                self._debug("generate skip: provider_id unavailable, use fallback")
+                return fallback
+
+            completion = await self.context.llm_generate(chat_provider_id=provider_id, prompt=prompt)
+            text = self._completion_to_text(completion)
+            if not text:
+                self._debug("generate empty completion, use fallback")
+                return fallback
+            cleaned = self._clean_generated_text(text)
+            self._debug(f"generate ok provider={provider_id} session={session_key} text={cleaned}")
+            return cleaned
+        except Exception as exc:
+            logger.error(f"[idle-proactive] generate proactive text failed: {exc}")
+            self._debug(f"generate failed session={session_key} err={exc}")
+            return fallback
 
     def _should_trigger(self, idle_sec: float) -> bool:
         min_idle = float(self.config["min_idle_sec"])
@@ -355,12 +394,47 @@ class KanjyouIdleProactivePlugin(Star):
             return f"group:{group_id}"
         return f"private:{sender_id}"
 
-    def _pick_topic(self, session_key: str) -> str:
-        if session_key.startswith("private:") and self.config.get("private_topic_pool"):
-            return random.choice(self.config["private_topic_pool"])
-        if session_key.startswith("group:") and self.config.get("group_topic_pool"):
-            return random.choice(self.config["group_topic_pool"])
-        return random.choice(self.config["topic_pool"])
+    async def _resolve_persona_prompt(self) -> str:
+        persona_id = str(self.config.get("persona_id") or "").strip()
+        if not persona_id:
+            return "未指定人格，请保持温暖、真诚、自然。"
+        try:
+            manager = getattr(self.context, "persona_manager", None)
+            if not manager:
+                return f"人格ID: {persona_id}"
+            get_func = getattr(manager, "get_persona", None)
+            if not callable(get_func):
+                return f"人格ID: {persona_id}"
+            persona = get_func(persona_id)
+            if inspect.isawaitable(persona):
+                persona = await persona
+            if not persona:
+                return f"人格ID: {persona_id}"
+            for field in ("prompt", "system_prompt", "content", "description"):
+                val = getattr(persona, field, None)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            return str(persona)
+        except Exception as exc:
+            self._debug(f"resolve persona failed id={persona_id} err={exc}")
+            return f"人格ID: {persona_id}"
+
+    def _completion_to_text(self, completion: object) -> str:
+        text = getattr(completion, "completion_text", None)
+        if isinstance(text, str):
+            return text.strip()
+        if isinstance(completion, str):
+            return completion.strip()
+        return str(completion).strip()
+
+    def _clean_generated_text(self, text: str) -> str:
+        cleaned = text.strip().strip('"').strip("'")
+        lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+        if lines:
+            cleaned = lines[0]
+        if len(cleaned) > 120:
+            cleaned = cleaned[:120].rstrip("，,。.!?？") + "。"
+        return cleaned
 
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
         key = self._session_key(event)
@@ -456,14 +530,17 @@ class KanjyouIdleProactivePlugin(Star):
         if not isinstance(self.config.get("sleep_end"), str):
             self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
             changed = True
-        if not isinstance(self.config.get("private_topic_pool"), list) or not self.config["private_topic_pool"]:
-            self.config["private_topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["private_topic_pool"])
+        if not isinstance(self.config.get("persona_id"), str):
+            self.config["persona_id"] = DEFAULT_CONFIG["persona_id"]
             changed = True
-        if not isinstance(self.config.get("group_topic_pool"), list) or not self.config["group_topic_pool"]:
-            self.config["group_topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["group_topic_pool"])
+        if not isinstance(self.config.get("proactive_provider_id"), str):
+            self.config["proactive_provider_id"] = DEFAULT_CONFIG["proactive_provider_id"]
             changed = True
-        if not isinstance(self.config.get("topic_pool"), list) or not self.config["topic_pool"]:
-            self.config["topic_pool"] = copy.deepcopy(DEFAULT_CONFIG["topic_pool"])
+        if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config["proactive_prompt_template"].strip():
+            self.config["proactive_prompt_template"] = DEFAULT_CONFIG["proactive_prompt_template"]
+            changed = True
+        if not isinstance(self.config.get("fallback_proactive_text"), str) or not self.config["fallback_proactive_text"].strip():
+            self.config["fallback_proactive_text"] = DEFAULT_CONFIG["fallback_proactive_text"]
             changed = True
 
         if changed:

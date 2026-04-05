@@ -1,118 +1,95 @@
-[
-  {
-    "name": "enabled",
+{
+  "enabled": {
     "type": "bool",
     "description": "是否启用闲时主动回复",
     "default": true
   },
-  {
-    "name": "debug_log",
+  "debug_log": {
     "type": "bool",
     "description": "是否输出详细调试日志到控制台",
     "default": false
   },
-  {
-    "name": "timezone",
+  "timezone": {
     "type": "string",
     "description": "时区，例如 Asia/Shanghai",
     "default": "Asia/Shanghai"
   },
-  {
-    "name": "sleep_start",
+  "sleep_start": {
     "type": "string",
     "description": "夜间免打扰开始时间（HH:MM）",
     "default": "23:30"
   },
-  {
-    "name": "sleep_end",
+  "sleep_end": {
     "type": "string",
     "description": "夜间免打扰结束时间（HH:MM）",
     "default": "08:00"
   },
-  {
-    "name": "check_interval_sec",
+  "check_interval_sec": {
     "type": "int",
     "description": "后台巡检周期（秒）",
     "default": 30
   },
-  {
-    "name": "min_idle_sec",
+  "min_idle_sec": {
     "type": "int",
     "description": "最小 idle 阈值（秒），低于此值不触发",
     "default": 900
   },
-  {
-    "name": "max_idle_sec",
+  "max_idle_sec": {
     "type": "int",
     "description": "最大 idle 阈值（秒），达到后强制触发",
     "default": 3600
   },
-  {
-    "name": "cooldown_sec",
+  "cooldown_sec": {
     "type": "int",
     "description": "单会话触发后的冷却时间（秒）",
     "default": 1200
   },
-  {
-    "name": "max_per_session_per_day",
+  "max_per_session_per_day": {
     "type": "int",
     "description": "单会话每日最大主动触发次数",
     "default": 8
   },
-  {
-    "name": "trigger_base_prob",
+  "trigger_base_prob": {
     "type": "float",
     "description": "达到最小 idle 阈值时的基础触发概率（0-1）",
     "default": 0.08
   },
-  {
-    "name": "trigger_max_prob",
+  "trigger_max_prob": {
     "type": "float",
     "description": "接近最大 idle 阈值时的触发概率上限（0-1）",
     "default": 0.55
   },
-  {
-    "name": "private_whitelist",
+  "private_whitelist": {
     "type": "list",
     "description": "私聊白名单 user_id 列表",
     "default": []
   },
-  {
-    "name": "group_whitelist",
+  "group_whitelist": {
     "type": "list",
     "description": "群聊白名单 group_id 列表",
     "default": []
   },
-  {
-    "name": "private_topic_pool",
-    "type": "list",
-    "description": "私聊主动话题池",
-    "default": [
-      "刚好想到你了。最近有没有一件事，你其实很想做但一直没开始？",
-      "我在，想听听你今天最真实的心情分数（0-10）会给几分？",
-      "我们来个超轻量话题：你最近最想改变的一个小习惯是什么？"
-    ]
+  "persona_id": {
+    "type": "string",
+    "description": "主动问候使用的人格（留空则按默认语气）",
+    "_special": "select_persona",
+    "default": ""
   },
-  {
-    "name": "group_topic_pool",
-    "type": "list",
-    "description": "群聊主动话题池",
-    "default": [
-      "大家最近有没有遇到一个值得分享的小发现？",
-      "来个轻松问题：如果这周只能完成一件最重要的事，你会选什么？",
-      "随机话题：最近哪个工具或方法让你效率提升最明显？"
-    ]
+  "proactive_provider_id": {
+    "type": "string",
+    "description": "主动问候生成使用的模型提供商（留空则跟随当前会话）",
+    "_special": "select_provider",
+    "default": ""
   },
-  {
-    "name": "topic_pool",
-    "type": "list",
-    "description": "通用回退话题池（当私聊/群聊专属池为空时使用）",
-    "default": [
-      "刚刚想起一个有意思的问题：你最近有没有哪件小事让你特别开心？",
-      "我在这儿，想和你继续聊聊。你最近最想推进的一件事是什么？",
-      "来个轻松话题：如果今天能立刻学会一个技能，你会选哪个？",
-      "我有点好奇，你最近在关注什么新鲜内容？",
-      "要不要我陪你做个两分钟的小计划，把接下来要做的事理一理？"
-    ]
+  "proactive_prompt_template": {
+    "type": "string",
+    "description": "用于生成主动问候的 Prompt 模板。可用变量：{persona} {session_type} {idle_minutes} {idle_seconds}",
+    "editor_mode": true,
+    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。"
+  },
+  "fallback_proactive_text": {
+    "type": "string",
+    "description": "当模型生成失败时的兜底主动问候",
+    "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
   }
-]
+}

@@ -1,6 +1,6 @@
 name: astrbot_plugin_kanjyou_module
 display_name: 情绪价值提供者
 desc: AstrBot 闲时主动聊天插件，支持白名单、分会话计时与夜间免打扰。
-version: v1.2.0
+version: v1.3.0
 author: Tango
 repo: https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module

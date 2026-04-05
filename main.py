@@ -26,23 +26,6 @@ DEFAULT_CONFIG = {
     "min_idle_min": 45,
     "max_idle_min": 180,
     "cooldown_min": 90,
-    "max_per_session_per_day": 8,
-    "trigger_base_prob": 0.02,
-    "trigger_max_prob": 0.18,
-    "require_human_reply_before_next_proactive": True,
-    "period_quota_enabled": True,
-    "period_quota_morning_max": 1,
-    "period_quota_afternoon_max": 1,
-    "period_quota_evening_max": 1,
-    "no_reply_decay_enabled": True,
-    "no_reply_decay_factor": 1.6,
-    "no_reply_decay_max_factor": 4.0,
-    "weekend_mode_enabled": True,
-    "weekend_min_idle_multiplier": 1.25,
-    "weekend_cooldown_multiplier": 1.35,
-    "weekend_quota_multiplier": 0.8,
-    "quality_dedupe_enabled": True,
-    "quality_history_size": 6,
     "persona_id": "",
     "proactive_provider_id": "",
     "proactive_prompt_template": (
@@ -63,7 +46,27 @@ DEFAULT_CONFIG = {
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
 }
 
-@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.0")
+INTERNAL_POLICY = {
+    "max_per_session_per_day": 8,
+    "trigger_base_prob": 0.02,
+    "trigger_max_prob": 0.18,
+    "require_human_reply_before_next_proactive": True,
+    "period_quota_enabled": True,
+    "period_quota_morning_max": 1,
+    "period_quota_afternoon_max": 1,
+    "period_quota_evening_max": 1,
+    "no_reply_decay_enabled": True,
+    "no_reply_decay_factor": 1.6,
+    "no_reply_decay_max_factor": 4.0,
+    "weekend_mode_enabled": True,
+    "weekend_min_idle_multiplier": 1.25,
+    "weekend_cooldown_multiplier": 1.35,
+    "weekend_quota_multiplier": 0.8,
+    "quality_dedupe_enabled": True,
+    "quality_history_size": 6,
+}
+
+@register("kanjyou_idle_proactive", "Tango", "闲时主动聊天：分会话计时、白名单、夜间免打扰", "1.6.1")
 class KanjyouIdleProactivePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -277,7 +280,7 @@ class KanjyouIdleProactivePlugin(Star):
                     )
                     continue
 
-                if s.get("today_proactive_count", 0) >= self.config["max_per_session_per_day"]:
+                if s.get("today_proactive_count", 0) >= self._max_per_session_per_day():
                     s["next_check_at"] = now_ts + self._randomized_interval()
                     changed = True
                     self._maybe_log_status(session_key, s, now_ts, "daily_limit")
@@ -286,7 +289,7 @@ class KanjyouIdleProactivePlugin(Star):
                     )
                     continue
 
-                if self.config.get("require_human_reply_before_next_proactive", True) and s.get(
+                if self._require_human_reply_before_next_proactive() and s.get(
                     "pending_human_reply", False
                 ):
                     s["next_check_at"] = now_ts + self._randomized_interval()
@@ -296,7 +299,7 @@ class KanjyouIdleProactivePlugin(Star):
                     continue
 
                 period = self._get_period(now)
-                if self.config.get("period_quota_enabled", True) and period:
+                if self._period_quota_enabled() and period:
                     counters = s.get("period_proactive_count")
                     if not isinstance(counters, dict):
                         counters = {"morning": 0, "afternoon": 0, "evening": 0}
@@ -447,8 +450,8 @@ class KanjyouIdleProactivePlugin(Star):
 
         span = max(max_idle - min_idle, 1.0)
         progress = max(0.0, min(1.0, (idle_sec - min_idle) / span))
-        base_prob = float(self.config["trigger_base_prob"])  # 刚到最小 idle 时也有少量概率
-        max_prob = float(self.config["trigger_max_prob"])
+        base_prob = float(self._trigger_base_prob())  # 刚到最小 idle 时也有少量概率
+        max_prob = float(self._trigger_max_prob())
         p = base_prob + (max_prob - base_prob) * progress
         return random.random() < p
 
@@ -460,13 +463,67 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _effective_max_idle_sec(self, now: datetime) -> int:
         base = float(self._max_idle_sec())
-        if not self.config.get("weekend_mode_enabled", True) or not self._is_weekend(now):
+        if not self._weekend_mode_enabled() or not self._is_weekend(now):
             return int(base)
-        mul = max(1.0, float(self.config.get("weekend_min_idle_multiplier", 1.25)))
+        mul = max(1.0, float(self._weekend_min_idle_multiplier()))
         return int(base * mul)
 
     def _cooldown_sec(self) -> int:
         return max(60, int(float(self.config["cooldown_min"]) * 60))
+
+    def _policy(self, key: str):
+        return INTERNAL_POLICY[key]
+
+    def _max_per_session_per_day(self) -> int:
+        return int(self._policy("max_per_session_per_day"))
+
+    def _trigger_base_prob(self) -> float:
+        return float(self._policy("trigger_base_prob"))
+
+    def _trigger_max_prob(self) -> float:
+        return float(self._policy("trigger_max_prob"))
+
+    def _require_human_reply_before_next_proactive(self) -> bool:
+        return bool(self._policy("require_human_reply_before_next_proactive"))
+
+    def _period_quota_enabled(self) -> bool:
+        return bool(self._policy("period_quota_enabled"))
+
+    def _period_quota_morning_max(self) -> int:
+        return int(self._policy("period_quota_morning_max"))
+
+    def _period_quota_afternoon_max(self) -> int:
+        return int(self._policy("period_quota_afternoon_max"))
+
+    def _period_quota_evening_max(self) -> int:
+        return int(self._policy("period_quota_evening_max"))
+
+    def _no_reply_decay_enabled(self) -> bool:
+        return bool(self._policy("no_reply_decay_enabled"))
+
+    def _no_reply_decay_factor_base(self) -> float:
+        return float(self._policy("no_reply_decay_factor"))
+
+    def _no_reply_decay_max_factor(self) -> float:
+        return float(self._policy("no_reply_decay_max_factor"))
+
+    def _weekend_mode_enabled(self) -> bool:
+        return bool(self._policy("weekend_mode_enabled"))
+
+    def _weekend_min_idle_multiplier(self) -> float:
+        return float(self._policy("weekend_min_idle_multiplier"))
+
+    def _weekend_cooldown_multiplier(self) -> float:
+        return float(self._policy("weekend_cooldown_multiplier"))
+
+    def _weekend_quota_multiplier(self) -> float:
+        return float(self._policy("weekend_quota_multiplier"))
+
+    def _quality_dedupe_enabled(self) -> bool:
+        return bool(self._policy("quality_dedupe_enabled"))
+
+    def _quality_history_size(self) -> int:
+        return int(self._policy("quality_history_size"))
 
     def _is_weekend(self, now: datetime) -> bool:
         # Monday=0 ... Sunday=6
@@ -474,16 +531,16 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _effective_min_idle_sec(self, now: datetime) -> int:
         base = float(self._min_idle_sec())
-        if not self.config.get("weekend_mode_enabled", True) or not self._is_weekend(now):
+        if not self._weekend_mode_enabled() or not self._is_weekend(now):
             return int(base)
-        mul = max(1.0, float(self.config.get("weekend_min_idle_multiplier", 1.25)))
+        mul = max(1.0, float(self._weekend_min_idle_multiplier()))
         return int(base * mul)
 
     def _effective_cooldown_sec(self, now: datetime) -> int:
         base = float(self._cooldown_sec())
-        if not self.config.get("weekend_mode_enabled", True) or not self._is_weekend(now):
+        if not self._weekend_mode_enabled() or not self._is_weekend(now):
             return int(base)
-        mul = max(1.0, float(self.config.get("weekend_cooldown_multiplier", 1.35)))
+        mul = max(1.0, float(self._weekend_cooldown_multiplier()))
         return int(base * mul)
 
     def _get_period(self, now: datetime) -> str:
@@ -498,28 +555,28 @@ class KanjyouIdleProactivePlugin(Star):
 
     def _get_period_quota_limit(self, period: str) -> int:
         mapping = {
-            "morning": int(self.config.get("period_quota_morning_max", 1)),
-            "afternoon": int(self.config.get("period_quota_afternoon_max", 1)),
-            "evening": int(self.config.get("period_quota_evening_max", 1)),
+            "morning": int(self._period_quota_morning_max()),
+            "afternoon": int(self._period_quota_afternoon_max()),
+            "evening": int(self._period_quota_evening_max()),
             "offhours": 0,
         }
         return max(0, mapping.get(period, 0))
 
     def _effective_period_quota_limit(self, period: str, now: datetime) -> int:
         limit = self._get_period_quota_limit(period)
-        if not self.config.get("weekend_mode_enabled", True) or not self._is_weekend(now):
+        if not self._weekend_mode_enabled() or not self._is_weekend(now):
             return limit
-        mul = max(0.0, float(self.config.get("weekend_quota_multiplier", 0.8)))
+        mul = max(0.0, float(self._weekend_quota_multiplier()))
         return max(0, int(limit * mul))
 
     def _no_reply_decay_factor(self, session: Dict) -> float:
-        if not self.config.get("no_reply_decay_enabled", True):
+        if not self._no_reply_decay_enabled():
             return 1.0
         streak = max(0, int(session.get("no_reply_streak", 0)))
         if streak <= 0:
             return 1.0
-        base = max(1.0, float(self.config.get("no_reply_decay_factor", 1.6)))
-        max_factor = max(1.0, float(self.config.get("no_reply_decay_max_factor", 4.0)))
+        base = max(1.0, float(self._no_reply_decay_factor_base()))
+        max_factor = max(1.0, float(self._no_reply_decay_max_factor()))
         factor = base ** streak
         return min(max_factor, factor)
 
@@ -542,7 +599,7 @@ class KanjyouIdleProactivePlugin(Star):
         return "\n".join(f"- {str(x)}" for x in history[-5:])
 
     def _push_proactive_history(self, session: Dict, text: str):
-        if not self.config.get("quality_dedupe_enabled", True):
+        if not self._quality_dedupe_enabled():
             return
         if not text:
             return
@@ -550,11 +607,11 @@ class KanjyouIdleProactivePlugin(Star):
         if not isinstance(history, list):
             history = []
         history.append(text.strip())
-        size = max(1, int(self.config.get("quality_history_size", 6)))
+        size = max(1, int(self._quality_history_size()))
         session["recent_proactive_texts"] = history[-size:]
 
     def _is_repetitive(self, text: str, session: Optional[Dict]) -> bool:
-        if not self.config.get("quality_dedupe_enabled", True):
+        if not self._quality_dedupe_enabled():
             return False
         if not text:
             return True
@@ -778,56 +835,6 @@ class KanjyouIdleProactivePlugin(Star):
                 float(self.config["min_idle_min"]) + 30, float(DEFAULT_CONFIG["max_idle_min"])
             )
             changed = True
-        if not isinstance(self.config.get("period_quota_enabled"), bool):
-            self.config["period_quota_enabled"] = DEFAULT_CONFIG["period_quota_enabled"]
-            changed = True
-        for k in ("period_quota_morning_max", "period_quota_afternoon_max", "period_quota_evening_max"):
-            if not isinstance(self.config.get(k), (int, float)):
-                self.config[k] = DEFAULT_CONFIG[k]
-                changed = True
-            if int(self.config[k]) < 0:
-                self.config[k] = 0
-                changed = True
-        if not isinstance(self.config.get("no_reply_decay_enabled"), bool):
-            self.config["no_reply_decay_enabled"] = DEFAULT_CONFIG["no_reply_decay_enabled"]
-            changed = True
-        if not isinstance(self.config.get("no_reply_decay_factor"), (int, float)):
-            self.config["no_reply_decay_factor"] = DEFAULT_CONFIG["no_reply_decay_factor"]
-            changed = True
-        if not isinstance(self.config.get("no_reply_decay_max_factor"), (int, float)):
-            self.config["no_reply_decay_max_factor"] = DEFAULT_CONFIG["no_reply_decay_max_factor"]
-            changed = True
-        if float(self.config["no_reply_decay_factor"]) < 1.0:
-            self.config["no_reply_decay_factor"] = 1.0
-            changed = True
-        if float(self.config["no_reply_decay_max_factor"]) < float(self.config["no_reply_decay_factor"]):
-            self.config["no_reply_decay_max_factor"] = float(self.config["no_reply_decay_factor"])
-            changed = True
-        if not isinstance(self.config.get("weekend_mode_enabled"), bool):
-            self.config["weekend_mode_enabled"] = DEFAULT_CONFIG["weekend_mode_enabled"]
-            changed = True
-        for k in ("weekend_min_idle_multiplier", "weekend_cooldown_multiplier", "weekend_quota_multiplier"):
-            if not isinstance(self.config.get(k), (int, float)):
-                self.config[k] = DEFAULT_CONFIG[k]
-                changed = True
-        if float(self.config["weekend_min_idle_multiplier"]) < 1.0:
-            self.config["weekend_min_idle_multiplier"] = 1.0
-            changed = True
-        if float(self.config["weekend_cooldown_multiplier"]) < 1.0:
-            self.config["weekend_cooldown_multiplier"] = 1.0
-            changed = True
-        if float(self.config["weekend_quota_multiplier"]) < 0.0:
-            self.config["weekend_quota_multiplier"] = 0.0
-            changed = True
-        if not isinstance(self.config.get("quality_dedupe_enabled"), bool):
-            self.config["quality_dedupe_enabled"] = DEFAULT_CONFIG["quality_dedupe_enabled"]
-            changed = True
-        if not isinstance(self.config.get("quality_history_size"), (int, float)):
-            self.config["quality_history_size"] = DEFAULT_CONFIG["quality_history_size"]
-            changed = True
-        if int(self.config["quality_history_size"]) < 1:
-            self.config["quality_history_size"] = 1
-            changed = True
         if not isinstance(self.config.get("debug_status_window_sec"), int):
             self.config["debug_status_window_sec"] = DEFAULT_CONFIG["debug_status_window_sec"]
             changed = True
@@ -839,11 +846,6 @@ class KanjyouIdleProactivePlugin(Star):
             changed = True
         if not isinstance(self.config.get("proactive_provider_id"), str):
             self.config["proactive_provider_id"] = DEFAULT_CONFIG["proactive_provider_id"]
-            changed = True
-        if not isinstance(self.config.get("require_human_reply_before_next_proactive"), bool):
-            self.config["require_human_reply_before_next_proactive"] = DEFAULT_CONFIG[
-                "require_human_reply_before_next_proactive"
-            ]
             changed = True
         if not isinstance(self.config.get("proactive_prompt_template"), str) or not self.config["proactive_prompt_template"].strip():
             self.config["proactive_prompt_template"] = DEFAULT_CONFIG["proactive_prompt_template"]

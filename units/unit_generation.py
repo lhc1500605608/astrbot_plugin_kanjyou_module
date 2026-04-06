@@ -156,7 +156,9 @@ class PolicyGenerationUnitsMixin:
 
     async def _resolve_main_provider_id(self, unified_msg_origin: str) -> str:
         try:
-            provider = await self.context.get_current_chat_provider_id(unified_msg_origin)
+            provider = await self.context.get_current_chat_provider_id(
+                unified_msg_origin
+            )
             if provider:
                 return str(provider).strip()
         except Exception:
@@ -204,8 +206,11 @@ class PolicyGenerationUnitsMixin:
             text = self._completion_to_text(completion)
             obj = self._extract_json_object(text)
             if isinstance(obj, dict):
+                self._quality_bump("lite_ok")
                 return obj
+            self._quality_bump("lite_fail")
         except Exception as exc:
+            self._quality_bump("lite_fail")
             self._debug_lite_llm_issue_once(exc)
         return None
 
@@ -223,8 +228,14 @@ class PolicyGenerationUnitsMixin:
                 ),
                 timeout=self._lite_llm_timeout_sec(),
             )
-            return self._completion_to_text(completion).strip()
+            text = self._completion_to_text(completion).strip()
+            if text:
+                self._quality_bump("lite_ok")
+            else:
+                self._quality_bump("lite_fail")
+            return text
         except Exception as exc:
+            self._quality_bump("lite_fail")
             self._debug_lite_llm_issue_once(exc)
             return ""
 
@@ -254,8 +265,14 @@ class PolicyGenerationUnitsMixin:
                 chat_provider_id=provider_id,
                 prompt=prompt,
             )
-            return self._completion_to_text(completion).strip()
+            text = self._completion_to_text(completion).strip()
+            if text:
+                self._quality_bump("main_rewrite_ok")
+            else:
+                self._quality_bump("main_rewrite_fallback")
+            return text
         except Exception as exc:
+            self._quality_bump("main_rewrite_fallback")
             self._debug(f"main llm text failed: {exc}")
             return ""
 
@@ -290,14 +307,13 @@ class PolicyGenerationUnitsMixin:
             return prompt
         return refined
 
-
     async def _holiday_intent_from_lite_llm(
         self, text: str, unified_msg_origin: str, now: datetime
     ) -> dict:
         prompt = (
             "你是一个节日问答意图解析器。"
             "请把用户输入解析为严格 JSON，不要输出其他内容。\n"
-            "JSON 结构：{\"intent\":\"none|today_status|countdown\",\"holiday_name\":\"\"}\n"
+            'JSON 结构：{"intent":"none|today_status|countdown","holiday_name":""}\n'
             "规则：\n"
             "1) intent=today_status：询问今天过什么节/今天是不是节假日/今天放假吗。\n"
             "2) intent=countdown：询问某节日还有几天。\n"
@@ -311,7 +327,9 @@ class PolicyGenerationUnitsMixin:
         intent = str(obj.get("intent", "none")).strip().lower()
         if intent not in {"none", "today_status", "countdown"}:
             intent = "none"
-        holiday_name = self._normalized_holiday_name(str(obj.get("holiday_name", "")).strip())
+        holiday_name = self._normalized_holiday_name(
+            str(obj.get("holiday_name", "")).strip()
+        )
         return {"intent": intent, "holiday_name": holiday_name}
 
     def _build_env_perception(self, unified_msg_origin: str, session_key: str) -> str:
@@ -438,7 +456,9 @@ class PolicyGenerationUnitsMixin:
             method="GET",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._holiday_api_timeout_sec()) as resp:
+            with urllib.request.urlopen(
+                req, timeout=self._holiday_api_timeout_sec()
+            ) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             self._debug(f"holiday api failed, fallback to builtin: {exc}")
@@ -486,7 +506,9 @@ class PolicyGenerationUnitsMixin:
             method="GET",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._holiday_api_timeout_sec()) as resp:
+            with urllib.request.urlopen(
+                req, timeout=self._holiday_api_timeout_sec()
+            ) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             self._debug(f"holiday year api failed: {exc}")
@@ -542,7 +564,9 @@ class PolicyGenerationUnitsMixin:
                 ):
                     try:
                         if len(day_str) == 5 and "-" in day_str:
-                            target = datetime.strptime(f"{year}-{day_str}", "%Y-%m-%d").date()
+                            target = datetime.strptime(
+                                f"{year}-{day_str}", "%Y-%m-%d"
+                            ).date()
                         else:
                             target = datetime.strptime(day_str, "%Y-%m-%d").date()
                     except Exception:
@@ -603,25 +627,74 @@ class PolicyGenerationUnitsMixin:
                     return self._normalized_holiday_name(name)
         return ""
 
-    async def _maybe_reply_holiday_query(self, event: AstrMessageEvent):
-        # Holiday QA is an internal side-feature bound to lite LLM.
+    async def _maybe_reply_shallow_query(self, event: AstrMessageEvent):
+        # Unified shallow-task channel: holiday/time/date/polite ping.
+        if await self._maybe_reply_holiday_query(event):
+            self._quality_bump("shallow_hit")
+            return
         if not self._lite_llm_enabled():
             return
+        text = self._extract_event_text(event)
+        if not text:
+            return
+        now = self._now()
+        lowered = text.strip().lower()
+        intent = "none"
+        if any(k in lowered for k in ("几点", "时间", "现在几点")):
+            intent = "time"
+        elif any(k in lowered for k in ("星期几", "周几", "周几了", "今天周几")):
+            intent = "weekday"
+        elif any(k in lowered for k in ("在吗", "在不在", "hello", "hi", "你好")):
+            intent = "ping"
+        else:
+            obj = await self._lite_llm_json(
+                event.unified_msg_origin,
+                (
+                    '你是浅任务意图分类器。输出严格JSON: {"intent":"none|time|weekday|ping"}。\n'
+                    f"用户输入：{text}\n"
+                ),
+            )
+            if isinstance(obj, dict):
+                raw_intent = str(obj.get("intent", "none")).strip().lower()
+                if raw_intent in {"none", "time", "weekday", "ping"}:
+                    intent = raw_intent
+        if intent == "none":
+            self._quality_bump("shallow_fallback")
+            return
+        if intent == "time":
+            fact = f"现在时间是 {now.strftime('%H:%M')}。"
+        elif intent == "weekday":
+            names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+            fact = f"今天是{names[now.weekday()]}。"
+        else:
+            fact = "我在，有什么我可以帮你的？"
+        reply = await self._render_holiday_final_reply(
+            user_text=text,
+            fact_text=fact,
+            unified_msg_origin=event.unified_msg_origin,
+        )
+        await event.send(event.plain_result(reply))
+        self._quality_bump("shallow_hit")
+
+    async def _maybe_reply_holiday_query(self, event: AstrMessageEvent) -> bool:
+        # Holiday QA is an internal side-feature bound to lite LLM.
+        if not self._lite_llm_enabled():
+            return False
         if not self._to_bool(
             self.config.get("enable_holiday_perception"),
             DEFAULT_CONFIG["enable_holiday_perception"],
         ):
-            return
+            return False
         country = (
             str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"]))
             .upper()
             .strip()
         )
         if country != "CN":
-            return
+            return False
         text = self._extract_event_text(event)
         if not text:
-            return
+            return False
         now = self._now()
         parsed = await self._holiday_intent_from_lite_llm(
             text, event.unified_msg_origin, now
@@ -638,24 +711,26 @@ class PolicyGenerationUnitsMixin:
                     intent = "countdown"
 
         if intent == "today_status":
-            fact_text = self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
+            fact_text = (
+                self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
+            )
             reply = await self._render_holiday_final_reply(
                 user_text=text,
                 fact_text=fact_text,
                 unified_msg_origin=event.unified_msg_origin,
             )
             await event.send(event.plain_result(reply))
-            return
+            return True
 
         if intent != "countdown":
-            return
+            return False
         if not holiday_name:
             holiday_name = self._extract_countdown_holiday_name(text)
             if not holiday_name:
-                return
+                return False
         if not self._holiday_api_enabled():
             await event.send(event.plain_result("节日倒计时需要开启在线节假日接口。"))
-            return
+            return True
         found = self._find_next_cn_holiday_by_name(holiday_name, now)
         if not found:
             reply = await self._render_holiday_final_reply(
@@ -664,7 +739,7 @@ class PolicyGenerationUnitsMixin:
                 unified_msg_origin=event.unified_msg_origin,
             )
             await event.send(event.plain_result(reply))
-            return
+            return True
         target_date, target_name = found
         days = (target_date - now.date()).days
         if days <= 0:
@@ -672,13 +747,16 @@ class PolicyGenerationUnitsMixin:
         elif days == 1:
             fact_text = f"{target_name}在明天（{target_date.strftime('%m-%d')}）。"
         else:
-            fact_text = f"{target_name}还有 {days} 天（{target_date.strftime('%Y-%m-%d')}）。"
+            fact_text = (
+                f"{target_name}还有 {days} 天（{target_date.strftime('%Y-%m-%d')}）。"
+            )
         reply = await self._render_holiday_final_reply(
             user_text=text,
             fact_text=fact_text,
             unified_msg_origin=event.unified_msg_origin,
         )
         await event.send(event.plain_result(reply))
+        return True
 
     async def _render_holiday_final_reply(
         self, user_text: str, fact_text: str, unified_msg_origin: str
@@ -839,6 +917,9 @@ class PolicyGenerationUnitsMixin:
     def _style_hint(
         self, session_key: str, session: Optional[Dict], idle_sec: float
     ) -> str:
+        override = str((session or {}).get("decision_suggested_tone", "")).strip()
+        if override:
+            return override[:30]
         if session_key.startswith("group:"):
             if idle_sec > 6 * 3600:
                 return "群聊里简短自然、轻松抛题，不要过度热情"

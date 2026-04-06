@@ -18,6 +18,11 @@ DEFAULT_CONFIG = {
     "lite_llm_enabled": True,
     "lite_provider_id": "",
     "lite_llm_timeout_sec": 6,
+    "decision_mode": "balanced",
+    "decision_min_confidence": 0.6,
+    "decision_group_quiet_threshold": 3,
+    "decision_trace_enabled": True,
+    "quality_trace_enabled": True,
     "holiday_qa_main_llm_enabled": True,
     "proactive_lite_refine_enabled": True,
     "proactive_prompt_template": (
@@ -104,4 +109,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.0.0"
+PLUGIN_VERSION = "2.1.2"

@@ -60,6 +60,9 @@ class KanjyouIdleProactivePlugin(
         self._global_send_history: List[float] = []
         self._global_fail_streak: int = 0
         self._global_pause_until: float = 0.0
+        self._decision_last: Dict[str, Dict] = {}
+        self._decision_trace: List[Dict] = []
+        self._quality_trace: Dict[str, int] = {}
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
@@ -155,4 +158,16 @@ class KanjyouIdleProactivePlugin(
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_test(self, event: AstrMessageEvent):
         async for result in self._cmd_idle_test(event):
+            yield result
+
+    @filter.command("idle_decision_status")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def idle_decision_status(self, event: AstrMessageEvent):
+        async for result in self._cmd_idle_decision_status(event):
+            yield result
+
+    @filter.command("idle_decision_last")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def idle_decision_last(self, event: AstrMessageEvent):
+        async for result in self._cmd_idle_decision_last(event):
             yield result

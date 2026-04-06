@@ -52,82 +52,31 @@ class RuntimeUnitsMixin:
         self._unit_rollover_counters(s, now)
         self._recover_session_mood(s, now_ts)
 
-        if self._unit_gate_next_check(session_key, s, now_ts):
-            self._debug_decision(
-                session_key, {"outcome": "skip", "reason": "next_check"}
-            )
-            return False
-        if self._unit_gate_cooldown(session_key, s, now_ts):
-            self._debug_decision(session_key, {"outcome": "skip", "reason": "cooldown"})
-            return True
-        if self._unit_gate_daily_limit(session_key, s, now_ts):
-            self._debug_decision(
-                session_key, {"outcome": "skip", "reason": "daily_limit"}
-            )
-            return True
-        if self._unit_gate_pending_reply(session_key, s, now_ts):
-            self._debug_decision(
-                session_key, {"outcome": "skip", "reason": "await_human_reply"}
-            )
-            return True
-
-        period = self._get_period(now)
-        if self._unit_gate_period_limit(session_key, s, period, now, now_ts):
-            self._debug_decision(
-                session_key,
-                {"outcome": "skip", "reason": "period_limit", "period": period},
-            )
-            return True
-
-        idle_sec = now_ts - s.get("last_interaction_at", now_ts)
-        decay = self._no_reply_decay_factor(s)
-        if self._unit_gate_idle(session_key, s, idle_sec, decay, now, now_ts):
-            self._debug_decision(
-                session_key,
-                {
-                    "outcome": "skip",
-                    "reason": "idle_not_enough",
-                    "idle_sec": int(idle_sec),
-                    "decay": round(decay, 3),
-                },
-            )
-            return True
-        if self._unit_gate_mood(session_key, s, now_ts):
-            self._debug_decision(
-                session_key,
-                {
-                    "outcome": "skip",
-                    "reason": "mood_low",
-                    "mood": round(float(s.get("mood", 0.0)), 2),
-                    "mood_min_trigger": round(self._mood_min_trigger(), 2),
-                },
-            )
-            return True
-        blocked_by_prob, prob_info = self._unit_gate_probability(
-            session_key, s, idle_sec, now, now_ts
-        )
+        decision = await self._decision_engine(session_key, s, now, now_ts)
+        self._record_decision(session_key, decision)
         self._debug_decision(
             session_key,
             {
-                "outcome": "skip" if blocked_by_prob else "pass",
-                "reason": "probability",
-                "idle_sec": int(idle_sec),
-                "probability": prob_info["probability"],
-                "roll": prob_info["roll"],
+                "outcome": "allow" if decision.get("allow") else "skip",
+                "reason_codes": decision.get("reason_codes", []),
+                "confidence": decision.get("confidence"),
+                "mode": decision.get("mode"),
+                "idle_sec": decision.get("idle_sec"),
             },
         )
-        if blocked_by_prob:
-            return True
+        if not decision.get("allow", False):
+            return bool(decision.get("state_changed", False))
 
-        umo = s.get("unified_msg_origin")
-        if self._unit_gate_origin(session_key, s, umo, now_ts):
-            self._debug_decision(
-                session_key, {"outcome": "skip", "reason": "missing_origin"}
-            )
-            return True
-
+        period = str(decision.get("period", self._get_period(now)))
+        idle_sec = float(
+            decision.get("idle_sec", now_ts - s.get("last_interaction_at", now_ts))
+        )
+        decay = float(decision.get("decay", self._no_reply_decay_factor(s)))
         success, sent_text = await self._unit_execute_send(
-            umo, session_key, idle_sec, s
+            str(decision.get("umo", s.get("unified_msg_origin"))),
+            session_key,
+            idle_sec,
+            s,
         )
         self._unit_finalize_result(
             session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts
@@ -143,6 +92,402 @@ class RuntimeUnitsMixin:
             },
         )
         return True
+
+    async def _decision_engine(
+        self, session_key: str, s: Dict, now: datetime, now_ts: float
+    ) -> Dict:
+        mode = self._decision_mode()
+        period = self._get_period(now)
+        idle_sec = float(now_ts - s.get("last_interaction_at", now_ts))
+        decay = float(self._no_reply_decay_factor(s))
+        reason_codes = []
+        state_changed = False
+
+        if self._unit_gate_next_check(session_key, s, now_ts):
+            return self._decision_result(
+                False,
+                0.98,
+                ["waiting_next_check"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_cooldown(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.97,
+                ["cooldown"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_daily_limit(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.97,
+                ["daily_limit"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_pending_reply(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.95,
+                ["await_human_reply"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_period_limit(session_key, s, period, now, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.93,
+                ["period_limit"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_idle(session_key, s, idle_sec, decay, now, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.92,
+                ["idle_not_enough"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_mood(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.94,
+                ["mood_low"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+
+        # Group timing heuristic inspired by group_chat_plus.
+        if session_key.startswith("group:"):
+            threshold_sec = int(self._decision_group_quiet_threshold() * 60)
+            if idle_sec < threshold_sec:
+                self._unit_defer_session(
+                    session_key,
+                    s,
+                    now_ts,
+                    "group_active",
+                    f"session skip(group_active) session={session_key} idle_sec={int(idle_sec)} quiet_threshold={threshold_sec}",
+                )
+                state_changed = True
+                return self._decision_result(
+                    False,
+                    0.9,
+                    ["group_active"],
+                    session_key,
+                    s,
+                    now,
+                    now_ts,
+                    period,
+                    idle_sec,
+                    decay,
+                    mode,
+                    state_changed,
+                )
+            reason_codes.append("group_quiet")
+
+        # Decision-mode aware probability.
+        p_raw = float(self._trigger_probability(float(idle_sec), now))
+        multiplier = 1.0
+        if mode == "strict":
+            multiplier = 0.65
+        elif mode == "active":
+            multiplier = 1.25
+        p = max(0.0, min(1.0, p_raw * multiplier))
+        roll = random.random()
+        if roll >= p:
+            self._unit_defer_session(
+                session_key,
+                s,
+                now_ts,
+                "probability_miss",
+                (
+                    f"session skip(probability) session={session_key} idle_sec={int(idle_sec)} "
+                    f"p={p:.4f} roll={roll:.4f} mode={mode}"
+                ),
+            )
+            state_changed = True
+            return self._decision_result(
+                False,
+                round(max(0.0, p), 4),
+                ["probability_miss"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        reason_codes.append("probability_pass")
+
+        umo = s.get("unified_msg_origin")
+        if self._unit_gate_origin(session_key, s, umo, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.98,
+                ["missing_origin"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+
+        # Lite decision refinement: can veto/confirm with confidence.
+        lite = await self._decision_refine_by_lite_llm(
+            session_key=session_key,
+            unified_msg_origin=str(umo or ""),
+            now=now,
+            idle_sec=idle_sec,
+            decay=decay,
+            mood=float(s.get("mood", self._mood_initial())),
+            reason_codes=reason_codes,
+            mode=mode,
+        )
+        min_conf = self._decision_min_confidence()
+        allow = True
+        confidence = 0.7
+        suggested_tone = self._style_hint(session_key, s, idle_sec)
+        if isinstance(lite, dict):
+            lite_allow = bool(lite.get("allow", True))
+            lite_conf = float(lite.get("confidence", 0.0))
+            lite_reasons = lite.get("reason_codes", [])
+            if isinstance(lite_reasons, list):
+                for code in lite_reasons[:2]:
+                    c = str(code).strip()
+                    if c:
+                        reason_codes.append(f"lite_{c}")
+            if lite_allow and lite_conf >= min_conf:
+                allow = True
+                confidence = lite_conf
+            elif (not lite_allow) and lite_conf >= min_conf:
+                allow = False
+                confidence = lite_conf
+                reason_codes.append("lite_veto")
+            if (
+                isinstance(lite.get("suggested_tone"), str)
+                and lite.get("suggested_tone").strip()
+            ):
+                suggested_tone = lite.get("suggested_tone").strip()
+
+        if not allow:
+            self._unit_defer_session(
+                session_key,
+                s,
+                now_ts,
+                "lite_veto",
+                f"session skip(lite_veto) session={session_key} mode={mode}",
+            )
+            state_changed = True
+            return self._decision_result(
+                False,
+                confidence,
+                reason_codes,
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+                suggested_tone,
+            )
+
+        # Last-hop safety confirmation before sending.
+        ok, safety_reason = self._decision_final_safety_check(s, now, now_ts)
+        if not ok:
+            self._unit_defer_session(
+                session_key,
+                s,
+                now_ts,
+                safety_reason,
+                f"session skip({safety_reason}) session={session_key}",
+            )
+            state_changed = True
+            reason_codes.append(safety_reason)
+            return self._decision_result(
+                False,
+                max(confidence, 0.9),
+                reason_codes,
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+                suggested_tone,
+            )
+
+        s["decision_suggested_tone"] = suggested_tone
+        return self._decision_result(
+            True,
+            max(confidence, 0.75),
+            reason_codes or ["allow"],
+            session_key,
+            s,
+            now,
+            now_ts,
+            period,
+            idle_sec,
+            decay,
+            mode,
+            state_changed,
+            suggested_tone,
+        )
+
+    def _decision_result(
+        self,
+        allow: bool,
+        confidence: float,
+        reason_codes: list,
+        session_key: str,
+        s: Dict,
+        now: datetime,
+        now_ts: float,
+        period: str,
+        idle_sec: float,
+        decay: float,
+        mode: str,
+        state_changed: bool,
+        suggested_tone: str = "",
+    ) -> Dict:
+        return {
+            "allow": bool(allow),
+            "confidence": round(float(confidence), 4),
+            "reason_codes": list(reason_codes or []),
+            "suggested_tone": suggested_tone
+            or self._style_hint(session_key, s, idle_sec),
+            "period": period,
+            "idle_sec": int(idle_sec),
+            "decay": round(float(decay), 3),
+            "mode": mode,
+            "umo": s.get("unified_msg_origin"),
+            "state_changed": bool(state_changed),
+            "mood": round(float(s.get("mood", self._mood_initial())), 2),
+            "next_check_at": self._fmt_ts(s.get("next_check_at", now_ts)),
+            "cooldown_until": self._fmt_ts(s.get("cooldown_until", 0)),
+        }
+
+    def _decision_final_safety_check(
+        self, s: Dict, now: datetime, now_ts: float
+    ) -> tuple[bool, str]:
+        if self._in_sleep_window(now):
+            return False, "night_quiet"
+        if now_ts < s.get("cooldown_until", 0):
+            return False, "cooldown_guard"
+        self._trim_global_send_history(now_ts)
+        if len(self._global_send_history) >= self._security_global_hourly_cap():
+            return False, "global_hourly_cap"
+        return True, "ok"
+
+    async def _decision_refine_by_lite_llm(
+        self,
+        session_key: str,
+        unified_msg_origin: str,
+        now: datetime,
+        idle_sec: float,
+        decay: float,
+        mood: float,
+        reason_codes: list,
+        mode: str,
+    ) -> Dict:
+        prompt = (
+            "你是主动对话决策助手。请输出严格 JSON，不要解释。\n"
+            '格式：{"allow":true,"confidence":0.0,"reason_codes":["..."],"suggested_tone":"..."}\n'
+            "规则：\n"
+            "1) allow 只表示是否建议主动发言。\n"
+            "2) confidence 范围 0-1。\n"
+            "3) reason_codes 用简短英文下划线风格。\n"
+            "4) suggested_tone 为一句中文语气建议，长度<=30。\n"
+            f"session={session_key} now={now.strftime('%Y-%m-%d %H:%M:%S')} mode={mode}\n"
+            f"idle_sec={int(idle_sec)} decay={decay:.2f} mood={mood:.2f}\n"
+            f"rule_reason_codes={','.join(reason_codes) if reason_codes else '-'}\n"
+        )
+        obj = await self._lite_llm_json(unified_msg_origin, prompt)
+        if not isinstance(obj, dict):
+            return {}
+        out = {
+            "allow": bool(obj.get("allow", True)),
+            "confidence": max(0.0, min(1.0, float(obj.get("confidence", 0.0)))),
+            "reason_codes": obj.get("reason_codes", []),
+            "suggested_tone": str(obj.get("suggested_tone", "")).strip(),
+        }
+        if not isinstance(out["reason_codes"], list):
+            out["reason_codes"] = []
+        out["reason_codes"] = [
+            str(x).strip() for x in out["reason_codes"] if str(x).strip()
+        ]
+        return out
 
     def _unit_global_guard(self, now_ts: float) -> bool:
         if now_ts < self._global_pause_until:
@@ -337,6 +682,7 @@ class RuntimeUnitsMixin:
         now: datetime,
         now_ts: float,
     ):
+        s.pop("decision_suggested_tone", None)
         s["next_check_at"] = now_ts + self._randomized_interval()
         if success:
             self._global_send_history.append(now_ts)

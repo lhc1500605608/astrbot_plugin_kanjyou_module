@@ -365,6 +365,97 @@ class SessionConfigUnitsMixin:
             self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"]
         )
 
+    def _decision_mode(self) -> str:
+        mode = (
+            str(self.config.get("decision_mode", DEFAULT_CONFIG["decision_mode"]))
+            .strip()
+            .lower()
+        )
+        if mode not in {"balanced", "strict", "active"}:
+            return "balanced"
+        return mode
+
+    def _decision_min_confidence(self) -> float:
+        return max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    self.config.get(
+                        "decision_min_confidence",
+                        DEFAULT_CONFIG["decision_min_confidence"],
+                    )
+                ),
+            ),
+        )
+
+    def _decision_group_quiet_threshold(self) -> int:
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "decision_group_quiet_threshold",
+                    DEFAULT_CONFIG["decision_group_quiet_threshold"],
+                )
+            ),
+        )
+
+    def _decision_trace_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("decision_trace_enabled"),
+            DEFAULT_CONFIG["decision_trace_enabled"],
+        )
+
+    def _quality_trace_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("quality_trace_enabled"),
+            DEFAULT_CONFIG["quality_trace_enabled"],
+        )
+
+    def _record_decision(self, session_key: str, payload: Dict):
+        decision = dict(payload or {})
+        decision["session"] = session_key
+        decision["at"] = self._now().strftime("%Y-%m-%d %H:%M:%S")
+        self._decision_last[session_key] = decision
+        if not self._decision_trace_enabled():
+            return
+        self._decision_trace.append(decision)
+        limit = 100
+        if len(self._decision_trace) > limit:
+            self._decision_trace = self._decision_trace[-limit:]
+
+    def _decision_last_for_session(self, session_key: str) -> Optional[Dict]:
+        row = self._decision_last.get(session_key)
+        if isinstance(row, dict):
+            return row
+        return None
+
+    def _quality_bump(self, key: str, n: int = 1):
+        if not self._quality_trace_enabled():
+            return
+        if not isinstance(self._quality_trace, dict):
+            self._quality_trace = {}
+        self._quality_trace[key] = int(self._quality_trace.get(key, 0)) + max(0, int(n))
+
+    def _decision_status_summary(self) -> str:
+        trace_count = (
+            len(self._decision_trace) if isinstance(self._decision_trace, list) else 0
+        )
+        sessions = (
+            len(self._decision_last) if isinstance(self._decision_last, dict) else 0
+        )
+        q = self._quality_trace if isinstance(self._quality_trace, dict) else {}
+        shallow_hits = int(q.get("shallow_hit", 0))
+        shallow_fallback = int(q.get("shallow_fallback", 0))
+        lite_ok = int(q.get("lite_ok", 0))
+        lite_fail = int(q.get("lite_fail", 0))
+        return (
+            f"mode={self._decision_mode()} min_conf={self._decision_min_confidence():.2f} "
+            f"sessions={sessions} trace={trace_count} "
+            f"shallow_hit={shallow_hits} shallow_fallback={shallow_fallback} "
+            f"lite_ok={lite_ok} lite_fail={lite_fail}"
+        )
+
     def _debug_decision(self, session_key: str, payload: Dict):
         if not self.config.get("debug_log", False):
             return
@@ -504,6 +595,46 @@ class SessionConfigUnitsMixin:
             changed = True
         if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
             self.config["lite_llm_timeout_sec"] = 1
+            changed = True
+        mode = (
+            str(self.config.get("decision_mode", DEFAULT_CONFIG["decision_mode"]))
+            .strip()
+            .lower()
+        )
+        if mode not in {"balanced", "strict", "active"}:
+            self.config["decision_mode"] = DEFAULT_CONFIG["decision_mode"]
+            changed = True
+        else:
+            self.config["decision_mode"] = mode
+        if not isinstance(self.config.get("decision_min_confidence"), (int, float)):
+            self.config["decision_min_confidence"] = DEFAULT_CONFIG[
+                "decision_min_confidence"
+            ]
+            changed = True
+        self.config["decision_min_confidence"] = max(
+            0.0, min(1.0, float(self.config.get("decision_min_confidence")))
+        )
+        if not isinstance(
+            self.config.get("decision_group_quiet_threshold"), (int, float)
+        ):
+            self.config["decision_group_quiet_threshold"] = DEFAULT_CONFIG[
+                "decision_group_quiet_threshold"
+            ]
+            changed = True
+        if int(self.config.get("decision_group_quiet_threshold", 0)) < 1:
+            self.config["decision_group_quiet_threshold"] = 1
+            changed = True
+        if not isinstance(self.config.get("decision_trace_enabled"), bool):
+            self.config["decision_trace_enabled"] = self._to_bool(
+                self.config.get("decision_trace_enabled"),
+                DEFAULT_CONFIG["decision_trace_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("quality_trace_enabled"), bool):
+            self.config["quality_trace_enabled"] = self._to_bool(
+                self.config.get("quality_trace_enabled"),
+                DEFAULT_CONFIG["quality_trace_enabled"],
+            )
             changed = True
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(

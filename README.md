@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.1.2-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -14,6 +14,7 @@
 - 环境感知：时间段、星期/工作日与平台场景（含内置节假日能力）
 - 双 LLM 分工：主模型负责生成，轻量模型负责浅任务意图解析
 - 轻量辅助增强：原话+轻量分析结果交给主模型统一生成最终答复
+- 主动前决策层：统一决策引擎（置信度/原因码/语气建议/最后安全确认）
 - 夜间免打扰（支持跨天）
 - 白名单控制（仅指定私聊/群聊生效）
 - 控制台 Debug 状态指示器
@@ -94,6 +95,8 @@
 - `/idle_wl_add_group <group_id>` / `/idle_wl_del_group <group_id>`
 - `/idle_sleep_set <HH:MM> <HH:MM>`
 - `/idle_test`
+- `/idle_decision_status`
+- `/idle_decision_last`
 
 ---
 

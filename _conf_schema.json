@@ -245,6 +245,51 @@
       "advanced_enabled": true
     }
   },
+  "decision_mode": {
+    "type": "string",
+    "description": "[生成] 决策模式：balanced/strict/active",
+    "default": "balanced",
+    "options": [
+      "balanced",
+      "strict",
+      "active"
+    ],
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "decision_min_confidence": {
+    "type": "float",
+    "description": "[生成] 轻量决策结果最小置信度（0-1）",
+    "default": 0.6,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "decision_group_quiet_threshold": {
+    "type": "int",
+    "description": "[生成] 群聊最小静默阈值（分钟）",
+    "default": 3,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "decision_trace_enabled": {
+    "type": "bool",
+    "description": "[调试] 是否记录决策轨迹（供状态指令查看）",
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "quality_trace_enabled": {
+    "type": "bool",
+    "description": "[调试] 是否记录质量统计（命中/回退）",
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
   "holiday_qa_main_llm_enabled": {
     "type": "bool",
     "description": "[生成] 节假日问答是否交给主 LLM 润色生成最终回复",

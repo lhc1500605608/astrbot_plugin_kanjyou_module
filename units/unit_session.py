@@ -505,6 +505,18 @@ class SessionConfigUnitsMixin:
         if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
             self.config["lite_llm_timeout_sec"] = 1
             changed = True
+        if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
+            self.config["holiday_qa_main_llm_enabled"] = self._to_bool(
+                self.config.get("holiday_qa_main_llm_enabled"),
+                DEFAULT_CONFIG["holiday_qa_main_llm_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("proactive_lite_refine_enabled"), bool):
+            self.config["proactive_lite_refine_enabled"] = self._to_bool(
+                self.config.get("proactive_lite_refine_enabled"),
+                DEFAULT_CONFIG["proactive_lite_refine_enabled"],
+            )
+            changed = True
         if (
             not isinstance(self.config.get("proactive_prompt_template"), str)
             or not self.config["proactive_prompt_template"].strip()

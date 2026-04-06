@@ -18,6 +18,8 @@ DEFAULT_CONFIG = {
     "lite_llm_enabled": True,
     "lite_provider_id": "",
     "lite_llm_timeout_sec": 6,
+    "holiday_qa_main_llm_enabled": True,
+    "proactive_lite_refine_enabled": True,
     "proactive_prompt_template": (
         "你是一个在聊天中主动关怀用户的助手。"
         "请严格基于下方人格设定进行表达，不要脱离人格。\n"

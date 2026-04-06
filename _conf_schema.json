@@ -239,6 +239,16 @@
     "description": "[生成] 轻量 LLM 超时秒数",
     "default": 6
   },
+  "holiday_qa_main_llm_enabled": {
+    "type": "bool",
+    "description": "[生成] 节假日问答是否交给主 LLM 润色生成最终回复",
+    "default": true
+  },
+  "proactive_lite_refine_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否使用轻量 LLM 对主动回复 Prompt 进行预加工",
+    "default": true
+  },
   "proactive_prompt_template": {
     "type": "string",
     "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",

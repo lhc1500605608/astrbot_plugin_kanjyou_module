@@ -74,6 +74,12 @@ class PolicyGenerationUnitsMixin:
                 style_hint=style_hint,
                 recent_history=recent_history,
             )
+            prompt = await self._maybe_refine_proactive_prompt_with_lite(
+                prompt=prompt,
+                unified_msg_origin=unified_msg_origin,
+                session_type=session_type,
+                idle_sec=idle_sec,
+            )
 
             provider_id = str(self.config.get("proactive_provider_id") or "").strip()
             if not provider_id:
@@ -114,6 +120,18 @@ class PolicyGenerationUnitsMixin:
             DEFAULT_CONFIG["lite_llm_enabled"],
         )
 
+    def _holiday_qa_main_llm_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("holiday_qa_main_llm_enabled"),
+            DEFAULT_CONFIG["holiday_qa_main_llm_enabled"],
+        )
+
+    def _proactive_lite_refine_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("proactive_lite_refine_enabled"),
+            DEFAULT_CONFIG["proactive_lite_refine_enabled"],
+        )
+
     def _lite_llm_timeout_sec(self) -> float:
         return max(
             1.0,
@@ -139,6 +157,16 @@ class PolicyGenerationUnitsMixin:
             ) or ""
         except Exception:
             return ""
+
+    async def _resolve_main_provider_id(self, unified_msg_origin: str) -> str:
+        try:
+            provider = await self.context.get_current_chat_provider_id(unified_msg_origin)
+            if provider:
+                return str(provider).strip()
+        except Exception:
+            pass
+        provider = str(self.config.get("proactive_provider_id") or "").strip()
+        return provider
 
     def _extract_json_object(self, text: str) -> Optional[dict]:
         if not isinstance(text, str):
@@ -184,6 +212,71 @@ class PolicyGenerationUnitsMixin:
         except Exception as exc:
             self._debug(f"lite llm parse failed: {exc}")
         return None
+
+    async def _lite_llm_text(self, unified_msg_origin: str, prompt: str) -> str:
+        if not self._lite_llm_enabled():
+            return ""
+        provider_id = await self._resolve_lite_provider_id(unified_msg_origin)
+        if not provider_id:
+            return ""
+        try:
+            completion = await asyncio.wait_for(
+                self.context.llm_generate(
+                    chat_provider_id=provider_id,
+                    prompt=prompt,
+                ),
+                timeout=self._lite_llm_timeout_sec(),
+            )
+            return self._completion_to_text(completion).strip()
+        except Exception as exc:
+            self._debug(f"lite llm text failed: {exc}")
+            return ""
+
+    async def _main_llm_text(self, unified_msg_origin: str, prompt: str) -> str:
+        provider_id = await self._resolve_main_provider_id(unified_msg_origin)
+        if not provider_id:
+            return ""
+        try:
+            completion = await self.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+            )
+            return self._completion_to_text(completion).strip()
+        except Exception as exc:
+            self._debug(f"main llm text failed: {exc}")
+            return ""
+
+    async def _maybe_refine_proactive_prompt_with_lite(
+        self,
+        prompt: str,
+        unified_msg_origin: str,
+        session_type: str,
+        idle_sec: float,
+    ) -> str:
+        if not self._proactive_lite_refine_enabled():
+            return prompt
+        lite_prompt = (
+            "你是对话提示词优化助手。"
+            "请在不改变目标任务的前提下，将输入 Prompt 优化为更自然、清晰、可执行的版本。"
+            "要求：\n"
+            "1) 保留原始目标与限制。\n"
+            "2) 输出中文。\n"
+            "3) 只输出优化后的 Prompt 正文，不要解释。\n"
+            f"会话类型：{session_type}；idle 秒数：{int(idle_sec)}。\n"
+            "原始 Prompt：\n"
+            f"{prompt}"
+        )
+        refined = await self._lite_llm_text(unified_msg_origin, lite_prompt)
+        if not refined:
+            return prompt
+        # Avoid overlong/unstable rewrite.
+        refined = refined.strip()
+        if len(refined) < 30:
+            return prompt
+        if len(refined) > 6000:
+            return prompt
+        return refined
+
 
     async def _holiday_intent_from_lite_llm(
         self, text: str, unified_msg_origin: str, now: datetime
@@ -534,8 +627,13 @@ class PolicyGenerationUnitsMixin:
                     intent = "countdown"
 
         if intent == "today_status":
-            today_text = self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
-            await event.send(event.plain_result(today_text))
+            fact_text = self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
+            reply = await self._render_holiday_final_reply(
+                user_text=text,
+                fact_text=fact_text,
+                unified_msg_origin=event.unified_msg_origin,
+            )
+            await event.send(event.plain_result(reply))
             return
 
         if intent != "countdown":
@@ -549,17 +647,50 @@ class PolicyGenerationUnitsMixin:
             return
         found = self._find_next_cn_holiday_by_name(holiday_name, now)
         if not found:
-            await event.send(event.plain_result(f"暂时没查到“{holiday_name}”的日期信息。"))
+            reply = await self._render_holiday_final_reply(
+                user_text=text,
+                fact_text=f"暂时没查到“{holiday_name}”的日期信息。",
+                unified_msg_origin=event.unified_msg_origin,
+            )
+            await event.send(event.plain_result(reply))
             return
         target_date, target_name = found
         days = (target_date - now.date()).days
         if days <= 0:
-            reply = f"今天就是{target_name}，节日快乐。"
+            fact_text = f"今天就是{target_name}，节日快乐。"
         elif days == 1:
-            reply = f"{target_name}在明天（{target_date.strftime('%m-%d')}）。"
+            fact_text = f"{target_name}在明天（{target_date.strftime('%m-%d')}）。"
         else:
-            reply = f"{target_name}还有 {days} 天（{target_date.strftime('%Y-%m-%d')}）。"
+            fact_text = f"{target_name}还有 {days} 天（{target_date.strftime('%Y-%m-%d')}）。"
+        reply = await self._render_holiday_final_reply(
+            user_text=text,
+            fact_text=fact_text,
+            unified_msg_origin=event.unified_msg_origin,
+        )
         await event.send(event.plain_result(reply))
+
+    async def _render_holiday_final_reply(
+        self, user_text: str, fact_text: str, unified_msg_origin: str
+    ) -> str:
+        if not self._holiday_qa_main_llm_enabled():
+            return fact_text
+        prompt = (
+            "你是聊天助手。请根据用户原话和已知事实，生成一条自然、简洁、有温度的中文回复。\n"
+            "要求：\n"
+            "1) 忠实于已知事实，不要编造。\n"
+            "2) 不需要解释推理过程。\n"
+            "3) 控制在 12-60 字。\n"
+            "4) 只输出回复正文。\n"
+            f"用户原话：{user_text}\n"
+            f"已知事实：{fact_text}\n"
+        )
+        text = await self._main_llm_text(unified_msg_origin, prompt)
+        if not text:
+            return fact_text
+        cleaned = self._sanitize_outgoing_text(text)
+        if not cleaned:
+            return fact_text
+        return cleaned
 
     def _holiday_text_from_builtin_cn(self, day) -> str:
         if _cc is None:

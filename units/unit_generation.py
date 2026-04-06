@@ -720,6 +720,31 @@ class PolicyGenerationUnitsMixin:
         t = (text or "").strip()
         return bool(t) and t[0] in {"/", "!", "！", "／"}
 
+    def _suppress_default_llm(
+        self, event: AstrMessageEvent, reason: str, stop_propagation: bool = False
+    ):
+        # AstrBot event control: prevent default LLM from replying this event.
+        # Compatible with both property and method style APIs across versions.
+        try:
+            set_call = getattr(event, "should_call_llm", None)
+            if callable(set_call):
+                set_call(False)
+        except Exception:
+            pass
+        try:
+            if hasattr(event, "call_llm"):
+                event.call_llm = False
+        except Exception:
+            pass
+        if stop_propagation:
+            try:
+                stop = getattr(event, "stop_event", None)
+                if callable(stop):
+                    stop()
+            except Exception:
+                pass
+        self._debug(f"dialogue wait suppress default llm reason={reason}")
+
     def _join_dialogue_parts(self, parts) -> str:
         if not isinstance(parts, list):
             return ""
@@ -841,16 +866,23 @@ class PolicyGenerationUnitsMixin:
                 self._debug(
                     f"dialogue wait merge limit reached session={session_key} merged={merged_text}"
                 )
-                await self._handle_wait_merged_text(
+                handled = await self._handle_wait_merged_text(
                     user_text=merged_text,
                     unified_msg_origin=event.unified_msg_origin,
                     send_reply=lambda reply: event.send(event.plain_result(reply)),
                 )
+                if handled:
+                    self._suppress_default_llm(
+                        event, "merge_limit_reached", stop_propagation=True
+                    )
                 return
             should_wait = await self._lite_should_wait_more(
                 merged_text, event.unified_msg_origin
             )
             if should_wait:
+                self._suppress_default_llm(
+                    event, "waiting_more_input", stop_propagation=True
+                )
                 self._debug(
                     f"dialogue wait continue session={session_key} deadline={self._fmt_ts(row['deadline_at'])}"
                 )
@@ -859,11 +891,15 @@ class PolicyGenerationUnitsMixin:
             self._debug(
                 f"dialogue wait complete session={session_key} merged={merged_text}"
             )
-            await self._handle_wait_merged_text(
+            handled = await self._handle_wait_merged_text(
                 user_text=merged_text,
                 unified_msg_origin=event.unified_msg_origin,
                 send_reply=lambda reply: event.send(event.plain_result(reply)),
             )
+            if handled:
+                self._suppress_default_llm(
+                    event, "wait_complete_handled", stop_propagation=True
+                )
             return
 
         should_wait = await self._lite_should_wait_more(text, event.unified_msg_origin)
@@ -874,15 +910,20 @@ class PolicyGenerationUnitsMixin:
                 "last_input_at": now_ts,
                 "deadline_at": now_ts + timeout_sec,
             }
+            self._suppress_default_llm(event, "wait_started", stop_propagation=True)
             self._debug(
                 f"dialogue wait started session={session_key} deadline={self._fmt_ts(now_ts + timeout_sec)} text={text}"
             )
             return
-        await self._maybe_reply_shallow_query_text(
+        handled = await self._maybe_reply_shallow_query_text(
             user_text=text,
             unified_msg_origin=event.unified_msg_origin,
             send_reply=lambda reply: event.send(event.plain_result(reply)),
         )
+        if handled:
+            self._suppress_default_llm(
+                event, "single_turn_shallow_handled", stop_propagation=True
+            )
 
     async def _maybe_reply_shallow_query(self, event: AstrMessageEvent):
         text = self._extract_event_text(event)

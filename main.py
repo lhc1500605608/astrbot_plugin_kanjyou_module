@@ -63,6 +63,7 @@ class KanjyouIdleProactivePlugin(
         self._decision_last: Dict[str, Dict] = {}
         self._decision_trace: List[Dict] = []
         self._quality_trace: Dict[str, int] = {}
+        self._dialogue_wait_buffers: Dict[str, Dict] = {}
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 

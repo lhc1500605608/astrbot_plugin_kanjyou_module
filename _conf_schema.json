@@ -290,6 +290,48 @@
       "advanced_enabled": true
     }
   },
+  "dialogue_wait_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否启用对话等待与合并",
+    "default": true
+  },
+  "dialogue_wait_timeout_sec": {
+    "type": "int",
+    "description": "[生成] 对话等待超时（秒）",
+    "default": 30,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "dialogue_wait_max_merge": {
+    "type": "int",
+    "description": "[生成] 最多合并几条用户输入",
+    "default": 2,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "output_segment_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否启用主模型输出自动分段",
+    "default": true
+  },
+  "output_segment_max_parts": {
+    "type": "int",
+    "description": "[生成] 自动分段最大段数",
+    "default": 3,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
+  "output_segment_max_chars": {
+    "type": "int",
+    "description": "[生成] 自动分段后建议最大字数",
+    "default": 220,
+    "condition": {
+      "advanced_enabled": true
+    }
+  },
   "holiday_qa_main_llm_enabled": {
     "type": "bool",
     "description": "[生成] 节假日问答是否交给主 LLM 润色生成最终回复",

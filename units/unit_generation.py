@@ -6,10 +6,11 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Awaitable, Callable, Dict, Optional
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api.message_components import Plain
 
 try:
     from ..config import DEFAULT_CONFIG
@@ -105,6 +106,7 @@ class PolicyGenerationUnitsMixin:
             if self._is_repetitive(cleaned, session):
                 self._debug("generate repetitive text, use fallback")
                 return fallback
+            cleaned = await self._optimize_output_segments(cleaned, unified_msg_origin)
             self._debug(
                 f"generate ok provider={provider_id} session={session_key} text={cleaned}"
             )
@@ -134,6 +136,62 @@ class PolicyGenerationUnitsMixin:
             float(
                 self.config.get(
                     "lite_llm_timeout_sec", DEFAULT_CONFIG["lite_llm_timeout_sec"]
+                )
+            ),
+        )
+
+    def _dialogue_wait_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("dialogue_wait_enabled"),
+            DEFAULT_CONFIG["dialogue_wait_enabled"],
+        )
+
+    def _dialogue_wait_timeout_sec(self) -> int:
+        return max(
+            5,
+            int(
+                self.config.get(
+                    "dialogue_wait_timeout_sec",
+                    DEFAULT_CONFIG["dialogue_wait_timeout_sec"],
+                )
+            ),
+        )
+
+    def _dialogue_wait_max_merge(self) -> int:
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "dialogue_wait_max_merge",
+                    DEFAULT_CONFIG["dialogue_wait_max_merge"],
+                )
+            ),
+        )
+
+    def _output_segment_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("output_segment_enabled"),
+            DEFAULT_CONFIG["output_segment_enabled"],
+        )
+
+    def _output_segment_max_parts(self) -> int:
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "output_segment_max_parts",
+                    DEFAULT_CONFIG["output_segment_max_parts"],
+                )
+            ),
+        )
+
+    def _output_segment_max_chars(self) -> int:
+        return max(
+            60,
+            int(
+                self.config.get(
+                    "output_segment_max_chars",
+                    DEFAULT_CONFIG["output_segment_max_chars"],
                 )
             ),
         )
@@ -306,6 +364,37 @@ class PolicyGenerationUnitsMixin:
         if len(refined) > 6000:
             return prompt
         return refined
+
+    async def _optimize_output_segments(
+        self, text: str, unified_msg_origin: str
+    ) -> str:
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return cleaned
+        if not self._output_segment_enabled() or not self._lite_llm_enabled():
+            return cleaned
+        prompt = (
+            "你是回复整理助手。请将输入回复做轻度精简并按自然段拆分。"
+            "要求：\n"
+            f"1) 最多 {self._output_segment_max_parts()} 段。\n"
+            f"2) 总长度尽量不超过 {self._output_segment_max_chars()} 字。\n"
+            "3) 保持原意，不新增事实。\n"
+            "4) 仅输出最终文本，可用换行分段，不要解释。\n"
+            f"输入：{cleaned}\n"
+        )
+        out = await self._lite_llm_text(unified_msg_origin, prompt)
+        if not out:
+            return cleaned
+        out = out.strip()
+        if not out:
+            return cleaned
+        parts = [p.strip() for p in out.splitlines() if p.strip()]
+        if len(parts) > self._output_segment_max_parts():
+            parts = parts[: self._output_segment_max_parts()]
+        out = "\n".join(parts) if parts else cleaned
+        if len(out) > self._output_segment_max_chars() * 2:
+            return cleaned
+        return out
 
     async def _holiday_intent_from_lite_llm(
         self, text: str, unified_msg_origin: str, now: datetime
@@ -627,18 +716,205 @@ class PolicyGenerationUnitsMixin:
                     return self._normalized_holiday_name(name)
         return ""
 
-    async def _maybe_reply_shallow_query(self, event: AstrMessageEvent):
-        # Unified shallow-task channel: holiday/time/date/polite ping.
-        if await self._maybe_reply_holiday_query(event):
-            self._quality_bump("shallow_hit")
-            return
+    def _is_command_like_text(self, text: str) -> bool:
+        t = (text or "").strip()
+        return bool(t) and t[0] in {"/", "!", "！", "／"}
+
+    def _join_dialogue_parts(self, parts) -> str:
+        if not isinstance(parts, list):
+            return ""
+        cleaned = [str(x).strip() for x in parts if str(x).strip()]
+        if not cleaned:
+            return ""
+        return " ".join(cleaned).strip()
+
+    def _dialogue_wait_heuristic(self, text: str) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return False
+        if len(t) <= 5:
+            return True
+        if re.search(r"[。！？.!?]$", t):
+            return False
+        if "……" in t or "..." in t:
+            return True
+        trailing = (
+            "然后",
+            "还有",
+            "以及",
+            "并且",
+            "另外",
+            "就是",
+            "那个",
+            "先",
+            "等下",
+            "比如",
+        )
+        return any(t.endswith(x) for x in trailing)
+
+    async def _lite_should_wait_more(self, text: str, unified_msg_origin: str) -> bool:
+        # Priority gate: if user utterance is not complete, wait and merge.
         if not self._lite_llm_enabled():
+            return self._dialogue_wait_heuristic(text)
+        prompt = (
+            "你是输入完成度判断器。判断用户这句话是否已经说完。"
+            "输出严格 JSON，不要解释。\n"
+            '格式：{"complete":true|false,"confidence":0-1}\n'
+            "规则：\n"
+            "1) 如果明显还在补充、停顿、半句未完，complete=false。\n"
+            "2) 如果语义完整、可直接回复，complete=true。\n"
+            f"用户输入：{text}\n"
+        )
+        obj = await self._lite_llm_json(unified_msg_origin, prompt)
+        if not isinstance(obj, dict):
+            return self._dialogue_wait_heuristic(text)
+        complete = obj.get("complete")
+        if isinstance(complete, bool):
+            return not complete
+        return self._dialogue_wait_heuristic(text)
+
+    async def _flush_dialogue_wait_buffers(self):
+        if not self._dialogue_wait_enabled():
             return
+        if not isinstance(getattr(self, "_dialogue_wait_buffers", None), dict):
+            return
+        now_ts = self._now().timestamp()
+        to_flush = []
+        for session_key, row in list(self._dialogue_wait_buffers.items()):
+            if not isinstance(row, dict):
+                self._dialogue_wait_buffers.pop(session_key, None)
+                continue
+            deadline_at = float(row.get("deadline_at", 0.0) or 0.0)
+            if deadline_at > 0 and now_ts >= deadline_at:
+                to_flush.append((session_key, row))
+
+        for session_key, row in to_flush:
+            self._dialogue_wait_buffers.pop(session_key, None)
+            merged_text = self._join_dialogue_parts(row.get("parts", []))
+            umo = str(row.get("unified_msg_origin", "")).strip()
+            if not merged_text or not umo:
+                continue
+            self._debug(
+                f"dialogue wait flush timeout session={session_key} merged={merged_text}"
+            )
+            await self._maybe_reply_shallow_query_text(
+                user_text=merged_text,
+                unified_msg_origin=umo,
+                send_reply=lambda reply, u=umo: self.context.send_message(
+                    u, [Plain(reply)]
+                ),
+            )
+
+    async def _maybe_reply_shallow_query_with_wait(self, event: AstrMessageEvent):
         text = self._extract_event_text(event)
         if not text:
             return
+        if self._is_command_like_text(text):
+            await self._maybe_reply_shallow_query(event)
+            return
+        if not self._dialogue_wait_enabled():
+            await self._maybe_reply_shallow_query(event)
+            return
+
+        session_key = self._session_key(event)
+        if not session_key:
+            await self._maybe_reply_shallow_query(event)
+            return
+
+        now_ts = self._now().timestamp()
+        timeout_sec = self._dialogue_wait_timeout_sec()
+        max_merge = self._dialogue_wait_max_merge()
+        row = self._dialogue_wait_buffers.get(session_key)
+
+        if isinstance(row, dict):
+            parts = row.get("parts", [])
+            if not isinstance(parts, list):
+                parts = []
+            parts.append(text)
+            row["parts"] = parts[-max_merge:]
+            row["last_input_at"] = now_ts
+            row["deadline_at"] = now_ts + timeout_sec
+            merged_text = self._join_dialogue_parts(row["parts"])
+            self._dialogue_wait_buffers[session_key] = row
+            if len(row["parts"]) >= max_merge:
+                self._dialogue_wait_buffers.pop(session_key, None)
+                self._debug(
+                    f"dialogue wait merge limit reached session={session_key} merged={merged_text}"
+                )
+                await self._maybe_reply_shallow_query_text(
+                    user_text=merged_text,
+                    unified_msg_origin=event.unified_msg_origin,
+                    send_reply=lambda reply: event.send(event.plain_result(reply)),
+                )
+                return
+            should_wait = await self._lite_should_wait_more(
+                merged_text, event.unified_msg_origin
+            )
+            if should_wait:
+                self._debug(
+                    f"dialogue wait continue session={session_key} deadline={self._fmt_ts(row['deadline_at'])}"
+                )
+                return
+            self._dialogue_wait_buffers.pop(session_key, None)
+            self._debug(
+                f"dialogue wait complete session={session_key} merged={merged_text}"
+            )
+            await self._maybe_reply_shallow_query_text(
+                user_text=merged_text,
+                unified_msg_origin=event.unified_msg_origin,
+                send_reply=lambda reply: event.send(event.plain_result(reply)),
+            )
+            return
+
+        should_wait = await self._lite_should_wait_more(text, event.unified_msg_origin)
+        if should_wait:
+            self._dialogue_wait_buffers[session_key] = {
+                "parts": [text],
+                "unified_msg_origin": event.unified_msg_origin,
+                "last_input_at": now_ts,
+                "deadline_at": now_ts + timeout_sec,
+            }
+            self._debug(
+                f"dialogue wait started session={session_key} deadline={self._fmt_ts(now_ts + timeout_sec)} text={text}"
+            )
+            return
+        await self._maybe_reply_shallow_query_text(
+            user_text=text,
+            unified_msg_origin=event.unified_msg_origin,
+            send_reply=lambda reply: event.send(event.plain_result(reply)),
+        )
+
+    async def _maybe_reply_shallow_query(self, event: AstrMessageEvent):
+        text = self._extract_event_text(event)
+        if not text:
+            return
+        await self._maybe_reply_shallow_query_text(
+            user_text=text,
+            unified_msg_origin=event.unified_msg_origin,
+            send_reply=lambda reply: event.send(event.plain_result(reply)),
+        )
+
+    async def _maybe_reply_shallow_query_text(
+        self,
+        user_text: str,
+        unified_msg_origin: str,
+        send_reply: Callable[[str], Awaitable[None]],
+    ) -> bool:
+        # Unified shallow-task channel: holiday/time/date/polite ping.
+        if await self._maybe_reply_holiday_query_text(
+            text=user_text,
+            unified_msg_origin=unified_msg_origin,
+            send_reply=send_reply,
+        ):
+            self._quality_bump("shallow_hit")
+            return True
+        if not self._lite_llm_enabled():
+            return False
+        text = (user_text or "").strip()
+        if not text:
+            return False
         now = self._now()
-        lowered = text.strip().lower()
+        lowered = text.lower()
         intent = "none"
         if any(k in lowered for k in ("几点", "时间", "现在几点")):
             intent = "time"
@@ -648,7 +924,7 @@ class PolicyGenerationUnitsMixin:
             intent = "ping"
         else:
             obj = await self._lite_llm_json(
-                event.unified_msg_origin,
+                unified_msg_origin,
                 (
                     '你是浅任务意图分类器。输出严格JSON: {"intent":"none|time|weekday|ping"}。\n'
                     f"用户输入：{text}\n"
@@ -660,7 +936,7 @@ class PolicyGenerationUnitsMixin:
                     intent = raw_intent
         if intent == "none":
             self._quality_bump("shallow_fallback")
-            return
+            return False
         if intent == "time":
             fact = f"现在时间是 {now.strftime('%H:%M')}。"
         elif intent == "weekday":
@@ -671,12 +947,28 @@ class PolicyGenerationUnitsMixin:
         reply = await self._render_holiday_final_reply(
             user_text=text,
             fact_text=fact,
-            unified_msg_origin=event.unified_msg_origin,
+            unified_msg_origin=unified_msg_origin,
         )
-        await event.send(event.plain_result(reply))
+        await send_reply(reply)
         self._quality_bump("shallow_hit")
+        return True
 
     async def _maybe_reply_holiday_query(self, event: AstrMessageEvent) -> bool:
+        text = self._extract_event_text(event)
+        if not text:
+            return False
+        return await self._maybe_reply_holiday_query_text(
+            text=text,
+            unified_msg_origin=event.unified_msg_origin,
+            send_reply=lambda reply: event.send(event.plain_result(reply)),
+        )
+
+    async def _maybe_reply_holiday_query_text(
+        self,
+        text: str,
+        unified_msg_origin: str,
+        send_reply: Callable[[str], Awaitable[None]],
+    ) -> bool:
         # Holiday QA is an internal side-feature bound to lite LLM.
         if not self._lite_llm_enabled():
             return False
@@ -692,13 +984,11 @@ class PolicyGenerationUnitsMixin:
         )
         if country != "CN":
             return False
-        text = self._extract_event_text(event)
+        text = (text or "").strip()
         if not text:
             return False
         now = self._now()
-        parsed = await self._holiday_intent_from_lite_llm(
-            text, event.unified_msg_origin, now
-        )
+        parsed = await self._holiday_intent_from_lite_llm(text, unified_msg_origin, now)
         intent = parsed.get("intent", "none")
         holiday_name = str(parsed.get("holiday_name", "")).strip()
         if intent == "none":
@@ -717,9 +1007,9 @@ class PolicyGenerationUnitsMixin:
             reply = await self._render_holiday_final_reply(
                 user_text=text,
                 fact_text=fact_text,
-                unified_msg_origin=event.unified_msg_origin,
+                unified_msg_origin=unified_msg_origin,
             )
-            await event.send(event.plain_result(reply))
+            await send_reply(reply)
             return True
 
         if intent != "countdown":
@@ -729,16 +1019,16 @@ class PolicyGenerationUnitsMixin:
             if not holiday_name:
                 return False
         if not self._holiday_api_enabled():
-            await event.send(event.plain_result("节日倒计时需要开启在线节假日接口。"))
+            await send_reply("节日倒计时需要开启在线节假日接口。")
             return True
         found = self._find_next_cn_holiday_by_name(holiday_name, now)
         if not found:
             reply = await self._render_holiday_final_reply(
                 user_text=text,
                 fact_text=f"暂时没查到“{holiday_name}”的日期信息。",
-                unified_msg_origin=event.unified_msg_origin,
+                unified_msg_origin=unified_msg_origin,
             )
-            await event.send(event.plain_result(reply))
+            await send_reply(reply)
             return True
         target_date, target_name = found
         days = (target_date - now.date()).days
@@ -753,9 +1043,9 @@ class PolicyGenerationUnitsMixin:
         reply = await self._render_holiday_final_reply(
             user_text=text,
             fact_text=fact_text,
-            unified_msg_origin=event.unified_msg_origin,
+            unified_msg_origin=unified_msg_origin,
         )
-        await event.send(event.plain_result(reply))
+        await send_reply(reply)
         return True
 
     async def _render_holiday_final_reply(
@@ -779,6 +1069,7 @@ class PolicyGenerationUnitsMixin:
         cleaned = self._sanitize_outgoing_text(text)
         if not cleaned:
             return fact_text
+        cleaned = await self._optimize_output_segments(cleaned, unified_msg_origin)
         return cleaned
 
     def _holiday_text_from_builtin_cn(self, day) -> str:

@@ -636,6 +636,50 @@ class SessionConfigUnitsMixin:
                 DEFAULT_CONFIG["quality_trace_enabled"],
             )
             changed = True
+        if not isinstance(self.config.get("dialogue_wait_enabled"), bool):
+            self.config["dialogue_wait_enabled"] = self._to_bool(
+                self.config.get("dialogue_wait_enabled"),
+                DEFAULT_CONFIG["dialogue_wait_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("dialogue_wait_timeout_sec"), (int, float)):
+            self.config["dialogue_wait_timeout_sec"] = DEFAULT_CONFIG[
+                "dialogue_wait_timeout_sec"
+            ]
+            changed = True
+        if int(self.config.get("dialogue_wait_timeout_sec", 0)) < 5:
+            self.config["dialogue_wait_timeout_sec"] = 5
+            changed = True
+        if not isinstance(self.config.get("dialogue_wait_max_merge"), (int, float)):
+            self.config["dialogue_wait_max_merge"] = DEFAULT_CONFIG[
+                "dialogue_wait_max_merge"
+            ]
+            changed = True
+        if int(self.config.get("dialogue_wait_max_merge", 0)) < 1:
+            self.config["dialogue_wait_max_merge"] = 1
+            changed = True
+        if not isinstance(self.config.get("output_segment_enabled"), bool):
+            self.config["output_segment_enabled"] = self._to_bool(
+                self.config.get("output_segment_enabled"),
+                DEFAULT_CONFIG["output_segment_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("output_segment_max_parts"), (int, float)):
+            self.config["output_segment_max_parts"] = DEFAULT_CONFIG[
+                "output_segment_max_parts"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_max_parts", 0)) < 1:
+            self.config["output_segment_max_parts"] = 1
+            changed = True
+        if not isinstance(self.config.get("output_segment_max_chars"), (int, float)):
+            self.config["output_segment_max_chars"] = DEFAULT_CONFIG[
+                "output_segment_max_chars"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_max_chars", 0)) < 60:
+            self.config["output_segment_max_chars"] = 60
+            changed = True
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(
                 self.config.get("holiday_qa_main_llm_enabled"),

@@ -23,6 +23,12 @@ DEFAULT_CONFIG = {
     "decision_group_quiet_threshold": 3,
     "decision_trace_enabled": True,
     "quality_trace_enabled": True,
+    "dialogue_wait_enabled": True,
+    "dialogue_wait_timeout_sec": 30,
+    "dialogue_wait_max_merge": 2,
+    "output_segment_enabled": True,
+    "output_segment_max_parts": 3,
+    "output_segment_max_chars": 220,
     "holiday_qa_main_llm_enabled": True,
     "proactive_lite_refine_enabled": True,
     "proactive_prompt_template": (

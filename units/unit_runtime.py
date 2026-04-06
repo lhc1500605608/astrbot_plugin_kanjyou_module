@@ -13,6 +13,8 @@ class RuntimeUnitsMixin:
         while True:
             try:
                 await asyncio.sleep(self.config["check_interval_sec"])
+                if self.config.get("enabled", True):
+                    await self._flush_dialogue_wait_buffers()
                 await self._check_sessions()
             except asyncio.CancelledError:
                 raise

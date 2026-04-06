@@ -1,5 +1,9 @@
 import inspect
+import json
 import random
+import re
+import urllib.error
+import urllib.request
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -18,6 +22,24 @@ except Exception:
 
 
 class PolicyGenerationUnitsMixin:
+    _HOLIDAY_ALIASES = {
+        "元旦": "元旦",
+        "元旦节": "元旦",
+        "春节": "春节",
+        "新春": "春节",
+        "清明": "清明节",
+        "清明节": "清明节",
+        "劳动节": "劳动节",
+        "五一": "劳动节",
+        "五一节": "劳动节",
+        "端午": "端午节",
+        "端午节": "端午节",
+        "中秋": "中秋节",
+        "中秋节": "中秋节",
+        "国庆": "国庆节",
+        "国庆节": "国庆节",
+    }
+
     async def _generate_proactive_text(
         self,
         unified_msg_origin: str,
@@ -129,30 +151,308 @@ class PolicyGenerationUnitsMixin:
         )
         if country != "CN":
             return ""
-        if _cc is None:
-            return ""
 
         today = now.date()
         try:
-            detail = _cc.get_holiday_detail(today)
-            on_holiday = False
-            name = ""
-            if isinstance(detail, tuple):
-                if len(detail) >= 1:
-                    on_holiday = bool(detail[0])
-                if len(detail) >= 2 and detail[1]:
-                    name = str(detail[1])
-            elif detail:
-                name = str(detail)
-                on_holiday = _cc.is_holiday(today)
-
-            if on_holiday:
-                return f"节假日：{name or '法定假日'}"
-            if _cc.is_workday(today):
-                return "今天是工作日"
-            return "今天是休息日"
+            if self._holiday_api_enabled():
+                api_text = self._holiday_text_from_cn_api(today)
+                if api_text:
+                    return api_text
+            return self._holiday_text_from_builtin_cn(today)
         except Exception:
             return ""
+
+    def _holiday_api_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("holiday_api_enabled"),
+            DEFAULT_CONFIG["holiday_api_enabled"],
+        )
+
+    def _holiday_api_timeout_sec(self) -> float:
+        return max(
+            1.0,
+            float(
+                self.config.get(
+                    "holiday_api_timeout_sec", DEFAULT_CONFIG["holiday_api_timeout_sec"]
+                )
+            ),
+        )
+
+    def _holiday_api_cache_ttl_sec(self) -> int:
+        return max(
+            60,
+            int(
+                self.config.get(
+                    "holiday_api_cache_ttl_sec",
+                    DEFAULT_CONFIG["holiday_api_cache_ttl_sec"],
+                )
+            ),
+        )
+
+    def _holiday_cache_get(self, key: str) -> Optional[str]:
+        cache = getattr(self, "_holiday_cache", None)
+        if not isinstance(cache, dict):
+            return None
+        row = cache.get(key)
+        if not isinstance(row, dict):
+            return None
+        if self._now().timestamp() > float(row.get("expires_at", 0)):
+            cache.pop(key, None)
+            return None
+        val = row.get("value")
+        if isinstance(val, str):
+            return val
+        return None
+
+    def _holiday_cache_set(self, key: str, value: str):
+        cache = getattr(self, "_holiday_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            setattr(self, "_holiday_cache", cache)
+        cache[key] = {
+            "value": str(value or ""),
+            "expires_at": self._now().timestamp() + self._holiday_api_cache_ttl_sec(),
+        }
+
+    def _holiday_year_cache_key(self, year: int) -> str:
+        return f"cn-year:{year}"
+
+    def _holiday_text_from_cn_api(self, day) -> str:
+        cache_key = f"cn:{day.isoformat()}"
+        hit = self._holiday_cache_get(cache_key)
+        if hit is not None:
+            return hit
+
+        url = f"https://timor.tech/api/holiday/info/{day.isoformat()}"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "astrbot-kanjyou/1.11"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._holiday_api_timeout_sec()) as resp:
+                payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            self._debug(f"holiday api failed, fallback to builtin: {exc}")
+            return ""
+
+        if not isinstance(payload, dict) or int(payload.get("code", -1)) != 0:
+            return ""
+
+        holiday = payload.get("holiday")
+        type_info = payload.get("type") if isinstance(payload.get("type"), dict) else {}
+        type_name = str(type_info.get("name", "")).strip()
+        type_code = type_info.get("type")
+
+        text = ""
+        if isinstance(holiday, dict):
+            name = str(holiday.get("name", "")).strip() or type_name
+            if name:
+                text = f"节假日：{name}"
+        elif "补班" in type_name or "工作日" in type_name:
+            text = "今天是工作日"
+        elif "休息" in type_name or "周末" in type_name:
+            text = "今天是休息日"
+        elif type_code in (0, 1, 2, 3):
+            # 兜底分支：无法识别 name 时，至少给出日类型判断。
+            if type_code in (0, 3):
+                text = "今天是工作日"
+            else:
+                text = "今天是休息日"
+
+        self._holiday_cache_set(cache_key, text)
+        return text
+
+    def _holiday_year_data_from_cn_api(self, year: int):
+        cache_key = self._holiday_year_cache_key(year)
+        hit = self._holiday_cache_get(cache_key)
+        if hit:
+            try:
+                return json.loads(hit)
+            except Exception:
+                pass
+        url = f"https://timor.tech/api/holiday/year/{year}"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "astrbot-kanjyou/1.11"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._holiday_api_timeout_sec()) as resp:
+                payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            self._debug(f"holiday year api failed: {exc}")
+            return None
+        if not isinstance(payload, dict) or int(payload.get("code", -1)) != 0:
+            return None
+        holiday = payload.get("holiday")
+        if not isinstance(holiday, dict):
+            return None
+        try:
+            self._holiday_cache_set(cache_key, json.dumps(holiday, ensure_ascii=False))
+        except Exception:
+            pass
+        return holiday
+
+    def _normalized_holiday_name(self, name: str) -> str:
+        raw = re.sub(r"\s+", "", str(name or "").strip())
+        return self._HOLIDAY_ALIASES.get(raw, raw)
+
+    def _iter_cn_holiday_entries(self, year_holiday: dict):
+        for d, info in year_holiday.items():
+            if not isinstance(d, str):
+                continue
+            if not isinstance(info, dict):
+                continue
+            holiday = info.get("holiday")
+            if not isinstance(holiday, dict):
+                continue
+            name = str(holiday.get("name", "")).strip()
+            if not name:
+                continue
+            yield d, name
+
+    def _find_next_cn_holiday_by_name(self, query_name: str, now: datetime):
+        normalized_query = self._normalized_holiday_name(query_name)
+        today = now.date()
+        candidates = []
+        for year in (today.year, today.year + 1):
+            rows = self._holiday_year_data_from_cn_api(year)
+            if not isinstance(rows, dict):
+                continue
+            for day_str, name in self._iter_cn_holiday_entries(rows):
+                if (
+                    normalized_query in self._normalized_holiday_name(name)
+                    or self._normalized_holiday_name(name) in normalized_query
+                ):
+                    try:
+                        target = datetime.strptime(day_str, "%Y-%m-%d").date()
+                    except Exception:
+                        continue
+                    if target >= today:
+                        candidates.append((target, name))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda x: x[0])
+        return candidates[0]
+
+    def _extract_event_text(self, event: AstrMessageEvent) -> str:
+        for attr in ("message_str", "raw_message", "text"):
+            val = getattr(event, attr, None)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        msg_obj = getattr(event, "message_obj", None)
+        if msg_obj is not None:
+            for attr in ("message_str", "raw_message", "message"):
+                val = getattr(msg_obj, attr, None)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+                if isinstance(val, list):
+                    joined = "".join(str(x) for x in val if x is not None).strip()
+                    if joined:
+                        return joined
+        return ""
+
+    def _is_today_holiday_query(self, text: str) -> bool:
+        t = text.replace(" ", "")
+        if "今天" not in t:
+            return False
+        keys = (
+            "什么节",
+            "过什么节",
+            "什么节日",
+            "是不是节假日",
+            "是节假日吗",
+            "放假吗",
+            "工作日吗",
+            "休息日吗",
+        )
+        return any(k in t for k in keys)
+
+    def _extract_countdown_holiday_name(self, text: str) -> str:
+        t = text.replace(" ", "")
+        patterns = [
+            r"(?P<name>[\u4e00-\u9fa5A-Za-z0-9]{1,16}(?:节|节日))还有几天",
+            r"距离(?P<name>[\u4e00-\u9fa5A-Za-z0-9]{1,16}(?:节|节日))还有几天",
+            r"(?P<name>五一|元旦|春节|清明|端午|中秋|国庆)还有几天",
+            r"距离(?P<name>五一|元旦|春节|清明|端午|中秋|国庆)(?:还有几天)?",
+        ]
+        for p in patterns:
+            m = re.search(p, t)
+            if m:
+                name = str(m.group("name") or "").strip()
+                if name:
+                    return self._normalized_holiday_name(name)
+        return ""
+
+    async def _maybe_reply_holiday_query(self, event: AstrMessageEvent):
+        if not self._to_bool(
+            self.config.get("holiday_qa_enabled"),
+            DEFAULT_CONFIG["holiday_qa_enabled"],
+        ):
+            return
+        if not self._to_bool(
+            self.config.get("enable_holiday_perception"),
+            DEFAULT_CONFIG["enable_holiday_perception"],
+        ):
+            return
+        country = (
+            str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"]))
+            .upper()
+            .strip()
+        )
+        if country != "CN":
+            return
+        text = self._extract_event_text(event)
+        if not text:
+            return
+        now = self._now()
+
+        if self._is_today_holiday_query(text):
+            today_text = self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
+            await event.send(event.plain_result(today_text))
+            return
+
+        holiday_name = self._extract_countdown_holiday_name(text)
+        if not holiday_name:
+            return
+        if not self._holiday_api_enabled():
+            await event.send(event.plain_result("节日倒计时需要开启在线节假日接口。"))
+            return
+        found = self._find_next_cn_holiday_by_name(holiday_name, now)
+        if not found:
+            await event.send(event.plain_result(f"暂时没查到“{holiday_name}”的日期信息。"))
+            return
+        target_date, target_name = found
+        days = (target_date - now.date()).days
+        if days <= 0:
+            reply = f"今天就是{target_name}，节日快乐。"
+        elif days == 1:
+            reply = f"{target_name}在明天（{target_date.strftime('%m-%d')}）。"
+        else:
+            reply = f"{target_name}还有 {days} 天（{target_date.strftime('%Y-%m-%d')}）。"
+        await event.send(event.plain_result(reply))
+
+    def _holiday_text_from_builtin_cn(self, day) -> str:
+        if _cc is None:
+            return ""
+        detail = _cc.get_holiday_detail(day)
+        on_holiday = False
+        name = ""
+        if isinstance(detail, tuple):
+            if len(detail) >= 1:
+                on_holiday = bool(detail[0])
+            if len(detail) >= 2 and detail[1]:
+                name = str(detail[1])
+        elif detail:
+            name = str(detail)
+            on_holiday = _cc.is_holiday(day)
+
+        if on_holiday:
+            return f"节假日：{name or '法定假日'}"
+        if _cc.is_workday(day):
+            return "今天是工作日"
+        return "今天是休息日"
 
     def _platform_perception_text(
         self, unified_msg_origin: str, session_key: str

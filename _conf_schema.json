@@ -239,10 +239,30 @@
     "description": "[生成] 是否启用节假日感知（目前内置支持 CN）",
     "default": true
   },
+  "holiday_qa_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否启用节假日问答（对“今天什么节/某节还有几天”自动回复）",
+    "default": true
+  },
   "holiday_country": {
     "type": "string",
     "description": "[生成] 节假日感知地区代码（默认 CN）",
     "default": "CN"
+  },
+  "holiday_api_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否启用在线节假日接口（CN，优先于内置日历）",
+    "default": true
+  },
+  "holiday_api_timeout_sec": {
+    "type": "int",
+    "description": "[生成] 在线节假日接口超时秒数",
+    "default": 3
+  },
+  "holiday_api_cache_ttl_sec": {
+    "type": "int",
+    "description": "[生成] 在线节假日接口缓存时长（秒）",
+    "default": 21600
   },
   "enable_platform_perception": {
     "type": "bool",

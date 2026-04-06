@@ -11,7 +11,8 @@
 - 私聊/群聊分会话独立计时
 - 分钟级触发阈值与冷却控制（防啰嗦）
 - 人格 + Prompt 动态生成主动问候
-- 环境感知：时间段、星期/工作日、节假日（CN）与平台场景
+- 环境感知：时间段、星期/工作日、节假日（CN 在线接口优先）与平台场景
+- 节假日问答：可自动回答“今天什么节”“五一还有几天”等问题
 - 夜间免打扰（支持跨天）
 - 白名单控制（仅指定私聊/群聊生效）
 - 控制台 Debug 状态指示器
@@ -62,7 +63,8 @@
 - `min_idle_min` / `max_idle_min` / `cooldown_min`
 - `persona_id` / `proactive_provider_id`
 - `proactive_prompt_template` / `fallback_proactive_text`
-- `enable_holiday_perception` / `holiday_country` / `enable_platform_perception`
+- `enable_holiday_perception` / `holiday_qa_enabled` / `holiday_country` / `holiday_api_enabled`
+- `holiday_api_timeout_sec` / `holiday_api_cache_ttl_sec` / `enable_platform_perception`
 - `security_global_hourly_cap` / `security_max_fail_streak` / `security_fail_pause_min`
 - `security_allow_links` / `security_blocked_words` / `security_max_text_length`
 - `mood_enabled` / `mood_initial` / `mood_min_trigger`
@@ -81,6 +83,7 @@
 - `mood_initial = 70`
 - `mood_min_trigger = 35`
 - `holiday_country = CN`
+- `holiday_api_enabled = true`
 - `debug_status_window_sec = 300`
 
 ## 指令

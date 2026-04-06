@@ -27,6 +27,7 @@ class EventUnitsMixin:
             self._debug(
                 f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
             )
+        await self._maybe_reply_holiday_query(event)
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)

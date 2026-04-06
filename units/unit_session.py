@@ -512,6 +512,12 @@ class SessionConfigUnitsMixin:
                 DEFAULT_CONFIG["enable_holiday_perception"],
             )
             changed = True
+        if not isinstance(self.config.get("holiday_qa_enabled"), bool):
+            self.config["holiday_qa_enabled"] = self._to_bool(
+                self.config.get("holiday_qa_enabled"),
+                DEFAULT_CONFIG["holiday_qa_enabled"],
+            )
+            changed = True
         if not isinstance(self.config.get("enable_platform_perception"), bool):
             self.config["enable_platform_perception"] = self._to_bool(
                 self.config.get("enable_platform_perception"),
@@ -528,6 +534,28 @@ class SessionConfigUnitsMixin:
             self.config["holiday_country"] = (
                 str(self.config["holiday_country"]).upper().strip()
             )
+        if not isinstance(self.config.get("holiday_api_enabled"), bool):
+            self.config["holiday_api_enabled"] = self._to_bool(
+                self.config.get("holiday_api_enabled"),
+                DEFAULT_CONFIG["holiday_api_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("holiday_api_timeout_sec"), (int, float)):
+            self.config["holiday_api_timeout_sec"] = DEFAULT_CONFIG[
+                "holiday_api_timeout_sec"
+            ]
+            changed = True
+        if float(self.config.get("holiday_api_timeout_sec", 0)) < 1:
+            self.config["holiday_api_timeout_sec"] = 1
+            changed = True
+        if not isinstance(self.config.get("holiday_api_cache_ttl_sec"), (int, float)):
+            self.config["holiday_api_cache_ttl_sec"] = DEFAULT_CONFIG[
+                "holiday_api_cache_ttl_sec"
+            ]
+            changed = True
+        if int(self.config.get("holiday_api_cache_ttl_sec", 0)) < 60:
+            self.config["holiday_api_cache_ttl_sec"] = 60
+            changed = True
         return changed
 
     def _normalize_security_layer(self) -> bool:

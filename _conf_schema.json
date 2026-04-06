@@ -326,8 +326,8 @@
   },
   "output_segment_max_chars": {
     "type": "int",
-    "description": "[生成] 自动拆分后建议最大总字数",
-    "default": 120,
+    "description": "[生成] 自动拆分后每句建议字数（中文建议 10-20）",
+    "default": 20,
     "condition": {
       "advanced_enabled": true
     }

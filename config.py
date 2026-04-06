@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
     "dialogue_wait_max_merge": 2,
     "output_segment_enabled": True,
     "output_segment_max_parts": 4,
-    "output_segment_max_chars": 120,
+    "output_segment_max_chars": 20,
     "holiday_qa_main_llm_enabled": True,
     "proactive_lite_refine_enabled": True,
     "proactive_prompt_template": (

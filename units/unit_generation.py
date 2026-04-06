@@ -201,7 +201,7 @@ class PolicyGenerationUnitsMixin:
 
     def _output_segment_max_chars(self) -> int:
         return max(
-            30,
+            10,
             int(
                 self.config.get(
                     "output_segment_max_chars",
@@ -514,7 +514,18 @@ class PolicyGenerationUnitsMixin:
         # Soft split fallback for models that rarely use strong punctuation.
         soft = re.split(r"(?<=[，,])", raw)
         soft_parts = [c.strip() for c in soft if c and c.strip()]
-        return soft_parts if len(soft_parts) > 1 else [raw]
+        if len(soft_parts) > 1:
+            return soft_parts
+        # Hard split fallback: still no separator, split by configured char budget.
+        budget = max(10, int(self._output_segment_max_chars()))
+        if len(raw) <= budget:
+            return [raw]
+        out = []
+        i = 0
+        while i < len(raw):
+            out.append(raw[i : i + budget].strip())
+            i += budget
+        return [x for x in out if x]
 
     def _trim_reply_segments(self, parts: list[str]) -> list[str]:
         if not parts:
@@ -554,8 +565,10 @@ class PolicyGenerationUnitsMixin:
         if len(parts) == 1:
             await send_reply(parts[0])
             return
-        for p in parts:
+        for i, p in enumerate(parts):
             await send_reply(p)
+            if i < len(parts) - 1:
+                await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(p)))
 
     async def _send_image_reply(
         self, unified_msg_origin: str, image_prompt: str

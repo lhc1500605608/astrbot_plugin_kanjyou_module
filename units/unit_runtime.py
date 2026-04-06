@@ -544,9 +544,6 @@ class RuntimeUnitsMixin:
         if now_ts >= s.get("next_check_at", 0):
             return False
         self._maybe_log_status(session_key, s, now_ts, "waiting_next_check")
-        self._debug(
-            f"session skip(next_check) session={session_key} next_check={self._fmt_ts(s.get('next_check_at'))}"
-        )
         return True
 
     def _unit_defer_session(
@@ -554,7 +551,6 @@ class RuntimeUnitsMixin:
     ):
         s["next_check_at"] = now_ts + self._randomized_interval()
         self._maybe_log_status(session_key, s, now_ts, reason)
-        self._debug(debug_msg)
 
     def _unit_gate_cooldown(self, session_key: str, s: Dict, now_ts: float) -> bool:
         if now_ts >= s.get("cooldown_until", 0):
@@ -734,7 +730,7 @@ class RuntimeUnitsMixin:
                 f"today_count={s['today_proactive_count']} no_reply_streak={s.get('no_reply_streak', 0)} decay={decay:.2f}"
             )
             self._maybe_log_status(
-                session_key, s, now_ts, "trigger_success", force=True
+                session_key, s, now_ts, "trigger_success", force=False
             )
             return
 
@@ -744,8 +740,7 @@ class RuntimeUnitsMixin:
             self._debug(
                 f"trigger safety pause fail_streak={self._global_fail_streak} pause_until={self._fmt_ts(self._global_pause_until)}"
             )
-        self._debug(f"session trigger(failed) session={session_key}")
-        self._maybe_log_status(session_key, s, now_ts, "trigger_failed", force=True)
+        self._maybe_log_status(session_key, s, now_ts, "trigger_failed", force=False)
 
     async def _send_proactive(
         self,
@@ -758,17 +753,34 @@ class RuntimeUnitsMixin:
         topic = await self._generate_proactive_text(
             unified_msg_origin, session_key, idle_sec, session
         )
+        parts = [topic]
         try:
-            chain = MessageChain().message(topic)
-            await self.context.send_message(unified_msg_origin, chain)
-            self._debug(f"send proactive ok session={session_key} topic={topic}")
+            if self._output_segment_enabled():
+                split_parts = self._trim_reply_segments(
+                    self._split_reply_segments(topic)
+                )
+                if split_parts:
+                    parts = split_parts
+        except Exception:
+            parts = [topic]
+        try:
+            for i, part in enumerate(parts):
+                chain = MessageChain().message(part)
+                await self.context.send_message(unified_msg_origin, chain)
+                if i < len(parts) - 1:
+                    await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(part)))
+            self._debug(
+                f"send proactive ok session={session_key} parts={len(parts)} topic={topic}"
+            )
             return True, topic
         except Exception:
             try:
-                # 兼容部分适配器对 MessageChain 构造差异
-                await self.context.send_message(unified_msg_origin, [Plain(topic)])
+                for i, part in enumerate(parts):
+                    await self.context.send_message(unified_msg_origin, [Plain(part)])
+                    if i < len(parts) - 1:
+                        await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(part)))
                 self._debug(
-                    f"send proactive ok(fallback) session={session_key} topic={topic}"
+                    f"send proactive ok(fallback) session={session_key} parts={len(parts)} topic={topic}"
                 )
                 return True, topic
             except Exception as exc:

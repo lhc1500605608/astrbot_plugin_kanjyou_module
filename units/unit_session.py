@@ -461,6 +461,13 @@ class SessionConfigUnitsMixin:
             return
         if not self._debug_decision_enabled():
             return
+        now_ts = self._now().timestamp()
+        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
+        key = f"decision:{session_key}"
+        last = self._debug_status_last.get(key, 0.0)
+        if (now_ts - last) < window:
+            return
+        self._debug_status_last[key] = now_ts
         normalized = {"session": session_key}
         normalized.update(payload or {})
         try:
@@ -677,8 +684,8 @@ class SessionConfigUnitsMixin:
                 "output_segment_max_chars"
             ]
             changed = True
-        if int(self.config.get("output_segment_max_chars", 0)) < 30:
-            self.config["output_segment_max_chars"] = 30
+        if int(self.config.get("output_segment_max_chars", 0)) < 10:
+            self.config["output_segment_max_chars"] = 10
             changed = True
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(

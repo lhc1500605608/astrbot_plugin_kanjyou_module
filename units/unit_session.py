@@ -490,6 +490,21 @@ class SessionConfigUnitsMixin:
                 "proactive_provider_id"
             ]
             changed = True
+        if not isinstance(self.config.get("lite_llm_enabled"), bool):
+            self.config["lite_llm_enabled"] = self._to_bool(
+                self.config.get("lite_llm_enabled"),
+                DEFAULT_CONFIG["lite_llm_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("lite_provider_id"), str):
+            self.config["lite_provider_id"] = DEFAULT_CONFIG["lite_provider_id"]
+            changed = True
+        if not isinstance(self.config.get("lite_llm_timeout_sec"), (int, float)):
+            self.config["lite_llm_timeout_sec"] = DEFAULT_CONFIG["lite_llm_timeout_sec"]
+            changed = True
+        if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
+            self.config["lite_llm_timeout_sec"] = 1
+            changed = True
         if (
             not isinstance(self.config.get("proactive_prompt_template"), str)
             or not self.config["proactive_prompt_template"].strip()

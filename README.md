@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v1.11.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个 AstrBot 闲时主动对话插件：
@@ -13,6 +13,7 @@
 - 人格 + Prompt 动态生成主动问候
 - 环境感知：时间段、星期/工作日、节假日（CN 在线接口优先）与平台场景
 - 节假日问答：可自动回答“今天什么节”“五一还有几天”等问题
+- 双 LLM 分工：主模型负责生成，轻量模型负责浅任务意图解析
 - 夜间免打扰（支持跨天）
 - 白名单控制（仅指定私聊/群聊生效）
 - 控制台 Debug 状态指示器
@@ -62,6 +63,7 @@
 - `private_whitelist` / `group_whitelist`
 - `min_idle_min` / `max_idle_min` / `cooldown_min`
 - `persona_id` / `proactive_provider_id`
+- `lite_llm_enabled` / `lite_provider_id` / `lite_llm_timeout_sec`
 - `proactive_prompt_template` / `fallback_proactive_text`
 - `enable_holiday_perception` / `holiday_qa_enabled` / `holiday_country` / `holiday_api_enabled`
 - `holiday_api_timeout_sec` / `holiday_api_cache_ttl_sec` / `enable_platform_perception`

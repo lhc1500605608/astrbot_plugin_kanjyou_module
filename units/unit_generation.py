@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 import random
@@ -30,6 +31,7 @@ class PolicyGenerationUnitsMixin:
         "清明": "清明节",
         "清明节": "清明节",
         "劳动节": "劳动节",
+        "五一劳动节": "劳动节",
         "五一": "劳动节",
         "五一节": "劳动节",
         "端午": "端午节",
@@ -105,6 +107,106 @@ class PolicyGenerationUnitsMixin:
             logger.error(f"[idle-proactive] generate proactive text failed: {exc}")
             self._debug(f"generate failed session={session_key} err={exc}")
             return fallback
+
+    def _lite_llm_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("lite_llm_enabled"),
+            DEFAULT_CONFIG["lite_llm_enabled"],
+        )
+
+    def _lite_llm_timeout_sec(self) -> float:
+        return max(
+            1.0,
+            float(
+                self.config.get(
+                    "lite_llm_timeout_sec", DEFAULT_CONFIG["lite_llm_timeout_sec"]
+                )
+            ),
+        )
+
+    async def _resolve_lite_provider_id(self, unified_msg_origin: str) -> str:
+        provider_id = str(self.config.get("lite_provider_id") or "").strip()
+        if provider_id:
+            return provider_id
+        proactive_provider_id = str(
+            self.config.get("proactive_provider_id") or ""
+        ).strip()
+        if proactive_provider_id:
+            return proactive_provider_id
+        try:
+            return (
+                await self.context.get_current_chat_provider_id(unified_msg_origin)
+            ) or ""
+        except Exception:
+            return ""
+
+    def _extract_json_object(self, text: str) -> Optional[dict]:
+        if not isinstance(text, str):
+            return None
+        raw = text.strip()
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        m = re.search(r"\{[\s\S]*\}", raw)
+        if not m:
+            return None
+        try:
+            obj = json.loads(m.group(0))
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            return None
+        return None
+
+    async def _lite_llm_json(
+        self, unified_msg_origin: str, prompt: str
+    ) -> Optional[dict]:
+        if not self._lite_llm_enabled():
+            return None
+        provider_id = await self._resolve_lite_provider_id(unified_msg_origin)
+        if not provider_id:
+            return None
+        try:
+            completion = await asyncio.wait_for(
+                self.context.llm_generate(
+                    chat_provider_id=provider_id,
+                    prompt=prompt,
+                ),
+                timeout=self._lite_llm_timeout_sec(),
+            )
+            text = self._completion_to_text(completion)
+            obj = self._extract_json_object(text)
+            if isinstance(obj, dict):
+                return obj
+        except Exception as exc:
+            self._debug(f"lite llm parse failed: {exc}")
+        return None
+
+    async def _holiday_intent_from_lite_llm(
+        self, text: str, unified_msg_origin: str, now: datetime
+    ) -> dict:
+        prompt = (
+            "你是一个节日问答意图解析器。"
+            "请把用户输入解析为严格 JSON，不要输出其他内容。\n"
+            "JSON 结构：{\"intent\":\"none|today_status|countdown\",\"holiday_name\":\"\"}\n"
+            "规则：\n"
+            "1) intent=today_status：询问今天过什么节/今天是不是节假日/今天放假吗。\n"
+            "2) intent=countdown：询问某节日还有几天。\n"
+            "3) holiday_name 只填节日名；countdown 时尽量规范为：元旦/春节/清明节/劳动节/端午节/中秋节/国庆节。\n"
+            f"当前本地日期：{now.strftime('%Y-%m-%d')}。\n"
+            f"用户输入：{text}\n"
+        )
+        obj = await self._lite_llm_json(unified_msg_origin, prompt)
+        if not isinstance(obj, dict):
+            return {"intent": "none", "holiday_name": ""}
+        intent = str(obj.get("intent", "none")).strip().lower()
+        if intent not in {"none", "today_status", "countdown"}:
+            intent = "none"
+        holiday_name = self._normalized_holiday_name(str(obj.get("holiday_name", "")).strip())
+        return {"intent": intent, "holiday_name": holiday_name}
 
     def _build_env_perception(self, unified_msg_origin: str, session_key: str) -> str:
         now = self._now()
@@ -299,18 +401,25 @@ class PolicyGenerationUnitsMixin:
         return self._HOLIDAY_ALIASES.get(raw, raw)
 
     def _iter_cn_holiday_entries(self, year_holiday: dict):
-        for d, info in year_holiday.items():
-            if not isinstance(d, str):
+        for key, info in year_holiday.items():
+            if not isinstance(key, str):
                 continue
             if not isinstance(info, dict):
                 continue
-            holiday = info.get("holiday")
-            if not isinstance(holiday, dict):
+            # timor year API commonly returns:
+            # "05-01": {"holiday": true, "name": "劳动节", "date": "2026-05-01", ...}
+            # Keep only real holidays, skip make-up workdays.
+            if info.get("holiday") is not True:
                 continue
-            name = str(holiday.get("name", "")).strip()
+            name = str(info.get("name", "")).strip()
             if not name:
                 continue
-            yield d, name
+            # Prefer full date from payload; fallback to key ("MM-DD") with unknown year.
+            full_date = str(info.get("date", "")).strip()
+            if full_date:
+                yield full_date, name
+                continue
+            yield key, name
 
     def _find_next_cn_holiday_by_name(self, query_name: str, now: datetime):
         normalized_query = self._normalized_holiday_name(query_name)
@@ -326,7 +435,10 @@ class PolicyGenerationUnitsMixin:
                     or self._normalized_holiday_name(name) in normalized_query
                 ):
                     try:
-                        target = datetime.strptime(day_str, "%Y-%m-%d").date()
+                        if len(day_str) == 5 and "-" in day_str:
+                            target = datetime.strptime(f"{year}-{day_str}", "%Y-%m-%d").date()
+                        else:
+                            target = datetime.strptime(day_str, "%Y-%m-%d").date()
                     except Exception:
                         continue
                     if target >= today:
@@ -407,15 +519,31 @@ class PolicyGenerationUnitsMixin:
         if not text:
             return
         now = self._now()
+        parsed = await self._holiday_intent_from_lite_llm(
+            text, event.unified_msg_origin, now
+        )
+        intent = parsed.get("intent", "none")
+        holiday_name = str(parsed.get("holiday_name", "")).strip()
+        if intent == "none":
+            # Fallback: keep rule-based detection for robustness.
+            if self._is_today_holiday_query(text):
+                intent = "today_status"
+            else:
+                holiday_name = self._extract_countdown_holiday_name(text)
+                if holiday_name:
+                    intent = "countdown"
 
-        if self._is_today_holiday_query(text):
+        if intent == "today_status":
             today_text = self._holiday_perception_text(now) or "今天的节假日信息暂时不可用。"
             await event.send(event.plain_result(today_text))
             return
 
-        holiday_name = self._extract_countdown_holiday_name(text)
-        if not holiday_name:
+        if intent != "countdown":
             return
+        if not holiday_name:
+            holiday_name = self._extract_countdown_holiday_name(text)
+            if not holiday_name:
+                return
         if not self._holiday_api_enabled():
             await event.send(event.plain_result("节日倒计时需要开启在线节假日接口。"))
             return

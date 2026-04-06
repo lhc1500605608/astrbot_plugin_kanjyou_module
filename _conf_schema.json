@@ -223,6 +223,22 @@
     "_special": "select_provider",
     "default": ""
   },
+  "lite_llm_enabled": {
+    "type": "bool",
+    "description": "[生成] 是否启用轻量 LLM（用于节假日问答等浅任务意图解析）",
+    "default": true
+  },
+  "lite_provider_id": {
+    "type": "string",
+    "description": "[生成] 轻量任务使用的模型提供商（留空则跟随当前会话）",
+    "_special": "select_provider",
+    "default": ""
+  },
+  "lite_llm_timeout_sec": {
+    "type": "int",
+    "description": "[生成] 轻量 LLM 超时秒数",
+    "default": 6
+  },
   "proactive_prompt_template": {
     "type": "string",
     "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",

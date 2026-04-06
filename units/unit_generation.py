@@ -6,7 +6,7 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime
-from typing import Awaitable, Callable, Dict, Optional
+from typing import Awaitable, Callable, Dict, Optional, Tuple
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain
@@ -371,26 +371,10 @@ class PolicyGenerationUnitsMixin:
         cleaned = (text or "").strip()
         if not cleaned:
             return cleaned
-        if not self._output_segment_enabled() or not self._lite_llm_enabled():
+        if not self._output_segment_enabled():
             return cleaned
-        max_parts = self._output_segment_max_parts()
         max_chars = self._output_segment_max_chars()
-        per_part = max(8, int(max_chars / max(1, max_parts)))
-        prompt = (
-            "你是回复整理助手。请把输入改写为更短、更利落的多句回复。"
-            "要求：\n"
-            f"1) 最多 {max_parts} 句。\n"
-            f"2) 总长度尽量不超过 {max_chars} 字。\n"
-            f"3) 每句尽量不超过 {per_part} 字。\n"
-            "4) 句子之间使用 `||` 分隔，不要换行。\n"
-            "5) 保持原意，不新增事实。\n"
-            "6) 仅输出最终句子，不要解释。\n"
-            f"输入：{cleaned}\n"
-        )
-        out = await self._lite_llm_text(unified_msg_origin, prompt)
-        if not out:
-            return cleaned
-        parts = self._split_reply_segments(out)
+        parts = self._split_reply_segments(cleaned)
         if not parts:
             return cleaned
         parts = self._trim_reply_segments(parts)
@@ -400,6 +384,60 @@ class PolicyGenerationUnitsMixin:
         if len("".join(parts)) > max_chars * 2:
             return cleaned
         return out
+
+    def _complexity_level(self, text: str) -> str:
+        t = (text or "").strip()
+        if not t:
+            return "simple"
+        hard_words = (
+            "原理",
+            "为什么",
+            "区别",
+            "方案",
+            "架构",
+            "优化",
+            "报错",
+            "异常",
+            "实现",
+            "步骤",
+            "详细",
+            "深入",
+        )
+        score = sum(1 for w in hard_words if w in t)
+        if len(t) > 60 or score >= 3:
+            return "hard"
+        if len(t) > 25 or score >= 1:
+            return "complex"
+        return "simple"
+
+    def _reply_policy_hint(self, user_text: str) -> str:
+        level = self._complexity_level(user_text)
+        max_parts = self._output_segment_max_parts()
+        max_chars = self._output_segment_max_chars()
+        if level == "simple":
+            return "问题偏简单：用1句回复，尽量不超过28字，不要过度解释。"
+        if level == "complex":
+            return (
+                f"问题中等复杂：分2句回复，必要时3句；总字数尽量不超过{max_chars}字。"
+                "每句短一点，符合中文聊天习惯。"
+            )
+        return (
+            f"问题较复杂：分2到{max_parts}句回复，先结论后说明。"
+            f"总字数尽量不超过{max_chars}字。"
+            "如纯文字仍难解释，请走图片说明模式。"
+        )
+
+    def _parse_image_mode(self, text: str) -> Tuple[bool, str]:
+        raw = (text or "").strip()
+        if not raw:
+            return False, ""
+        m = re.search(r"\[\[IMAGE\]\]\s*(.*)", raw, flags=re.S)
+        if not m:
+            return False, ""
+        prompt = m.group(1).strip()
+        if not prompt:
+            return False, ""
+        return True, prompt
 
     def _split_reply_segments(self, text: str) -> list[str]:
         raw = (text or "").strip()
@@ -453,6 +491,27 @@ class PolicyGenerationUnitsMixin:
             return
         for p in parts:
             await send_reply(p)
+
+    async def _send_image_reply(
+        self, unified_msg_origin: str, image_prompt: str
+    ) -> bool:
+        prompt = (image_prompt or "").strip()
+        if not prompt:
+            return False
+        try:
+            image_url = await self.text_to_image(prompt)
+            try:
+                chain = MessageChain().file_image(image_url)
+                await self.context.send_message(unified_msg_origin, chain)
+                return True
+            except Exception:
+                await self._send_text_to_origin(
+                    unified_msg_origin, f"这部分更适合看图说明：{image_url}"
+                )
+                return True
+        except Exception as exc:
+            self._debug(f"text_to_image failed: {exc}")
+            return False
 
     async def _holiday_intent_from_lite_llm(
         self, text: str, unified_msg_origin: str, now: datetime
@@ -1057,6 +1116,12 @@ class PolicyGenerationUnitsMixin:
             unified_msg_origin=unified_msg_origin,
         )
         if merged_reply:
+            is_image, image_prompt = self._parse_image_mode(merged_reply)
+            if is_image:
+                sent = await self._send_image_reply(unified_msg_origin, image_prompt)
+                if sent:
+                    self._quality_bump("main_rewrite_ok")
+                    return True
             await self._dispatch_reply_segments(send_reply, merged_reply)
             self._quality_bump("main_rewrite_ok")
             return True
@@ -1076,14 +1141,17 @@ class PolicyGenerationUnitsMixin:
         text = (user_text or "").strip()
         if not text:
             return ""
+        policy = self._reply_policy_hint(text)
         prompt = (
             "你是聊天助手。用户可能分两次输入，这里已经合并成一条完整输入。"
             "请直接给出自然、连贯、简洁的中文回复。\n"
             "要求：\n"
             "1) 优先接住用户意图，不要复读原话。\n"
             "2) 不要编造事实，不输出推理过程。\n"
-            "3) 语气自然、不过度啰嗦。\n"
-            "4) 只输出回复正文。\n"
+            "3) 语气自然、不过度啰嗦，贴近中国人聊天习惯。\n"
+            f"4) {policy}\n"
+            "5) 如纯文字仍难解释，请输出：[[IMAGE]] 后接一行中文画面描述词。\n"
+            "6) 普通情况只输出回复正文；多句时使用 || 分隔，不要换行。\n"
             f"用户合并输入：{text}\n"
         )
         reply = await self._main_llm_text(unified_msg_origin, prompt)
@@ -1194,13 +1262,15 @@ class PolicyGenerationUnitsMixin:
     ) -> str:
         if not self._holiday_qa_main_llm_enabled():
             return fact_text
+        policy = self._reply_policy_hint(user_text)
         prompt = (
             "你是聊天助手。请根据用户原话和已知事实，生成一条自然、简洁、有温度的中文回复。\n"
             "要求：\n"
             "1) 忠实于已知事实，不要编造。\n"
             "2) 不需要解释推理过程。\n"
-            "3) 控制在 12-60 字。\n"
-            "4) 只输出回复正文。\n"
+            "3) 贴近中国人聊天语境，不端着。\n"
+            f"4) {policy}\n"
+            "5) 普通情况只输出正文；多句时使用 || 分隔，不要换行。\n"
             f"用户原话：{user_text}\n"
             f"已知事实：{fact_text}\n"
         )

@@ -935,6 +935,18 @@ class SessionConfigUnitsMixin:
         if self.config.get("debug_log", False):
             logger.debug(f"[idle-proactive] {msg}")
 
+    def _debug_throttled(self, key: str, msg: str):
+        if not self.config.get("debug_log", False):
+            return
+        now_ts = self._now().timestamp()
+        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
+        throttle_key = f"throttle:{key}"
+        last = self._debug_status_last.get(throttle_key, 0.0)
+        if (now_ts - last) < window:
+            return
+        self._debug_status_last[throttle_key] = now_ts
+        logger.debug(f"[idle-proactive] {msg}")
+
     def _run_startup_config_checks(self):
         issues = []
         enabled = bool(self.config.get("enabled", True))

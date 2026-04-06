@@ -23,12 +23,15 @@ class RuntimeUnitsMixin:
 
     async def _check_sessions(self):
         if not self.config.get("enabled", True):
-            self._debug("loop skip: plugin disabled")
+            self._debug_throttled("loop_plugin_disabled", "loop skip: plugin disabled")
             return
 
         now = self._now()
         if self._in_sleep_window(now):
-            self._debug(f"loop skip: in sleep window now={now.strftime('%H:%M')}")
+            self._debug_throttled(
+                "loop_sleep_window",
+                f"loop skip: in sleep window now={now.strftime('%H:%M')}",
+            )
             return
 
         now_ts = now.timestamp()
@@ -510,15 +513,17 @@ class RuntimeUnitsMixin:
 
     def _unit_global_guard(self, now_ts: float) -> bool:
         if now_ts < self._global_pause_until:
-            self._debug(
-                f"loop skip: global pause active until={self._fmt_ts(self._global_pause_until)}"
+            self._debug_throttled(
+                "global_pause_active",
+                f"loop skip: global pause active until={self._fmt_ts(self._global_pause_until)}",
             )
             return False
 
         self._trim_global_send_history(now_ts)
         if len(self._global_send_history) >= self._security_global_hourly_cap():
-            self._debug(
-                f"loop skip: global hourly cap reached count={len(self._global_send_history)} cap={self._security_global_hourly_cap()}"
+            self._debug_throttled(
+                "global_hourly_cap_reached",
+                f"loop skip: global hourly cap reached count={len(self._global_send_history)} cap={self._security_global_hourly_cap()}",
             )
             return False
         return True
@@ -753,34 +758,17 @@ class RuntimeUnitsMixin:
         topic = await self._generate_proactive_text(
             unified_msg_origin, session_key, idle_sec, session
         )
-        parts = [topic]
         try:
-            if self._output_segment_enabled():
-                split_parts = self._trim_reply_segments(
-                    self._split_reply_segments(topic)
-                )
-                if split_parts:
-                    parts = split_parts
-        except Exception:
-            parts = [topic]
-        try:
-            for i, part in enumerate(parts):
-                chain = MessageChain().message(part)
-                await self.context.send_message(unified_msg_origin, chain)
-                if i < len(parts) - 1:
-                    await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(part)))
-            self._debug(
-                f"send proactive ok session={session_key} parts={len(parts)} topic={topic}"
-            )
+            chain = MessageChain().message(topic)
+            await self.context.send_message(unified_msg_origin, chain)
+            self._debug(f"send proactive ok session={session_key} topic={topic}")
             return True, topic
         except Exception:
             try:
-                for i, part in enumerate(parts):
-                    await self.context.send_message(unified_msg_origin, [Plain(part)])
-                    if i < len(parts) - 1:
-                        await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(part)))
+                # 兼容部分适配器对 MessageChain 构造差异
+                await self.context.send_message(unified_msg_origin, [Plain(topic)])
                 self._debug(
-                    f"send proactive ok(fallback) session={session_key} parts={len(parts)} topic={topic}"
+                    f"send proactive ok(fallback) session={session_key} topic={topic}"
                 )
                 return True, topic
             except Exception as exc:

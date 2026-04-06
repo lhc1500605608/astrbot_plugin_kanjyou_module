@@ -297,8 +297,8 @@
   },
   "dialogue_wait_timeout_sec": {
     "type": "int",
-    "description": "[生成] 对话等待超时（秒）",
-    "default": 30,
+    "description": "[生成] 对话合并空窗时间（秒，建议 3-5）",
+    "default": 4,
     "condition": {
       "advanced_enabled": true
     }
@@ -318,16 +318,16 @@
   },
   "output_segment_max_parts": {
     "type": "int",
-    "description": "[生成] 自动分段最大段数",
-    "default": 3,
+    "description": "[生成] 自动拆分最大句数（更短更紧凑）",
+    "default": 4,
     "condition": {
       "advanced_enabled": true
     }
   },
   "output_segment_max_chars": {
     "type": "int",
-    "description": "[生成] 自动分段后建议最大字数",
-    "default": 220,
+    "description": "[生成] 自动拆分后建议最大总字数",
+    "default": 120,
     "condition": {
       "advanced_enabled": true
     }

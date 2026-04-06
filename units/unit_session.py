@@ -647,8 +647,8 @@ class SessionConfigUnitsMixin:
                 "dialogue_wait_timeout_sec"
             ]
             changed = True
-        if int(self.config.get("dialogue_wait_timeout_sec", 0)) < 5:
-            self.config["dialogue_wait_timeout_sec"] = 5
+        if int(self.config.get("dialogue_wait_timeout_sec", 0)) < 1:
+            self.config["dialogue_wait_timeout_sec"] = 1
             changed = True
         if not isinstance(self.config.get("dialogue_wait_max_merge"), (int, float)):
             self.config["dialogue_wait_max_merge"] = DEFAULT_CONFIG[
@@ -677,8 +677,8 @@ class SessionConfigUnitsMixin:
                 "output_segment_max_chars"
             ]
             changed = True
-        if int(self.config.get("output_segment_max_chars", 0)) < 60:
-            self.config["output_segment_max_chars"] = 60
+        if int(self.config.get("output_segment_max_chars", 0)) < 30:
+            self.config["output_segment_max_chars"] = 30
             changed = True
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(

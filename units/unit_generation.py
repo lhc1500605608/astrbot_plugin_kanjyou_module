@@ -441,6 +441,49 @@ class PolicyGenerationUnitsMixin:
             "如纯文字仍难解释，请走图片说明模式。"
         )
 
+    async def _lite_reply_plan(
+        self, user_text: str, unified_msg_origin: str
+    ) -> Dict[str, object]:
+        # Lite model only decides structure budget; it must not rewrite response text.
+        fallback_level = self._complexity_level(user_text)
+        fallback_budget = (
+            1
+            if fallback_level == "simple"
+            else (2 if fallback_level == "complex" else 3)
+        )
+        if not self._lite_llm_enabled():
+            return {
+                "sentence_budget": fallback_budget,
+                "need_image": False,
+                "source": "heuristic",
+            }
+
+        prompt = (
+            "你是回复结构决策器。你只负责决定回复句数预算和是否建议用图解释，不负责改写内容。"
+            "输出严格 JSON，不要解释。\n"
+            '格式：{"sentence_budget":1,"need_image":false,"confidence":0.0}\n'
+            "规则：\n"
+            "1) 简单问题：sentence_budget=1。\n"
+            "2) 中等问题：sentence_budget=2 或 3。\n"
+            f"3) 复杂问题：sentence_budget=3 到 {self._output_segment_max_parts()}。\n"
+            "4) 仅当纯文字难以解释时，need_image=true。\n"
+            f"用户输入：{user_text}\n"
+        )
+        obj = await self._lite_llm_json(unified_msg_origin, prompt)
+        if not isinstance(obj, dict):
+            return {
+                "sentence_budget": fallback_budget,
+                "need_image": False,
+                "source": "heuristic",
+            }
+        try:
+            budget = int(obj.get("sentence_budget", fallback_budget))
+        except Exception:
+            budget = fallback_budget
+        budget = max(1, min(int(self._output_segment_max_parts()), budget))
+        need_image = bool(obj.get("need_image", False))
+        return {"sentence_budget": budget, "need_image": need_image, "source": "lite"}
+
     def _parse_image_mode(self, text: str) -> Tuple[bool, str]:
         raw = (text or "").strip()
         if not raw:
@@ -465,30 +508,31 @@ class PolicyGenerationUnitsMixin:
         if len(lines) > 1:
             return lines
         chunks = re.split(r"(?<=[。！？!?；;])", raw)
-        return [c.strip() for c in chunks if c and c.strip()]
+        parts = [c.strip() for c in chunks if c and c.strip()]
+        if len(parts) > 1:
+            return parts
+        # Soft split fallback for models that rarely use strong punctuation.
+        soft = re.split(r"(?<=[，,])", raw)
+        soft_parts = [c.strip() for c in soft if c and c.strip()]
+        return soft_parts if len(soft_parts) > 1 else [raw]
 
     def _trim_reply_segments(self, parts: list[str]) -> list[str]:
         if not parts:
             return []
         max_parts = self._output_segment_max_parts()
-        max_chars = self._output_segment_max_chars()
-        kept = []
-        used = 0
-        for p in parts:
-            if len(kept) >= max_parts:
-                break
-            budget = max_chars - used
-            if budget <= 0:
-                break
-            cur = p[:budget].strip()
-            if not cur:
-                continue
-            kept.append(cur)
-            used += len(cur)
-        return kept
+        if len(parts) <= max_parts:
+            return parts
+        kept = parts[: max_parts - 1]
+        tail = "".join(parts[max_parts - 1 :]).strip()
+        if tail:
+            kept.append(tail)
+        return [p for p in kept if p]
 
     async def _dispatch_reply_segments(
-        self, send_reply: Callable[[str], Awaitable[None]], text: str
+        self,
+        send_reply: Callable[[str], Awaitable[None]],
+        text: str,
+        sentence_budget: Optional[int] = None,
     ):
         msg = (text or "").strip()
         if not msg:
@@ -496,7 +540,14 @@ class PolicyGenerationUnitsMixin:
         if not self._output_segment_enabled():
             await send_reply(msg)
             return
-        parts = self._trim_reply_segments(self._split_reply_segments(msg))
+        parts = self._split_reply_segments(msg)
+        if isinstance(sentence_budget, int) and sentence_budget > 0:
+            cap = max(
+                1, min(int(self._output_segment_max_parts()), int(sentence_budget))
+            )
+            if len(parts) > cap:
+                parts = parts[: cap - 1] + ["".join(parts[cap - 1 :]).strip()]
+        parts = self._trim_reply_segments(parts)
         if not parts:
             await send_reply(msg)
             return
@@ -1163,13 +1214,20 @@ class PolicyGenerationUnitsMixin:
             unified_msg_origin=unified_msg_origin,
         )
         if merged_reply:
+            plan = await self._lite_reply_plan(user_text, unified_msg_origin)
             is_image, image_prompt = self._parse_image_mode(merged_reply)
-            if is_image:
+            if is_image or bool(plan.get("need_image", False)):
+                if not image_prompt:
+                    image_prompt = f"用信息图解释：{user_text}"
                 sent = await self._send_image_reply(unified_msg_origin, image_prompt)
                 if sent:
                     self._quality_bump("main_rewrite_ok")
                     return True
-            await self._dispatch_reply_segments(send_reply, merged_reply)
+            await self._dispatch_reply_segments(
+                send_reply,
+                merged_reply,
+                sentence_budget=int(plan.get("sentence_budget", 0) or 0),
+            )
             self._quality_bump("main_rewrite_ok")
             return True
         handled = await self._maybe_reply_shallow_query_text(
@@ -1188,6 +1246,8 @@ class PolicyGenerationUnitsMixin:
         text = (user_text or "").strip()
         if not text:
             return ""
+        plan = await self._lite_reply_plan(text, unified_msg_origin)
+        budget = max(1, int(plan.get("sentence_budget", 1) or 1))
         policy = self._reply_policy_hint(text)
         prompt = (
             "你是聊天助手。用户可能分两次输入，这里已经合并成一条完整输入。"
@@ -1197,8 +1257,9 @@ class PolicyGenerationUnitsMixin:
             "2) 不要编造事实，不输出推理过程。\n"
             "3) 语气自然、不过度啰嗦，贴近中国人聊天习惯。\n"
             f"4) {policy}\n"
-            "5) 如纯文字仍难解释，请输出：[[IMAGE]] 后接一行中文画面描述词。\n"
-            "6) 普通情况只输出回复正文；多句时使用 || 分隔，不要换行。\n"
+            f"5) 本次句数预算为 {budget} 句，尽量贴合预算。\n"
+            "6) 如纯文字仍难解释，请输出：[[IMAGE]] 后接一行中文画面描述词。\n"
+            "7) 普通情况只输出回复正文；多句时使用 || 分隔，不要换行。\n"
             f"用户合并输入：{text}\n"
         )
         reply = await self._main_llm_text(unified_msg_origin, prompt)
@@ -1309,6 +1370,8 @@ class PolicyGenerationUnitsMixin:
     ) -> str:
         if not self._holiday_qa_main_llm_enabled():
             return fact_text
+        plan = await self._lite_reply_plan(user_text, unified_msg_origin)
+        budget = max(1, int(plan.get("sentence_budget", 1) or 1))
         policy = self._reply_policy_hint(user_text)
         prompt = (
             "你是聊天助手。请根据用户原话和已知事实，生成一条自然、简洁、有温度的中文回复。\n"
@@ -1317,7 +1380,8 @@ class PolicyGenerationUnitsMixin:
             "2) 不需要解释推理过程。\n"
             "3) 贴近中国人聊天语境，不端着。\n"
             f"4) {policy}\n"
-            "5) 普通情况只输出正文；多句时使用 || 分隔，不要换行。\n"
+            f"5) 本次句数预算为 {budget} 句，尽量贴合预算。\n"
+            "6) 普通情况只输出正文；多句时使用 || 分隔，不要换行。\n"
             f"用户原话：{user_text}\n"
             f"已知事实：{fact_text}\n"
         )

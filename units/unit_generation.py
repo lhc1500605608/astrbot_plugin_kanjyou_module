@@ -797,7 +797,7 @@ class PolicyGenerationUnitsMixin:
             self._debug(
                 f"dialogue wait flush timeout session={session_key} merged={merged_text}"
             )
-            await self._maybe_reply_shallow_query_text(
+            await self._handle_wait_merged_text(
                 user_text=merged_text,
                 unified_msg_origin=umo,
                 send_reply=lambda reply, u=umo: self.context.send_message(
@@ -841,7 +841,7 @@ class PolicyGenerationUnitsMixin:
                 self._debug(
                     f"dialogue wait merge limit reached session={session_key} merged={merged_text}"
                 )
-                await self._maybe_reply_shallow_query_text(
+                await self._handle_wait_merged_text(
                     user_text=merged_text,
                     unified_msg_origin=event.unified_msg_origin,
                     send_reply=lambda reply: event.send(event.plain_result(reply)),
@@ -859,7 +859,7 @@ class PolicyGenerationUnitsMixin:
             self._debug(
                 f"dialogue wait complete session={session_key} merged={merged_text}"
             )
-            await self._maybe_reply_shallow_query_text(
+            await self._handle_wait_merged_text(
                 user_text=merged_text,
                 unified_msg_origin=event.unified_msg_origin,
                 send_reply=lambda reply: event.send(event.plain_result(reply)),
@@ -952,6 +952,59 @@ class PolicyGenerationUnitsMixin:
         await send_reply(reply)
         self._quality_bump("shallow_hit")
         return True
+
+    async def _handle_wait_merged_text(
+        self,
+        user_text: str,
+        unified_msg_origin: str,
+        send_reply: Callable[[str], Awaitable[None]],
+    ) -> bool:
+        # Wait-merge priority chain:
+        # 1) shallow channel first (holiday/time/ping)
+        # 2) fallback to main LLM for normal dialogue continuation
+        handled = await self._maybe_reply_shallow_query_text(
+            user_text=user_text,
+            unified_msg_origin=unified_msg_origin,
+            send_reply=send_reply,
+        )
+        if handled:
+            return True
+        merged_reply = await self._render_wait_merged_main_reply(
+            user_text=user_text,
+            unified_msg_origin=unified_msg_origin,
+        )
+        if not merged_reply:
+            self._debug(
+                "dialogue wait merged text not handled: main reply empty, fallback to normal pipeline"
+            )
+            return False
+        await send_reply(merged_reply)
+        self._quality_bump("main_rewrite_ok")
+        return True
+
+    async def _render_wait_merged_main_reply(
+        self, user_text: str, unified_msg_origin: str
+    ) -> str:
+        text = (user_text or "").strip()
+        if not text:
+            return ""
+        prompt = (
+            "你是聊天助手。用户可能分两次输入，这里已经合并成一条完整输入。"
+            "请直接给出自然、连贯、简洁的中文回复。\n"
+            "要求：\n"
+            "1) 优先接住用户意图，不要复读原话。\n"
+            "2) 不要编造事实，不输出推理过程。\n"
+            "3) 语气自然、不过度啰嗦。\n"
+            "4) 只输出回复正文。\n"
+            f"用户合并输入：{text}\n"
+        )
+        reply = await self._main_llm_text(unified_msg_origin, prompt)
+        if not reply:
+            return ""
+        cleaned = self._sanitize_outgoing_text(reply)
+        if not cleaned:
+            return ""
+        return await self._optimize_output_segments(cleaned, unified_msg_origin)
 
     async def _maybe_reply_holiday_query(self, event: AstrMessageEvent) -> bool:
         text = self._extract_event_text(event)

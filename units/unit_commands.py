@@ -19,6 +19,12 @@ class CommandUnitsMixin:
                 event.call_llm = False
         except Exception:
             pass
+        try:
+            stop = getattr(event, "stop_event", None)
+            if callable(stop):
+                stop()
+        except Exception:
+            pass
 
     async def _cmd_idle_status(self, event: AstrMessageEvent):
         self._shield_command_from_llm(event)

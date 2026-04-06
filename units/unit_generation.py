@@ -1026,10 +1026,6 @@ class PolicyGenerationUnitsMixin:
         ):
             session_key = self._session_key(event)
             self._clear_wait_buffer_for_session(session_key)
-            if self._is_plugin_command_text(text):
-                self._suppress_default_llm(
-                    event, "plugin_command_bypass", stop_propagation=False
-                )
             self._debug(
                 f"dialogue wait bypass command session={session_key or '-'} text={text}"
             )
@@ -1532,6 +1528,18 @@ class PolicyGenerationUnitsMixin:
         if group_id:
             return group_id in self.config["group_whitelist"]
         return sender_id in self.config["private_whitelist"]
+
+    def _is_session_whitelisted(self, session_key: str) -> bool:
+        key = str(session_key or "").strip()
+        if not key:
+            return False
+        if key.startswith("group:"):
+            gid = key.split(":", 1)[1]
+            return gid in self.config.get("group_whitelist", [])
+        if key.startswith("private:"):
+            uid = key.split(":", 1)[1]
+            return uid in self.config.get("private_whitelist", [])
+        return False
 
     def _session_key(self, event: AstrMessageEvent) -> str:
         msg_obj = getattr(event, "message_obj", None)

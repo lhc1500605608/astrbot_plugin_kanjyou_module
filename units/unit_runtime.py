@@ -105,6 +105,23 @@ class RuntimeUnitsMixin:
         reason_codes = []
         state_changed = False
 
+        if self._unit_gate_whitelist(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.99,
+                ["not_in_proactive_whitelist"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+
         if self._unit_gate_next_check(session_key, s, now_ts):
             return self._decision_result(
                 False,
@@ -510,6 +527,18 @@ class RuntimeUnitsMixin:
         self._ensure_session_shape(s)
         self._rollover_daily_counter(s, now)
         self._rollover_period_counter(s, now)
+
+    def _unit_gate_whitelist(self, session_key: str, s: Dict, now_ts: float) -> bool:
+        if self._is_session_whitelisted(session_key):
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "not_in_proactive_whitelist",
+            f"session skip(whitelist) session={session_key}",
+        )
+        return True
 
     def _unit_gate_next_check(self, session_key: str, s: Dict, now_ts: float) -> bool:
         if now_ts >= s.get("next_check_at", 0):

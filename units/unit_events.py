@@ -2,28 +2,49 @@ from astrbot.api.event import AstrMessageEvent
 
 
 class EventUnitsMixin:
+    async def _touch_session_for_command(self, event: AstrMessageEvent):
+        session_key = self._session_key(event)
+        if not session_key:
+            return
+        now_ts = self._now().timestamp()
+        async with self._lock:
+            s = self._get_or_create_session(event)
+            self._ensure_session_shape(s)
+            # Command counts as user interaction, but doesn't consume extra dialogue mood.
+            s["last_human_at"] = now_ts
+            s["last_interaction_at"] = now_ts
+            s["pending_human_reply"] = False
+            s["next_check_at"] = now_ts + self._randomized_interval()
+            self._sessions[session_key] = s
+            self._save_state()
+            self._debug(
+                f"touch by command session={session_key} last_interaction={self._fmt_ts(now_ts)}"
+            )
+
     async def _evt_on_all_message(self, event: AstrMessageEvent):
-        # Command path has highest priority:
-        # bypass session touching and all downstream decision environments.
+        # Command path has highest priority for this plugin only:
+        # skip plugin pipelines, but do not hijack AstrBot/global command abilities.
         text = self._extract_event_text(event)
         if text and self._is_plugin_command_text(text):
             session_key = self._session_key(event)
             self._clear_wait_buffer_for_session(session_key)
-            self._suppress_default_llm(
-                event, "command_high_priority_bypass", stop_propagation=False
-            )
+            await self._touch_session_for_command(event)
             self._debug(
                 f"skip decision env by command session={session_key or '-'} text={text}"
+            )
+            return
+        if text and self._is_command_like_text(text):
+            session_key = self._session_key(event)
+            self._clear_wait_buffer_for_session(session_key)
+            await self._touch_session_for_command(event)
+            self._debug(
+                f"skip plugin pipeline by external command session={session_key or '-'} text={text}"
             )
             return
 
         session_key = self._session_key(event)
         if not session_key:
             self._debug("skip message: session key unavailable")
-            return
-
-        if not self._is_whitelisted(event):
-            self._debug(f"skip message: not in whitelist session={session_key}")
             return
 
         now_ts = self._now().timestamp()
@@ -41,14 +62,12 @@ class EventUnitsMixin:
             self._debug(
                 f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
             )
-        await self._maybe_reply_shallow_query_with_wait(event)
+        # Keep plugin as proactive-only: do not generate direct dialogue replies here.
+        # Normal dialogue remains handled by AstrBot core/main LLM pipeline.
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)
         if not session_key:
-            return
-
-        if not self._is_whitelisted(event):
             return
 
         now_ts = self._now().timestamp()

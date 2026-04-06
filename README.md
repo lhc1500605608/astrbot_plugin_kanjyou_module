@@ -11,8 +11,7 @@
 - 私聊/群聊分会话独立计时
 - 分钟级触发阈值与冷却控制（防啰嗦）
 - 人格 + Prompt 动态生成主动问候
-- 环境感知：时间段、星期/工作日、节假日（CN 在线接口优先）与平台场景
-- 节假日问答：可自动回答“今天什么节”“五一还有几天”等问题
+- 环境感知：时间段、星期/工作日与平台场景（含内置节假日能力）
 - 双 LLM 分工：主模型负责生成，轻量模型负责浅任务意图解析
 - 轻量辅助增强：原话+轻量分析结果交给主模型统一生成最终答复
 - 夜间免打扰（支持跨天）
@@ -64,16 +63,12 @@
 - `private_whitelist` / `group_whitelist`
 - `min_idle_min` / `max_idle_min` / `cooldown_min`
 - `persona_id` / `proactive_provider_id`
-- `lite_llm_enabled` / `lite_provider_id` / `lite_llm_timeout_sec`
-- `holiday_qa_main_llm_enabled` / `proactive_lite_refine_enabled`
-- `proactive_prompt_template` / `fallback_proactive_text`
-- `enable_holiday_perception` / `holiday_qa_enabled` / `holiday_country` / `holiday_api_enabled`
-- `holiday_api_timeout_sec` / `holiday_api_cache_ttl_sec` / `enable_platform_perception`
-- `security_global_hourly_cap` / `security_max_fail_streak` / `security_fail_pause_min`
-- `security_allow_links` / `security_blocked_words` / `security_max_text_length`
-- `mood_enabled` / `mood_initial` / `mood_min_trigger`
-- `mood_cost_on_proactive` / `mood_cost_on_dialogue` / `mood_recover_per_min`
+- `lite_llm_enabled`（开启后自动联动浅任务辅助）
 - `debug_log`（开启后显示）`debug_decision_log` / `debug_status_window_sec`
+
+说明：
+- 开启 `lite_llm_enabled` 后，会自动联动启用浅任务辅助和主动问候 Prompt 润色。
+- 节假日相关、生成细节、安全阈值、情绪值参数已收纳到 `advanced_enabled` 下。
 
 ## 推荐参数（保守）
 

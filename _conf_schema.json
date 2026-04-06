@@ -225,135 +225,204 @@
   },
   "lite_llm_enabled": {
     "type": "bool",
-    "description": "[生成] 是否启用轻量 LLM（用于节假日问答等浅任务意图解析）",
+    "description": "[生成] 是否启用轻量 LLM 辅助层",
     "default": true
   },
   "lite_provider_id": {
     "type": "string",
     "description": "[生成] 轻量任务使用的模型提供商（留空则跟随当前会话）",
     "_special": "select_provider",
-    "default": ""
+    "default": "",
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "lite_llm_timeout_sec": {
     "type": "int",
     "description": "[生成] 轻量 LLM 超时秒数",
-    "default": 6
+    "default": 6,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "holiday_qa_main_llm_enabled": {
     "type": "bool",
     "description": "[生成] 节假日问答是否交给主 LLM 润色生成最终回复",
-    "default": true
+    "default": true,
+    "invisible": true
   },
   "proactive_lite_refine_enabled": {
     "type": "bool",
     "description": "[生成] 是否使用轻量 LLM 对主动回复 Prompt 进行预加工",
-    "default": true
+    "default": true,
+    "invisible": true
   },
   "proactive_prompt_template": {
     "type": "string",
     "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recent_history}",
     "editor_mode": true,
-    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。"
+    "default": "你是一个在聊天中主动关怀用户的助手。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 20-60 字。\n5) 和最近问候不重复。",
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "fallback_proactive_text": {
     "type": "string",
     "description": "[生成] 模型生成失败时的兜底主动问候",
-    "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
+    "default": "刚刚想到你，最近有没有一件小事让你有点开心？",
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "enable_holiday_perception": {
     "type": "bool",
     "description": "[生成] 是否启用节假日感知（目前内置支持 CN）",
-    "default": true
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "holiday_qa_enabled": {
     "type": "bool",
     "description": "[生成] 是否启用节假日问答（对“今天什么节/某节还有几天”自动回复）",
-    "default": true
+    "default": true,
+    "invisible": true
   },
   "holiday_country": {
     "type": "string",
     "description": "[生成] 节假日感知地区代码（默认 CN）",
-    "default": "CN"
+    "default": "CN",
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "holiday_api_enabled": {
     "type": "bool",
     "description": "[生成] 是否启用在线节假日接口（CN，优先于内置日历）",
-    "default": true
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "holiday_api_timeout_sec": {
     "type": "int",
     "description": "[生成] 在线节假日接口超时秒数",
-    "default": 3
+    "default": 3,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "holiday_api_cache_ttl_sec": {
     "type": "int",
     "description": "[生成] 在线节假日接口缓存时长（秒）",
-    "default": 21600
+    "default": 21600,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "enable_platform_perception": {
     "type": "bool",
     "description": "[生成] 是否启用平台与会话场景感知",
-    "default": true
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_global_hourly_cap": {
     "type": "int",
     "description": "[安全] 全插件每小时最大主动消息数",
-    "default": 6
+    "default": 6,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_max_fail_streak": {
     "type": "int",
     "description": "[安全] 连续发送失败达到此值时暂停主动消息",
-    "default": 3
+    "default": 3,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_fail_pause_min": {
     "type": "int",
     "description": "[安全] 熔断后暂停时长（分钟）",
-    "default": 180
+    "default": 180,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_allow_links": {
     "type": "bool",
     "description": "[安全] 是否允许主动消息包含链接",
-    "default": false
+    "default": false,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_blocked_words": {
     "type": "list",
     "description": "[安全] 主动消息禁用词列表（命中即拦截并改用兜底文案）",
-    "default": []
+    "default": [],
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "security_max_text_length": {
     "type": "int",
     "description": "[安全] 主动消息最大长度（字符）",
-    "default": 90
+    "default": 90,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_enabled": {
     "type": "bool",
     "description": "[安全] 是否启用情绪值系统（低情绪不主动）",
-    "default": true
+    "default": true,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_initial": {
     "type": "float",
     "description": "[安全] 会话初始情绪值（0-100）",
-    "default": 70.0
+    "default": 70.0,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_min_trigger": {
     "type": "float",
     "description": "[安全] 主动触发所需最低情绪值（0-100）",
-    "default": 35.0
+    "default": 35.0,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_cost_on_proactive": {
     "type": "float",
     "description": "[安全] 每次主动消息消耗的情绪值",
-    "default": 28.0
+    "default": 28.0,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_cost_on_dialogue": {
     "type": "float",
     "description": "[安全] 每次会话消息往来消耗的情绪值",
-    "default": 8.0
+    "default": 8.0,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "mood_recover_per_min": {
     "type": "float",
     "description": "[安全] 每分钟自动恢复的情绪值",
-    "default": 1.2
+    "default": 1.2,
+    "condition": {
+      "advanced_enabled": true
+    }
   },
   "debug_log": {
     "type": "bool",

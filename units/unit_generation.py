@@ -121,16 +121,12 @@ class PolicyGenerationUnitsMixin:
         )
 
     def _holiday_qa_main_llm_enabled(self) -> bool:
-        return self._to_bool(
-            self.config.get("holiday_qa_main_llm_enabled"),
-            DEFAULT_CONFIG["holiday_qa_main_llm_enabled"],
-        )
+        # Simplified behavior: once lite LLM is enabled, holiday QA goes through main LLM rendering.
+        return self._lite_llm_enabled()
 
     def _proactive_lite_refine_enabled(self) -> bool:
-        return self._to_bool(
-            self.config.get("proactive_lite_refine_enabled"),
-            DEFAULT_CONFIG["proactive_lite_refine_enabled"],
-        )
+        # Simplified behavior: once lite LLM is enabled, prompt refining is enabled together.
+        return self._lite_llm_enabled()
 
     def _lite_llm_timeout_sec(self) -> float:
         return max(
@@ -210,7 +206,7 @@ class PolicyGenerationUnitsMixin:
             if isinstance(obj, dict):
                 return obj
         except Exception as exc:
-            self._debug(f"lite llm parse failed: {exc}")
+            self._debug_lite_llm_issue_once(exc)
         return None
 
     async def _lite_llm_text(self, unified_msg_origin: str, prompt: str) -> str:
@@ -229,8 +225,25 @@ class PolicyGenerationUnitsMixin:
             )
             return self._completion_to_text(completion).strip()
         except Exception as exc:
-            self._debug(f"lite llm text failed: {exc}")
+            self._debug_lite_llm_issue_once(exc)
             return ""
+
+    def _debug_lite_llm_issue_once(self, exc: Exception):
+        # Some adapters/providers may return unsupported response objects intermittently.
+        # Keep fallback behavior, and avoid flooding debug logs with the same known issue.
+        message = str(exc)
+        now_ts = self._now().timestamp()
+        last_ts = float(getattr(self, "_lite_llm_issue_last_ts", 0.0) or 0.0)
+        if "Unsupported response type" in message:
+            window = max(300, int(self.config.get("debug_status_window_sec", 300)))
+            if now_ts - last_ts < window:
+                return
+            setattr(self, "_lite_llm_issue_last_ts", now_ts)
+            self._debug(
+                "lite llm unavailable on this adapter/provider response type; fallback engaged"
+            )
+            return
+        self._debug(f"lite llm failed: {message}")
 
     async def _main_llm_text(self, unified_msg_origin: str, prompt: str) -> str:
         provider_id = await self._resolve_main_provider_id(unified_msg_origin)
@@ -591,10 +604,8 @@ class PolicyGenerationUnitsMixin:
         return ""
 
     async def _maybe_reply_holiday_query(self, event: AstrMessageEvent):
-        if not self._to_bool(
-            self.config.get("holiday_qa_enabled"),
-            DEFAULT_CONFIG["holiday_qa_enabled"],
-        ):
+        # Holiday QA is an internal side-feature bound to lite LLM.
+        if not self._lite_llm_enabled():
             return
         if not self._to_bool(
             self.config.get("enable_holiday_perception"),

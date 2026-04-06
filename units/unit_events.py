@@ -3,6 +3,20 @@ from astrbot.api.event import AstrMessageEvent
 
 class EventUnitsMixin:
     async def _evt_on_all_message(self, event: AstrMessageEvent):
+        # Command path has highest priority:
+        # bypass session touching and all downstream decision environments.
+        text = self._extract_event_text(event)
+        if text and self._is_plugin_command_text(text):
+            session_key = self._session_key(event)
+            self._clear_wait_buffer_for_session(session_key)
+            self._suppress_default_llm(
+                event, "command_high_priority_bypass", stop_propagation=False
+            )
+            self._debug(
+                f"skip decision env by command session={session_key or '-'} text={text}"
+            )
+            return
+
         session_key = self._session_key(event)
         if not session_key:
             self._debug("skip message: session key unavailable")

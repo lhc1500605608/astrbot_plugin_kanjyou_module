@@ -24,6 +24,21 @@ except Exception:
 
 
 class PolicyGenerationUnitsMixin:
+    _IDLE_COMMANDS = {
+        "idle_status",
+        "idle_enable",
+        "idle_disable",
+        "idle_wl_add_private",
+        "idle_wl_del_private",
+        "idle_wl_add_group",
+        "idle_wl_del_group",
+        "idle_sleep_set",
+        "idle_test",
+        "idle_decision_status",
+        "idle_decision_last",
+        "idle_selfcheck",
+    }
+
     _HOLIDAY_ALIASES = {
         "元旦": "元旦",
         "元旦节": "元旦",
@@ -837,11 +852,21 @@ class PolicyGenerationUnitsMixin:
         t = (text or "").strip()
         return bool(t) and t[0] in {"/", "!", "！", "／"}
 
-    def _is_plugin_command_text(self, text: str) -> bool:
+    def _command_token(self, text: str) -> str:
         t = (text or "").strip().lower()
         if not t:
+            return ""
+        token = t.split()[0]
+        token = token.lstrip("/!！／")
+        return token.strip()
+
+    def _is_plugin_command_text(self, text: str) -> bool:
+        token = self._command_token(text)
+        if not token:
             return False
-        return t.startswith("/idle_") or t.startswith("!idle_")
+        if token in self._IDLE_COMMANDS:
+            return True
+        return token.startswith("idle_")
 
     def _clear_wait_buffer_for_session(self, session_key: str):
         if not session_key:
@@ -996,7 +1021,9 @@ class PolicyGenerationUnitsMixin:
     async def _maybe_reply_shallow_query_with_wait(self, event: AstrMessageEvent):
         text = self._extract_event_text(event)
         is_inputting = self._event_is_inputting(event)
-        if text and self._is_command_like_text(text):
+        if text and (
+            self._is_command_like_text(text) or self._is_plugin_command_text(text)
+        ):
             session_key = self._session_key(event)
             self._clear_wait_buffer_for_session(session_key)
             if self._is_plugin_command_text(text):

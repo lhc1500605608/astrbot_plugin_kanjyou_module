@@ -177,3 +177,9 @@ class KanjyouIdleProactivePlugin(
     async def idle_decision_last(self, event: AstrMessageEvent):
         async for result in self._cmd_idle_decision_last(event):
             yield result
+
+    @filter.command("idle_selfcheck")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def idle_selfcheck(self, event: AstrMessageEvent):
+        async for result in self._cmd_idle_selfcheck(event):
+            yield result

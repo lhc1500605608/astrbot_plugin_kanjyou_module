@@ -837,6 +837,23 @@ class PolicyGenerationUnitsMixin:
         t = (text or "").strip()
         return bool(t) and t[0] in {"/", "!", "！", "／"}
 
+    def _is_plugin_command_text(self, text: str) -> bool:
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        return t.startswith("/idle_") or t.startswith("!idle_")
+
+    def _clear_wait_buffer_for_session(self, session_key: str):
+        if not session_key:
+            return
+        if isinstance(getattr(self, "_dialogue_wait_buffers", None), dict):
+            self._dialogue_wait_buffers.pop(session_key, None)
+        tasks = getattr(self, "_dialogue_wait_tasks", None)
+        if isinstance(tasks, dict):
+            task = tasks.pop(session_key, None)
+            if task and not task.done():
+                task.cancel()
+
     def _suppress_default_llm(
         self, event: AstrMessageEvent, reason: str, stop_propagation: bool = False
     ):
@@ -980,7 +997,15 @@ class PolicyGenerationUnitsMixin:
         text = self._extract_event_text(event)
         is_inputting = self._event_is_inputting(event)
         if text and self._is_command_like_text(text):
-            await self._maybe_reply_shallow_query(event)
+            session_key = self._session_key(event)
+            self._clear_wait_buffer_for_session(session_key)
+            if self._is_plugin_command_text(text):
+                self._suppress_default_llm(
+                    event, "plugin_command_bypass", stop_propagation=False
+                )
+            self._debug(
+                f"dialogue wait bypass command session={session_key or '-'} text={text}"
+            )
             return
         if not self._dialogue_wait_enabled():
             await self._maybe_reply_shallow_query(event)

@@ -86,6 +86,7 @@ class KanjyouIdleProactivePlugin(
             self._debug(import_summary)
         self._debug(f"execution order: {' -> '.join(EXECUTION_ORDER)}")
         self._debug(f"config order: {' -> '.join(CONFIG_EXECUTION_ORDER)}")
+        self._run_startup_config_checks()
         self._debug("plugin initialize complete")
 
     async def terminate(self):
@@ -176,10 +177,4 @@ class KanjyouIdleProactivePlugin(
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def idle_decision_last(self, event: AstrMessageEvent):
         async for result in self._cmd_idle_decision_last(event):
-            yield result
-
-    @filter.command("idle_selfcheck")
-    @filter.permission_type(filter.PermissionType.ADMIN)
-    async def idle_selfcheck(self, event: AstrMessageEvent):
-        async for result in self._cmd_idle_selfcheck(event):
             yield result

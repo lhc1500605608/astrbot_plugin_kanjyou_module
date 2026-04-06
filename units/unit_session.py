@@ -928,6 +928,74 @@ class SessionConfigUnitsMixin:
         if self.config.get("debug_log", False):
             logger.debug(f"[idle-proactive] {msg}")
 
+    def _run_startup_config_checks(self):
+        issues = []
+        enabled = bool(self.config.get("enabled", True))
+        private_wl = self.config.get("private_whitelist", [])
+        group_wl = self.config.get("group_whitelist", [])
+        sleep_start = str(self.config.get("sleep_start", "") or "")
+        sleep_end = str(self.config.get("sleep_end", "") or "")
+        proactive_provider = str(
+            self.config.get("proactive_provider_id", "") or ""
+        ).strip()
+        dialogue_wait_enabled = bool(self.config.get("dialogue_wait_enabled", False))
+
+        if enabled and not private_wl and not group_wl:
+            issues.append(
+                (
+                    "WARN",
+                    "proactive_whitelist_empty: 插件白名单为空，主动问候将不会触发。",
+                )
+            )
+
+        if not self._is_hhmm(sleep_start) or not self._is_hhmm(sleep_end):
+            issues.append(
+                (
+                    "WARN",
+                    f"sleep_window_invalid: sleep_start={sleep_start} sleep_end={sleep_end}，将回退默认时段。",
+                )
+            )
+        elif sleep_start == sleep_end:
+            issues.append(
+                (
+                    "WARN",
+                    f"sleep_window_same_edge: sleep_start==sleep_end=={sleep_start}，建议避免相同起止时间。",
+                )
+            )
+
+        if dialogue_wait_enabled:
+            issues.append(
+                (
+                    "INFO",
+                    "dialogue_wait_ignored: 当前插件为主动问候模式，对话等待参数不参与主动触发决策。",
+                )
+            )
+
+        if not proactive_provider:
+            issues.append(
+                (
+                    "INFO",
+                    "proactive_provider_fallback: proactive_provider_id 为空，将在发送时跟随会话 provider。",
+                )
+            )
+
+        mode = str(self.config.get("decision_mode", "balanced"))
+        min_conf = float(self.config.get("decision_min_confidence", 0.6))
+        if mode == "strict" and min_conf >= 0.9:
+            issues.append(
+                (
+                    "WARN",
+                    f"decision_too_strict: mode={mode} min_conf={min_conf:.2f}，主动触发概率可能极低。",
+                )
+            )
+
+        self._debug(
+            f"init-check summary enabled={enabled} private_wl={len(private_wl) if isinstance(private_wl, list) else 0} "
+            f"group_wl={len(group_wl) if isinstance(group_wl, list) else 0} issues={len(issues)}"
+        )
+        for level, message in issues:
+            self._debug(f"init-check {level} {message}")
+
     def _maybe_log_status(
         self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False
     ):

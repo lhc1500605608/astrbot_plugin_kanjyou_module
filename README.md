@@ -97,7 +97,6 @@
 - `/idle_test`
 - `/idle_decision_status`
 - `/idle_decision_last`
-- `/idle_selfcheck`
 
 ---
 

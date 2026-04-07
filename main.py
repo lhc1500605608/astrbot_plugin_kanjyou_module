@@ -56,7 +56,6 @@ class KanjyouIdleProactivePlugin(
         self._state_path = Path(__file__).parent / "idle_state.json"
         self._normalize_webui_config()
         self._sessions: Dict[str, Dict] = self._load_state()
-        self._debug_status_last: Dict[str, float] = {}
         self._global_send_history: List[float] = []
         self._global_fail_streak: int = 0
         self._global_pause_until: float = 0.0

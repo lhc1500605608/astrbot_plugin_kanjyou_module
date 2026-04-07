@@ -3,7 +3,6 @@ import random
 from datetime import datetime
 from typing import Dict, Optional
 
-from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
@@ -19,7 +18,7 @@ class RuntimeUnitsMixin:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error(f"[idle-proactive] idle loop error: {exc}")
+                self._log_error("idle_loop_error", f"idle loop error: {exc}")
 
     async def _check_sessions(self):
         if not self.config.get("enabled", True):
@@ -49,7 +48,6 @@ class RuntimeUnitsMixin:
 
             if changed:
                 self._save_state()
-                self._debug("state persisted")
 
     async def _process_session(
         self, session_key: str, s: Dict, now: datetime, now_ts: float
@@ -109,7 +107,6 @@ class RuntimeUnitsMixin:
         state_changed = False
 
         if self._unit_gate_whitelist(session_key, s, now_ts):
-            state_changed = True
             return self._decision_result(
                 False,
                 0.99,
@@ -122,7 +119,7 @@ class RuntimeUnitsMixin:
                 idle_sec,
                 decay,
                 mode,
-                state_changed,
+                False,
             )
 
         if self._unit_gate_next_check(session_key, s, now_ts):
@@ -536,13 +533,9 @@ class RuntimeUnitsMixin:
     def _unit_gate_whitelist(self, session_key: str, s: Dict, now_ts: float) -> bool:
         if self._is_session_whitelisted(session_key):
             return False
-        self._unit_defer_session(
-            session_key,
-            s,
-            now_ts,
-            "not_in_proactive_whitelist",
-            f"session skip(whitelist) session={session_key}",
-        )
+        # Whitelist is a hard skip gate for proactive sends only.
+        # Do not mutate session timing here, otherwise state will be persisted every loop.
+        self._maybe_log_status(session_key, s, now_ts, "not_in_proactive_whitelist")
         return True
 
     def _unit_gate_next_check(self, session_key: str, s: Dict, now_ts: float) -> bool:
@@ -772,7 +765,7 @@ class RuntimeUnitsMixin:
                 )
                 return True, topic
             except Exception as exc:
-                logger.error(f"[idle-proactive] send failed: {exc}")
+                self._log_error("send_failed", f"send failed: {exc}")
                 self._debug(f"send proactive failed session={session_key} err={exc}")
                 if event:
                     await event.send(

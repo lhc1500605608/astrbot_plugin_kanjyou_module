@@ -8,7 +8,6 @@ import urllib.request
 from datetime import datetime
 from typing import Awaitable, Callable, Dict, Optional, Tuple
 
-from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
@@ -126,7 +125,10 @@ class PolicyGenerationUnitsMixin:
             )
             return cleaned
         except Exception as exc:
-            logger.error(f"[idle-proactive] generate proactive text failed: {exc}")
+            self._log_error(
+                "generate_proactive_failed",
+                f"generate proactive text failed: {exc}",
+            )
             self._debug(f"generate failed session={session_key} err={exc}")
             return fallback
 

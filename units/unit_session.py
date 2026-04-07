@@ -15,6 +15,34 @@ except ImportError:
     from config import DEFAULT_CONFIG
 
 _GLOBAL_DEBUG_THROTTLE: dict[str, float] = {}
+_DEFAULT_DEBUG_WINDOWS = {
+    "decision": 600,
+    "status": 600,
+    "state_persisted": 1800,
+    "loop_sleep_window": 1800,
+    "loop_plugin_disabled": 1800,
+    "global_pause_active": 600,
+    "global_hourly_cap_reached": 600,
+}
+
+_NOISY_STATUS_REASONS = {
+    "waiting_next_check",
+    "probability_miss",
+    "group_active",
+    "idle_not_enough",
+}
+
+_KEY_STATUS_REASONS = {
+    "trigger_success",
+    "trigger_failed",
+    "cooldown",
+    "daily_limit",
+    "mood_low",
+    "await_human_reply",
+    "not_in_proactive_whitelist",
+    "missing_origin",
+    "lite_veto",
+}
 
 
 class SessionConfigUnitsMixin:
@@ -459,24 +487,35 @@ class SessionConfigUnitsMixin:
         )
 
     def _debug_decision(self, session_key: str, payload: Dict):
-        if not self.config.get("debug_log", False):
-            return
         if not self._debug_decision_enabled():
             return
-        now_ts = self._now().timestamp()
-        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
-        key = f"decision:{session_key}"
-        last = self._debug_status_last.get(key, 0.0)
-        if (now_ts - last) < window:
+        outcome = str((payload or {}).get("outcome", "")).strip().lower()
+        reasons = payload.get("reason_codes", []) if isinstance(payload, dict) else []
+        reason_set = {str(x).strip() for x in reasons if str(x).strip()}
+        is_key = outcome in {"triggered", "failed"} or bool(
+            reason_set
+            & {
+                "cooldown",
+                "daily_limit",
+                "mood_low",
+                "await_human_reply",
+                "not_in_proactive_whitelist",
+                "missing_origin",
+                "lite_veto",
+            }
+        )
+        if not is_key:
             return
-        self._debug_status_last[key] = now_ts
         normalized = {"session": session_key}
         normalized.update(payload or {})
-        try:
-            line = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
-        except Exception:
-            line = str(normalized)
-        self._debug(f"decision {line}")
+        self._log_debug(
+            "decision",
+            "decision summary",
+            session_key=session_key,
+            data=normalized,
+            throttle_key=f"decision:{session_key}",
+            window_sec=max(60, self._debug_window_sec()),
+        )
 
     def _normalize_webui_config(self):
         changed = False
@@ -908,7 +947,9 @@ class SessionConfigUnitsMixin:
             try:
                 save_func()
             except Exception as exc:
-                logger.error(f"[idle-proactive] save webui config failed: {exc}")
+                self._log_error(
+                    "config_save_failed", f"save webui config failed: {exc}"
+                )
 
     def _load_state(self) -> Dict[str, Dict]:
         if not self._state_path.exists():
@@ -919,7 +960,7 @@ class SessionConfigUnitsMixin:
                 return data
             return {}
         except Exception as exc:
-            logger.error(f"[idle-proactive] load state failed: {exc}")
+            self._log_error("state_load_failed", f"load state failed: {exc}")
             return {}
 
     def _save_state(self):
@@ -933,21 +974,93 @@ class SessionConfigUnitsMixin:
         with path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _debug(self, msg: str):
-        if self.config.get("debug_log", False):
-            logger.debug(f"[idle-proactive] {msg}")
+    def _debug_enabled(self) -> bool:
+        return self._to_bool(self.config.get("debug_log"), DEFAULT_CONFIG["debug_log"])
 
-    def _debug_throttled(self, key: str, msg: str):
-        if not self.config.get("debug_log", False):
+    def _debug_window_sec(self) -> int:
+        return max(
+            60,
+            int(
+                self.config.get(
+                    "debug_status_window_sec", DEFAULT_CONFIG["debug_status_window_sec"]
+                )
+            ),
+        )
+
+    def _log_error(self, event: str, message: str):
+        logger.error(f"[idle-proactive][{event}] {message}")
+
+    def _format_log_data(self, data: Dict) -> str:
+        if not isinstance(data, dict) or not data:
+            return ""
+        try:
+            compact = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+            return f" | {compact}"
+        except Exception:
+            return f" | {str(data)}"
+
+    def _throttle_log(
+        self,
+        key: str,
+        now_ts: float,
+        window_sec: int,
+        force: bool = False,
+    ) -> bool:
+        if force:
+            _GLOBAL_DEBUG_THROTTLE[key] = now_ts
+            return True
+        last = _GLOBAL_DEBUG_THROTTLE.get(key, 0.0)
+        if (now_ts - last) < window_sec:
+            return False
+        _GLOBAL_DEBUG_THROTTLE[key] = now_ts
+        return True
+
+    def _log_debug(
+        self,
+        event: str,
+        message: str,
+        *,
+        session_key: str = "",
+        data: Optional[Dict] = None,
+        throttle_key: Optional[str] = None,
+        window_sec: Optional[int] = None,
+        force: bool = False,
+    ):
+        if not self._debug_enabled():
             return
         now_ts = self._now().timestamp()
-        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
-        throttle_key = f"idle-proactive:{key}"
-        last = _GLOBAL_DEBUG_THROTTLE.get(throttle_key, 0.0)
-        if (now_ts - last) < window:
+        effective_window = int(
+            window_sec
+            if window_sec is not None
+            else _DEFAULT_DEBUG_WINDOWS.get(event, self._debug_window_sec())
+        )
+        effective_window = max(1, effective_window)
+        if throttle_key == "":
+            effective_key = ""
+        elif throttle_key is not None:
+            effective_key = throttle_key
+        else:
+            effective_key = f"{event}:{session_key}" if session_key else event
+        if effective_key and not self._throttle_log(
+            f"idle-proactive:{effective_key}", now_ts, effective_window, force=force
+        ):
             return
-        _GLOBAL_DEBUG_THROTTLE[throttle_key] = now_ts
-        logger.debug(f"[idle-proactive] {msg}")
+        suffix = ""
+        if session_key:
+            suffix += f" session={session_key}"
+        suffix += self._format_log_data(data or {})
+        logger.debug(f"[idle-proactive][{event}] {message}{suffix}")
+
+    def _debug(self, msg: str):
+        self._log_debug("debug", msg, throttle_key="")
+
+    def _debug_throttled(self, key: str, msg: str):
+        self._log_debug(
+            key,
+            msg,
+            throttle_key=key,
+            window_sec=_DEFAULT_DEBUG_WINDOWS.get(key, self._debug_window_sec()),
+        )
 
     def _run_startup_config_checks(self):
         issues = []
@@ -1015,20 +1128,22 @@ class SessionConfigUnitsMixin:
             f"group_wl={len(group_wl) if isinstance(group_wl, list) else 0} issues={len(issues)}"
         )
         for level, message in issues:
-            self._debug(f"init-check {level} {message}")
+            self._log_debug(
+                "init_check",
+                f"{level.lower()} {message}",
+                throttle_key=f"init_check:{level}:{message}",
+                window_sec=1,
+                force=True,
+            )
 
     def _maybe_log_status(
         self, session_key: str, s: Dict, now_ts: float, reason: str, force: bool = False
     ):
-        if not self.config.get("debug_log", False):
-            return
-
-        window = max(60, int(self.config.get("debug_status_window_sec", 300)))
-        last = self._debug_status_last.get(session_key, 0.0)
-        if not force and (now_ts - last) < window:
-            return
-
-        self._debug_status_last[session_key] = now_ts
+        if not force:
+            if reason in _NOISY_STATUS_REASONS:
+                return
+            if reason not in _KEY_STATUS_REASONS:
+                return
         idle_sec = max(0, int(now_ts - s.get("last_interaction_at", now_ts)))
         cooldown_left = max(0, int(s.get("cooldown_until", 0) - now_ts))
         next_check_at = float(s.get("next_check_at", now_ts))
@@ -1044,12 +1159,22 @@ class SessionConfigUnitsMixin:
         no_reply_streak = int(s.get("no_reply_streak", 0))
         decay = self._no_reply_decay_factor(s)
         mood = float(s.get("mood", self._mood_initial()))
-
-        self._debug(
-            "status "
-            f"reason={reason} session={session_key} "
-            f"idle={idle_sec}s cooldown_left={cooldown_left}s "
-            f"no_reply_streak={no_reply_streak} decay={decay:.2f} mood={mood:.2f} "
-            f"next_check={self._fmt_ts(next_check_at)}(+{next_check_in}s) "
-            f"next_trigger_earliest={self._fmt_ts(earliest_trigger_at)}(+{earliest_trigger_in}s)"
+        self._log_debug(
+            "status",
+            f"status reason={reason}",
+            session_key=session_key,
+            data={
+                "idle_sec": idle_sec,
+                "cooldown_left_sec": cooldown_left,
+                "no_reply_streak": no_reply_streak,
+                "decay": round(decay, 2),
+                "mood": round(mood, 2),
+                "next_check_at": self._fmt_ts(next_check_at),
+                "next_check_in_sec": next_check_in,
+                "next_trigger_at": self._fmt_ts(earliest_trigger_at),
+                "next_trigger_in_sec": earliest_trigger_in,
+            },
+            throttle_key=f"status:{session_key}:{reason}",
+            window_sec=max(60, self._debug_window_sec()),
+            force=force,
         )

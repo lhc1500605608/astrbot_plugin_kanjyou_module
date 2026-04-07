@@ -86,6 +86,10 @@ class KanjyouIdleProactivePlugin(
             self._debug(import_summary)
         self._debug(f"execution order: {' -> '.join(EXECUTION_ORDER)}")
         self._debug(f"config order: {' -> '.join(CONFIG_EXECUTION_ORDER)}")
+        self._debug(
+            f"debug window active={int(self.config.get('debug_status_window_sec', 300))}s "
+            f"check_interval={int(self.config.get('check_interval_sec', 30))}s"
+        )
         self._run_startup_config_checks()
         self._debug("plugin initialize complete")
 

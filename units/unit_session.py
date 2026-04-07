@@ -14,6 +14,8 @@ try:
 except ImportError:
     from config import DEFAULT_CONFIG
 
+_GLOBAL_DEBUG_THROTTLE: dict[str, float] = {}
+
 
 class SessionConfigUnitsMixin:
     def _get_or_create_session(self, event: AstrMessageEvent) -> Dict:
@@ -940,11 +942,11 @@ class SessionConfigUnitsMixin:
             return
         now_ts = self._now().timestamp()
         window = max(60, int(self.config.get("debug_status_window_sec", 300)))
-        throttle_key = f"throttle:{key}"
-        last = self._debug_status_last.get(throttle_key, 0.0)
+        throttle_key = f"idle-proactive:{key}"
+        last = _GLOBAL_DEBUG_THROTTLE.get(throttle_key, 0.0)
         if (now_ts - last) < window:
             return
-        self._debug_status_last[throttle_key] = now_ts
+        _GLOBAL_DEBUG_THROTTLE[throttle_key] = now_ts
         logger.debug(f"[idle-proactive] {msg}")
 
     def _run_startup_config_checks(self):

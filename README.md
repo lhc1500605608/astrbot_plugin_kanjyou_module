@@ -1,94 +1,43 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v2.1.2-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.1.3-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-plugin-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
-一个 AstrBot 闲时主动对话插件：
-当会话长时间无消息时，按人格与 Prompt 生成自然问候，帮助重新开启对话。
+一个面向 AstrBot 的闲时主动聊天插件。  
+核心目标是：只在合适时机主动开场，减少打扰，提升对话自然度。
 
-## 功能
+## 功能特性
 
 - 私聊/群聊分会话独立计时
-- 分钟级触发阈值与冷却控制（防啰嗦）
-- 人格 + Prompt 动态生成主动问候
-- 环境感知：时间段、星期/工作日与平台场景（含内置节假日能力）
-- 双 LLM 分工：主模型负责生成，轻量模型负责浅任务意图解析
-- 轻量辅助增强：原话+轻量分析结果交给主模型统一生成最终答复
-- 主动前决策层：统一决策引擎（置信度/原因码/语气建议/最后安全确认）
+- 白名单控制（插件白名单仅控制“是否允许主动问候”）
 - 夜间免打扰（支持跨天）
-- 白名单控制（仅指定私聊/群聊生效）
-- 控制台 Debug 状态指示器
-- 内置高级策略：分时段配额、未回复衰减、周末模式、近期问候去重
-- 安全与控制层：全局频率闸门、失败熔断暂停、禁用词过滤、链接开关、长度限制
-- 情绪值系统：主动与对话都会消耗情绪值，随时间恢复
-- 结构化决策日志：输出触发链路关键决策（JSON）
+- 主动前决策层（置信度、原因码、最后安全确认）
+- 轻量 LLM 辅助主模型（浅任务处理、主动问候预加工）
+- 情绪值系统（按会话消耗与恢复）
+- 管理员指令控制（自动继承 AstrBot 管理员权限）
+- 低打扰 Debug 日志（默认不刷屏）
 
-## 双层配置模式
+## 安装方式
 
-- `advanced_enabled=false`（默认，推荐）：只需配置核心参数，插件自动使用内置稳妥策略
-- `advanced_enabled=true`：展开并编辑高级参数（配额/衰减/周末/去重等）
+1. 下载或克隆仓库到 AstrBot 插件目录  
+2. 在 AstrBot WebUI 启用插件  
+3. 填写白名单与基础时间参数后开始使用
 
-## 配置执行单元
+## WebUI 核心配置
 
-- 基础层：开关、白名单、模式与基础布尔修正
-- 时间层：免打扰 + idle/cooldown 分钟参数与旧版迁移
-- 生成层：人格、Provider、Prompt 与兜底文案
-- 安全层：频率闸门、失败熔断、禁用词、链接、长度限制
-- 调试层：debug 窗口与日志相关参数
+- `enabled`：插件总开关
+- `advanced_enabled`：高级配置开关
+- `private_whitelist` / `group_whitelist`：主动问候会话白名单
+- `sleep_start` / `sleep_end`：夜间免打扰
+- `min_idle_min` / `max_idle_min` / `cooldown_min`：触发与冷却
+- `persona_id` / `proactive_provider_id`：人格与主模型
+- `lite_llm_enabled`：轻量模型辅助开关
+- `debug_log`：调试日志开关
 
-## 脚本结构
+## 管理指令
 
-- `main.py`：插件入口、生命周期、消息事件钩子
-- `config.py`：默认配置、策略常量、执行顺序、版本
-- `units/unit_commands.py`：管理指令单元（管理员命令）
-- `units/unit_events.py`：消息事件钩子单元（会话触达更新）
-- `units/unit_runtime.py`：闲时巡检调度与触发执行单元
-- `units/unit_advanced.py`：高级参数策略单元（advanced 模式）
-- `units/unit_generation.py`：触发策略 + 主动文案生成单元
-- `units/unit_session.py`：会话状态、时间/安全/配置标准化单元
+以下指令仅管理员可用：
 
-## 快速使用
-
-1. 安装并启用插件
-2. 在 WebUI 配置白名单、`persona_id`、免打扰时间
-3. 按需开启 `debug_log`
-4. 发送 `/idle_test` 验证主动消息链路
-
-## 精简配置（WebUI）
-
-- `enabled`
-- `advanced_enabled`
-- `lifecycle_log`
-- `timezone`
-- `sleep_start` / `sleep_end`
-- `private_whitelist` / `group_whitelist`
-- `min_idle_min` / `max_idle_min` / `cooldown_min`
-- `persona_id` / `proactive_provider_id`
-- `lite_llm_enabled`（开启后自动联动浅任务辅助）
-- `debug_log`（开启后显示）`debug_decision_log` / `debug_status_window_sec`
-
-说明：
-- 开启 `lite_llm_enabled` 后，会自动联动启用浅任务辅助和主动问候 Prompt 润色。
-- 节假日相关、生成细节、安全阈值、情绪值参数已收纳到 `advanced_enabled` 下。
-
-## 推荐参数（保守）
-
-- `advanced_enabled = false`
-- `min_idle_min = 45`
-- `max_idle_min = 180`
-- `cooldown_min = 90`
-- `security_global_hourly_cap = 6`
-- `security_max_fail_streak = 3`
-- `security_fail_pause_min = 180`
-- `mood_initial = 70`
-- `mood_min_trigger = 35`
-- `holiday_country = CN`
-- `holiday_api_enabled = true`
-- `debug_status_window_sec = 300`
-
-## 指令
-
-- 所有插件指令默认仅 AstrBot 管理员可调用（自动使用 AstrBot 全局管理员配置）
 - `/idle_status`
 - `/idle_enable` / `/idle_disable`
 - `/idle_wl_add_private <user_id>` / `/idle_wl_del_private <user_id>`
@@ -98,11 +47,13 @@
 - `/idle_decision_status`
 - `/idle_decision_last`
 
----
-
 ## 许可证
 
-AGPL-3.0
+本项目采用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 许可。
+
+- 你可以在遵守 AGPL-3.0 的前提下使用、修改和分发本项目。
+- 若你基于本项目提供网络服务（SaaS/机器人服务等），需按 AGPL 要求公开对应修改源码。
+- 完整许可证文本见仓库根目录 [LICENSE](LICENSE) 文件。
 
 ---
 

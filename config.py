@@ -115,4 +115,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.1.2"
+PLUGIN_VERSION = "2.1.3"

@@ -1,6 +1,6 @@
 name: astrbot_plugin_kanjyou_module
 display_name: 情绪价值提供者
-desc: AstrBot 闲时主动聊天插件，支持节假日/时间感知、白名单与夜间免打扰。
+desc: AstrBot 闲时主动聊天插件，支持闲时问候触发、节假日/时间感知、白名单与夜间免打扰。
 version: v2.1.3
 author: Tango
 repo: https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module

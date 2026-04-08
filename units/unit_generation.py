@@ -1075,6 +1075,10 @@ class PolicyGenerationUnitsMixin:
             self._debug(f"dialogue wait send fallback failed: {exc}")
 
     async def _maybe_reply_shallow_query_with_wait(self, event: AstrMessageEvent):
+        # Safety guard: this plugin no longer handles normal dialogue replies.
+        # Keep this legacy entry as a no-op to avoid accidental conversation hijack.
+        _ = event
+        return
         text = self._extract_event_text(event)
         is_inputting = self._event_is_inputting(event)
         if text and (

@@ -11,8 +11,8 @@
 - 私聊/群聊分会话独立计时
 - 白名单控制（插件白名单仅控制“是否允许主动问候”）
 - 夜间免打扰（支持跨天）
-- 主动前决策层（置信度、原因码、最后安全确认）
-- 轻量 LLM 辅助主模型（浅任务处理、主动问候预加工）
+- 时间感知（按本地时段调整问候语气）
+- 节假日感知（内置中国节假日信息，可选在线接口）
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
@@ -31,7 +31,7 @@
 - `sleep_start` / `sleep_end`：夜间免打扰
 - `min_idle_min` / `max_idle_min` / `cooldown_min`：触发与冷却
 - `persona_id` / `proactive_provider_id`：人格与主模型
-- `lite_llm_enabled`：轻量模型辅助开关
+- `enable_holiday_perception` / `holiday_api_enabled`：节假日感知开关
 - `debug_log`：调试日志开关
 
 ## 管理指令
@@ -44,8 +44,6 @@
 - `/idle_wl_add_group <group_id>` / `/idle_wl_del_group <group_id>`
 - `/idle_sleep_set <HH:MM> <HH:MM>`
 - `/idle_test`
-- `/idle_decision_status`
-- `/idle_decision_last`
 
 ## 许可证
 

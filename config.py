@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
     "cooldown_min": 90,
     "persona_id": "",
     "proactive_provider_id": "",
-    "lite_llm_enabled": True,
+    "lite_llm_enabled": False,
     "lite_provider_id": "",
     "lite_llm_timeout_sec": 6,
     "decision_mode": "balanced",

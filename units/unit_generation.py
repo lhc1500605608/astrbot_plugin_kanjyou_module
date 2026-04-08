@@ -33,8 +33,6 @@ class PolicyGenerationUnitsMixin:
         "idle_wl_del_group",
         "idle_sleep_set",
         "idle_test",
-        "idle_decision_status",
-        "idle_decision_last",
     }
 
     _HOLIDAY_ALIASES = {
@@ -88,12 +86,6 @@ class PolicyGenerationUnitsMixin:
                 style_hint=style_hint,
                 recent_history=recent_history,
             )
-            prompt = await self._maybe_refine_proactive_prompt_with_lite(
-                prompt=prompt,
-                unified_msg_origin=unified_msg_origin,
-                session_type=session_type,
-                idle_sec=idle_sec,
-            )
 
             provider_id = str(self.config.get("proactive_provider_id") or "").strip()
             if not provider_id:
@@ -119,7 +111,6 @@ class PolicyGenerationUnitsMixin:
             if self._is_repetitive(cleaned, session):
                 self._debug("generate repetitive text, use fallback")
                 return fallback
-            cleaned = await self._optimize_output_segments(cleaned, unified_msg_origin)
             self._debug(
                 f"generate ok provider={provider_id} session={session_key} text={cleaned}"
             )

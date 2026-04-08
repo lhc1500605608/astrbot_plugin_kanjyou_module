@@ -225,8 +225,9 @@
   },
   "lite_llm_enabled": {
     "type": "bool",
-    "description": "[生成] 是否启用轻量 LLM 辅助层",
-    "default": true
+    "description": "[兼容] 轻量 LLM 旧字段（已废弃）",
+    "default": false,
+    "invisible": true
   },
   "lite_provider_id": {
     "type": "string",
@@ -292,45 +293,39 @@
   },
   "dialogue_wait_enabled": {
     "type": "bool",
-    "description": "[生成] 是否启用对话等待与合并",
-    "default": true
+    "description": "[兼容] 对话等待旧字段（已废弃）",
+    "default": false,
+    "invisible": true
   },
   "dialogue_wait_timeout_sec": {
     "type": "int",
-    "description": "[生成] 对话合并空窗时间（秒，建议 3-5）",
+    "description": "[兼容] 对话合并空窗旧字段（已废弃）",
     "default": 4,
-    "condition": {
-      "advanced_enabled": true
-    }
+    "invisible": true
   },
   "dialogue_wait_max_merge": {
     "type": "int",
-    "description": "[生成] 最多合并几条用户输入",
+    "description": "[兼容] 对话合并条数旧字段（已废弃）",
     "default": 2,
-    "condition": {
-      "advanced_enabled": true
-    }
+    "invisible": true
   },
   "output_segment_enabled": {
     "type": "bool",
-    "description": "[生成] 是否启用主模型输出自动分段",
-    "default": true
+    "description": "[兼容] 自动分段旧字段（已废弃）",
+    "default": false,
+    "invisible": true
   },
   "output_segment_max_parts": {
     "type": "int",
-    "description": "[生成] 自动拆分最大句数（更短更紧凑）",
+    "description": "[兼容] 自动分段句数旧字段（已废弃）",
     "default": 4,
-    "condition": {
-      "advanced_enabled": true
-    }
+    "invisible": true
   },
   "output_segment_max_chars": {
     "type": "int",
-    "description": "[生成] 自动拆分后每句建议字数（中文建议 10-20）",
+    "description": "[兼容] 自动分段字数旧字段（已废弃）",
     "default": 20,
-    "condition": {
-      "advanced_enabled": true
-    }
+    "invisible": true
   },
   "holiday_qa_main_llm_enabled": {
     "type": "bool",

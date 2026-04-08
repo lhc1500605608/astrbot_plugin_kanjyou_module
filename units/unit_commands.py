@@ -113,26 +113,3 @@ class CommandUnitsMixin:
             event.unified_msg_origin, event, self._session_key(event), 0, None
         )
         yield event.plain_result("已发送一条主动话题测试消息。")
-
-    async def _cmd_idle_decision_status(self, event: AstrMessageEvent):
-        self._shield_command_from_llm(event)
-        status = self._decision_status_summary()
-        yield event.plain_result(status)
-
-    async def _cmd_idle_decision_last(self, event: AstrMessageEvent):
-        self._shield_command_from_llm(event)
-        session_key = self._session_key(event)
-        if not session_key:
-            yield event.plain_result("当前会话无法识别。")
-            return
-        last = self._decision_last_for_session(session_key)
-        if not last:
-            yield event.plain_result("当前会话暂无决策记录。")
-            return
-        summary = (
-            f"session={session_key} allow={last.get('allow')} "
-            f"confidence={last.get('confidence')} "
-            f"reason={','.join(last.get('reason_codes', [])[:3]) or '-'} "
-            f"mode={last.get('mode', '-')}"
-        )
-        yield event.plain_result(summary)

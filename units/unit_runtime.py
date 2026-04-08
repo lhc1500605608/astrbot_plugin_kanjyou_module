@@ -12,8 +12,6 @@ class RuntimeUnitsMixin:
         while True:
             try:
                 await asyncio.sleep(self.config["check_interval_sec"])
-                if self.config.get("enabled", True):
-                    await self._flush_dialogue_wait_buffers()
                 await self._check_sessions()
             except asyncio.CancelledError:
                 raise
@@ -317,67 +315,8 @@ class RuntimeUnitsMixin:
                 state_changed,
             )
 
-        # Lite decision refinement: can veto/confirm with confidence.
-        lite = await self._decision_refine_by_lite_llm(
-            session_key=session_key,
-            unified_msg_origin=str(umo or ""),
-            now=now,
-            idle_sec=idle_sec,
-            decay=decay,
-            mood=float(s.get("mood", self._mood_initial())),
-            reason_codes=reason_codes,
-            mode=mode,
-        )
-        min_conf = self._decision_min_confidence()
-        allow = True
         confidence = 0.7
         suggested_tone = self._style_hint(session_key, s, idle_sec)
-        if isinstance(lite, dict):
-            lite_allow = bool(lite.get("allow", True))
-            lite_conf = float(lite.get("confidence", 0.0))
-            lite_reasons = lite.get("reason_codes", [])
-            if isinstance(lite_reasons, list):
-                for code in lite_reasons[:2]:
-                    c = str(code).strip()
-                    if c:
-                        reason_codes.append(f"lite_{c}")
-            if lite_allow and lite_conf >= min_conf:
-                allow = True
-                confidence = lite_conf
-            elif (not lite_allow) and lite_conf >= min_conf:
-                allow = False
-                confidence = lite_conf
-                reason_codes.append("lite_veto")
-            if (
-                isinstance(lite.get("suggested_tone"), str)
-                and lite.get("suggested_tone").strip()
-            ):
-                suggested_tone = lite.get("suggested_tone").strip()
-
-        if not allow:
-            self._unit_defer_session(
-                session_key,
-                s,
-                now_ts,
-                "lite_veto",
-                f"session skip(lite_veto) session={session_key} mode={mode}",
-            )
-            state_changed = True
-            return self._decision_result(
-                False,
-                confidence,
-                reason_codes,
-                session_key,
-                s,
-                now,
-                now_ts,
-                period,
-                idle_sec,
-                decay,
-                mode,
-                state_changed,
-                suggested_tone,
-            )
 
         # Last-hop safety confirmation before sending.
         ok, safety_reason = self._decision_final_safety_check(s, now, now_ts)
@@ -468,45 +407,6 @@ class RuntimeUnitsMixin:
         if len(self._global_send_history) >= self._security_global_hourly_cap():
             return False, "global_hourly_cap"
         return True, "ok"
-
-    async def _decision_refine_by_lite_llm(
-        self,
-        session_key: str,
-        unified_msg_origin: str,
-        now: datetime,
-        idle_sec: float,
-        decay: float,
-        mood: float,
-        reason_codes: list,
-        mode: str,
-    ) -> Dict:
-        prompt = (
-            "你是主动对话决策助手。请输出严格 JSON，不要解释。\n"
-            '格式：{"allow":true,"confidence":0.0,"reason_codes":["..."],"suggested_tone":"..."}\n'
-            "规则：\n"
-            "1) allow 只表示是否建议主动发言。\n"
-            "2) confidence 范围 0-1。\n"
-            "3) reason_codes 用简短英文下划线风格。\n"
-            "4) suggested_tone 为一句中文语气建议，长度<=30。\n"
-            f"session={session_key} now={now.strftime('%Y-%m-%d %H:%M:%S')} mode={mode}\n"
-            f"idle_sec={int(idle_sec)} decay={decay:.2f} mood={mood:.2f}\n"
-            f"rule_reason_codes={','.join(reason_codes) if reason_codes else '-'}\n"
-        )
-        obj = await self._lite_llm_json(unified_msg_origin, prompt)
-        if not isinstance(obj, dict):
-            return {}
-        out = {
-            "allow": bool(obj.get("allow", True)),
-            "confidence": max(0.0, min(1.0, float(obj.get("confidence", 0.0)))),
-            "reason_codes": obj.get("reason_codes", []),
-            "suggested_tone": str(obj.get("suggested_tone", "")).strip(),
-        }
-        if not isinstance(out["reason_codes"], list):
-            out["reason_codes"] = []
-        out["reason_codes"] = [
-            str(x).strip() for x in out["reason_codes"] if str(x).strip()
-        ]
-        return out
 
     def _unit_global_guard(self, now_ts: float) -> bool:
         if now_ts < self._global_pause_until:

@@ -27,7 +27,6 @@ class EventUnitsMixin:
         text = self._extract_event_text(event)
         if text and self._is_plugin_command_text(text):
             session_key = self._session_key(event)
-            self._clear_wait_buffer_for_session(session_key)
             await self._touch_session_for_command(event)
             self._debug(
                 f"skip decision env by command session={session_key or '-'} text={text}"
@@ -35,7 +34,6 @@ class EventUnitsMixin:
             return
         if text and self._is_command_like_text(text):
             session_key = self._session_key(event)
-            self._clear_wait_buffer_for_session(session_key)
             await self._touch_session_for_command(event)
             self._debug(
                 f"skip plugin pipeline by external command session={session_key or '-'} text={text}"
@@ -62,8 +60,6 @@ class EventUnitsMixin:
             self._debug(
                 f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
             )
-        # Dialogue reply pipeline (wait/merge + sentence dispatch) runs here.
-        await self._maybe_reply_shallow_query_with_wait(event)
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)

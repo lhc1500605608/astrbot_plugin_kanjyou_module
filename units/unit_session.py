@@ -1072,7 +1072,6 @@ class SessionConfigUnitsMixin:
         proactive_provider = str(
             self.config.get("proactive_provider_id", "") or ""
         ).strip()
-        dialogue_wait_enabled = bool(self.config.get("dialogue_wait_enabled", False))
 
         if enabled and not private_wl and not group_wl:
             issues.append(
@@ -1094,14 +1093,6 @@ class SessionConfigUnitsMixin:
                 (
                     "WARN",
                     f"sleep_window_same_edge: sleep_start==sleep_end=={sleep_start}，建议避免相同起止时间。",
-                )
-            )
-
-        if dialogue_wait_enabled:
-            issues.append(
-                (
-                    "INFO",
-                    "dialogue_wait_ignored: 当前插件为主动问候模式，对话等待参数不参与主动触发决策。",
                 )
             )
 

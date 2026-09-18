@@ -205,5 +205,18 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# macOS archive artifacts (exclude from distribution zips)
 .DS_Store
 **/.DS_Store
+__MACOSX/
+**/__MACOSX/
+
+# Legacy/stray bytecode cache dirs
+.pycache/
+
+# Runtime state persisted next to the plugin
+idle_state.json
+
+# AstrBot runtime data persisted next to the plugin
+data/

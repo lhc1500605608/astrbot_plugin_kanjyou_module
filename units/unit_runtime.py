@@ -52,6 +52,7 @@ class RuntimeUnitsMixin:
     ) -> bool:
         self._unit_rollover_counters(s, now)
         self._recover_session_mood(s, now_ts)
+        self._update_mood_low_streak(s)
 
         decision = await self._decision_engine(session_key, s, now, now_ts)
         self._record_decision(session_key, decision)
@@ -221,6 +222,22 @@ class RuntimeUnitsMixin:
                 False,
                 0.94,
                 ["mood_low"],
+                session_key,
+                s,
+                now,
+                now_ts,
+                period,
+                idle_sec,
+                decay,
+                mode,
+                state_changed,
+            )
+        if self._unit_gate_persona_state(session_key, s, now_ts):
+            state_changed = True
+            return self._decision_result(
+                False,
+                0.94,
+                ["persona_state_low"],
                 session_key,
                 s,
                 now,
@@ -557,6 +574,28 @@ class RuntimeUnitsMixin:
         )
         return True
 
+    def _unit_gate_persona_state(
+        self, session_key: str, s: Dict, now_ts: float
+    ) -> bool:
+        if not self._persona_state_enabled():
+            return False
+        idle_sec = max(0.0, now_ts - float(s.get("last_interaction_at", now_ts)))
+        state = self._current_persona_state(session_key, s, idle_sec)
+        if not self._persona_state_suppresses_proactive(state):
+            return False
+        self._unit_defer_session(
+            session_key,
+            s,
+            now_ts,
+            "persona_state_low",
+            (
+                f"session skip(persona_state_low) session={session_key} "
+                f"state={state} mood={float(s.get('mood', self._mood_initial())):.2f} "
+                f"low_streak={int(s.get('mood_low_streak', 0))}"
+            ),
+        )
+        return True
+
     def _unit_gate_probability(
         self, session_key: str, s: Dict, idle_sec: float, now: datetime, now_ts: float
     ) -> tuple[bool, Dict]:
@@ -651,9 +690,18 @@ class RuntimeUnitsMixin:
         topic = await self._generate_proactive_text(
             unified_msg_origin, session_key, idle_sec, session
         )
+
+        async def _send_segment(segment: str) -> None:
+            chain = MessageChain().message(segment)
+            delivered = await self.context.send_message(unified_msg_origin, chain)
+            if delivered is False:
+                # AstrBot 4.23.2 send_message returns bool; False means no platform matched.
+                self._debug(
+                    f"send_message returned False (platform not found) session={session_key}"
+                )
+
         try:
-            chain = MessageChain().message(topic)
-            await self.context.send_message(unified_msg_origin, chain)
+            await self._dispatch_reply_segments(_send_segment, topic, proactive=True)
             self._debug(f"send proactive ok session={session_key} topic={topic}")
             return True, topic
         except Exception:

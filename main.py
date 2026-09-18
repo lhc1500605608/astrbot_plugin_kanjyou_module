@@ -5,18 +5,19 @@ from typing import Dict, List, Optional
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star
 
 IMPORT_MODE = "package"
 IMPORT_FALLBACK_REASON = ""
 
 try:
     # Preferred package imports when AstrBot loads plugin as a package.
-    from .config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
+    from .config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER
     from .units.unit_advanced import AdvancedPolicyUnitsMixin
     from .units.unit_commands import CommandUnitsMixin
     from .units.unit_events import EventUnitsMixin
     from .units.unit_generation import PolicyGenerationUnitsMixin
+    from .units.unit_memory_recall import MemoryRecallUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
     from .units.unit_session import SessionConfigUnitsMixin
 except ImportError:
@@ -26,27 +27,23 @@ except ImportError:
     PLUGIN_DIR = Path(__file__).parent
     if str(PLUGIN_DIR) not in sys.path:
         sys.path.insert(0, str(PLUGIN_DIR))
-    from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER, PLUGIN_VERSION
+    from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER
     from units.unit_advanced import AdvancedPolicyUnitsMixin
     from units.unit_commands import CommandUnitsMixin
     from units.unit_events import EventUnitsMixin
     from units.unit_generation import PolicyGenerationUnitsMixin
+    from units.unit_memory_recall import MemoryRecallUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
     from units.unit_session import SessionConfigUnitsMixin
 
 
-@register(
-    "kanjyou_idle_proactive",
-    "Tango",
-    "闲时主动聊天：分会话计时、白名单、夜间免打扰",
-    PLUGIN_VERSION,
-)
 class KanjyouIdleProactivePlugin(
     CommandUnitsMixin,
     EventUnitsMixin,
     SessionConfigUnitsMixin,
     AdvancedPolicyUnitsMixin,
     PolicyGenerationUnitsMixin,
+    MemoryRecallUnitsMixin,
     RuntimeUnitsMixin,
     Star,
 ):

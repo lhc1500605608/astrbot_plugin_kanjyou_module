@@ -71,21 +71,55 @@ class PolicyGenerationUnitsMixin:
             session_type = "私聊" if session_key.startswith("private:") else "群聊"
             env_perception = self._build_env_perception(unified_msg_origin, session_key)
             persona_text = await self._resolve_persona_prompt()
+            persona_state = self._current_persona_state(
+                session_key,
+                session,
+                idle_sec,
+                {"holiday_qa": "节假日" in env_perception},
+            )
+            state_note = self._persona_state_prompt_note(persona_state)
+            length_range = self._persona_state_length_range(persona_state)
+            state_block = self._persona_state_prompt_block(persona_state)
             style_hint = self._style_hint(session_key, session, idle_sec)
             recent_history = self._recent_history_text(session)
+            recalled_memory = await self._recall_memory_for_prompt(
+                unified_msg_origin,
+                session_key,
+                idle_sec,
+                session,
+                env_perception,
+                style_hint,
+            )
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
                 or DEFAULT_CONFIG["proactive_prompt_template"]
             )
             prompt = prompt_tpl.format(
                 persona=persona_text,
+                persona_state=persona_state,
+                persona_state_note=state_note,
+                persona_state_block=state_block,
+                length_range=length_range,
                 session_type=session_type,
                 env_perception=env_perception,
                 idle_seconds=int(idle_sec),
                 idle_minutes=max(1, int(idle_sec // 60)),
                 style_hint=style_hint,
+                recalled_memory=recalled_memory,
                 recent_history=recent_history,
             )
+            if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
+                if "{persona_state}" not in prompt_tpl:
+                    prompt += f"\n{state_block}"
+                elif "{persona_state_note}" not in prompt_tpl and state_note:
+                    prompt += f"\n当前情绪状态备注：{state_note}\n"
+            if "{length_range}" not in prompt_tpl:
+                prompt += f"目标字数：{length_range} 字。\n"
+            if "{recalled_memory}" not in prompt_tpl and recalled_memory != "无":
+                prompt += (
+                    "相关长期记忆（仅在自然相关时引用，不要生硬复述、不要暴露隐私）：\n"
+                    f"{recalled_memory}\n"
+                )
 
             provider_id = str(self.config.get("proactive_provider_id") or "").strip()
             if not provider_id:
@@ -202,6 +236,46 @@ class PolicyGenerationUnitsMixin:
                 )
             ),
         )
+
+    def _proactive_segment_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("proactive_segment_enabled"),
+            DEFAULT_CONFIG["proactive_segment_enabled"],
+        )
+
+    def _proactive_segment_max_parts(self) -> int:
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "proactive_segment_max_parts",
+                    DEFAULT_CONFIG["proactive_segment_max_parts"],
+                )
+            ),
+        )
+
+    def _proactive_segment_delay_min_ms(self) -> int:
+        return max(
+            0,
+            int(
+                self.config.get(
+                    "proactive_segment_delay_min_ms",
+                    DEFAULT_CONFIG["proactive_segment_delay_min_ms"],
+                )
+            ),
+        )
+
+    def _proactive_segment_delay_max_ms(self) -> int:
+        hi = max(
+            0,
+            int(
+                self.config.get(
+                    "proactive_segment_delay_max_ms",
+                    DEFAULT_CONFIG["proactive_segment_delay_max_ms"],
+                )
+            ),
+        )
+        return max(hi, self._proactive_segment_delay_min_ms())
 
     async def _resolve_lite_provider_id(self, unified_msg_origin: str) -> str:
         provider_id = str(self.config.get("lite_provider_id") or "").strip()
@@ -520,10 +594,48 @@ class PolicyGenerationUnitsMixin:
             i += budget
         return [x for x in out if x]
 
-    def _trim_reply_segments(self, parts: list[str]) -> list[str]:
+    def _split_proactive_segments(self, text: str) -> list[str]:
+        # Proactive greeting is usually a single sentence: keep the leading
+        # segment semantically whole and never fall back to a mid-sentence cut.
+        raw = (text or "").strip()
+        if not raw:
+            return []
+        if "||" in raw:
+            parts = [p.strip() for p in raw.split("||") if p.strip()]
+            if parts:
+                return parts
+        lines = [p.strip() for p in raw.splitlines() if p.strip()]
+        if len(lines) > 1:
+            return lines
+        chunks = re.split(r"(?<=[。！？!?；;])", raw)
+        parts = [c.strip() for c in chunks if c and c.strip()]
+        if len(parts) > 1:
+            return parts
+        soft = re.split(r"(?<=[，,])", raw)
+        soft_parts = [c.strip() for c in soft if c and c.strip()]
+        if len(soft_parts) > 1:
+            return soft_parts
+        return [raw]
+
+    def _proactive_segment_delay_ms(self, text: str) -> int:
+        lo = self._proactive_segment_delay_min_ms()
+        hi = self._proactive_segment_delay_max_ms()
+        if hi <= lo:
+            return lo
+        length = len((text or "").strip())
+        ratio = min(1.0, length / 40.0)
+        base = lo + (hi - lo) * ratio
+        jittered = base * random.uniform(0.85, 1.15)
+        return int(max(float(lo), min(float(hi), jittered)))
+
+    def _trim_reply_segments(
+        self, parts: list[str], max_parts: Optional[int] = None
+    ) -> list[str]:
         if not parts:
             return []
-        max_parts = self._output_segment_max_parts()
+        if max_parts is None:
+            max_parts = self._output_segment_max_parts()
+        max_parts = max(1, int(max_parts))
         if len(parts) <= max_parts:
             return parts
         kept = parts[: max_parts - 1]
@@ -537,21 +649,30 @@ class PolicyGenerationUnitsMixin:
         send_reply: Callable[[str], Awaitable[None]],
         text: str,
         sentence_budget: Optional[int] = None,
+        proactive: bool = False,
     ):
         msg = (text or "").strip()
         if not msg:
             return
-        if not self._output_segment_enabled():
+        enabled = (
+            self._proactive_segment_enabled()
+            if proactive
+            else self._output_segment_enabled()
+        )
+        if not enabled:
             await send_reply(msg)
             return
-        parts = self._split_reply_segments(msg)
+        if proactive:
+            max_parts = self._proactive_segment_max_parts()
+            parts = self._split_proactive_segments(msg)
+        else:
+            max_parts = self._output_segment_max_parts()
+            parts = self._split_reply_segments(msg)
         if isinstance(sentence_budget, int) and sentence_budget > 0:
-            cap = max(
-                1, min(int(self._output_segment_max_parts()), int(sentence_budget))
-            )
+            cap = max(1, min(max_parts, int(sentence_budget)))
             if len(parts) > cap:
                 parts = parts[: cap - 1] + ["".join(parts[cap - 1 :]).strip()]
-        parts = self._trim_reply_segments(parts)
+        parts = self._trim_reply_segments(parts, max_parts)
         if not parts:
             await send_reply(msg)
             return
@@ -561,7 +682,11 @@ class PolicyGenerationUnitsMixin:
         for i, p in enumerate(parts):
             await send_reply(p)
             if i < len(parts) - 1:
-                await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(p)))
+                if proactive:
+                    delay_ms = self._proactive_segment_delay_ms(p)
+                    await asyncio.sleep(delay_ms / 1000.0)
+                else:
+                    await asyncio.sleep(min(1.2, 0.15 + 0.02 * len(p)))
 
     async def _send_image_reply(
         self, unified_msg_origin: str, image_prompt: str
@@ -572,7 +697,12 @@ class PolicyGenerationUnitsMixin:
         try:
             image_url = await self.text_to_image(prompt)
             try:
-                chain = MessageChain().file_image(image_url)
+                url = str(image_url or "").strip()
+                chain = MessageChain()
+                if url.startswith("http://") or url.startswith("https://"):
+                    chain.url_image(url)
+                else:
+                    chain.file_image(url)
                 await self.context.send_message(unified_msg_origin, chain)
                 return True
             except Exception:
@@ -1537,12 +1667,206 @@ class PolicyGenerationUnitsMixin:
         factor = base**streak
         return min(max_factor, factor)
 
+    def _persona_state_default_name(self) -> str:
+        preset = self._resolved_persona_preset()
+        name = str(preset.get("default") or "").strip()
+        if name:
+            return name
+        states = preset.get("states") if isinstance(preset.get("states"), dict) else {}
+        return next(iter(states), "")
+
+    def _persona_state_config(self, state: str) -> Dict:
+        preset = self._resolved_persona_preset()
+        states = preset.get("states") if isinstance(preset.get("states"), dict) else {}
+        row = states.get(state)
+        if not isinstance(row, dict):
+            row = states.get(self._persona_state_default_name())
+        return row if isinstance(row, dict) else {}
+
+    def _persona_state_field(self, state: str, field: str) -> str:
+        value = self._persona_state_config(state).get(field)
+        if value is None:
+            value = self._persona_state_config(self._persona_state_default_name()).get(
+                field
+            )
+        return str(value) if value is not None else ""
+
+    def _persona_mood_threshold(self, level) -> Optional[float]:
+        low = self._persona_state_low_threshold()
+        high = self._persona_state_high_threshold()
+        if isinstance(level, str):
+            key = level.strip().lower()
+            if key == "low":
+                return low
+            if key == "mid":
+                return (low + high) / 2.0
+            if key == "high":
+                return high
+        try:
+            return float(level)
+        except (TypeError, ValueError):
+            return None
+
+    def _persona_condition_matches(self, when, ctx: Dict) -> bool:
+        # None/empty => unconditional match; list => OR; dict => AND.
+        if when is None:
+            return True
+        if isinstance(when, list):
+            return any(self._persona_condition_matches(item, ctx) for item in when)
+        if not isinstance(when, dict) or not when:
+            return True
+        return all(
+            self._persona_condition_item(key, value, ctx)
+            for key, value in when.items()
+        )
+
+    def _persona_condition_item(self, key: str, value, ctx: Dict) -> bool:
+        if key == "default":
+            return bool(value)
+        if key == "holiday_qa":
+            return bool(ctx.get("holiday_qa")) == bool(value)
+        if key == "important_topic":
+            return bool(ctx.get("important_topic")) == bool(value)
+        if key == "low_persist":
+            reached = ctx.get("low_rounds", 0) >= self._persona_state_low_persist_rounds()
+            return reached == bool(value)
+        if key == "no_reply_streak_gte":
+            try:
+                threshold = int(value)
+            except (TypeError, ValueError):
+                return False
+            return ctx.get("streak", 0) >= threshold
+        if key == "private_only":
+            return bool(ctx.get("is_private")) == bool(value)
+        if key == "idle_gte_clingy":
+            reached = ctx.get("idle_sec", 0.0) >= self._persona_state_clingy_idle_sec()
+            return reached == bool(value)
+        if key == "mood_below":
+            threshold = self._persona_mood_threshold(value)
+            return threshold is not None and ctx.get("mood", 0.0) < threshold
+        if key == "mood_gte":
+            threshold = self._persona_mood_threshold(value)
+            return threshold is not None and ctx.get("mood", 0.0) >= threshold
+        # Unknown condition keys never match: safe fallback to the default state.
+        return False
+
+    def _map_mood_to_persona_state(
+        self,
+        mood: float,
+        session: Optional[Dict] = None,
+        env: Optional[Dict] = None,
+    ) -> str:
+        """Map mood(0-100) to a semantic state using the active preset rules.
+
+        Pure function: the result depends only on the arguments and config. The
+        state names, priorities and match rules come from the resolved preset
+        (data), so switching persona/states never requires touching code.
+        Highest-priority state whose ``when`` matches wins; ``default`` is the
+        fallback.
+        """
+        default_state = self._persona_state_default_name()
+        if not self._persona_state_enabled():
+            return default_state
+        session = session if isinstance(session, dict) else {}
+        env = env if isinstance(env, dict) else {}
+        try:
+            current = float(mood)
+        except (TypeError, ValueError):
+            current = self._mood_initial()
+        try:
+            streak = max(0, int(session.get("no_reply_streak", 0) or 0))
+        except (TypeError, ValueError):
+            streak = 0
+        raw_rounds = env.get("mood_low_rounds", session.get("mood_low_streak", 0))
+        try:
+            low_rounds = max(0, int(raw_rounds or 0))
+        except (TypeError, ValueError):
+            low_rounds = 0
+        session_key = str(env.get("session_key") or session.get("session_key") or "")
+        is_private = env.get("is_private")
+        if is_private is None:
+            is_private = session_key.startswith("private:") if session_key else True
+        try:
+            idle_sec = float(env.get("idle_sec", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            idle_sec = 0.0
+
+        ctx: Dict = {
+            "mood": current,
+            "holiday_qa": bool(env.get("holiday_qa")),
+            "important_topic": bool(env.get("important_topic")),
+            "low_rounds": low_rounds,
+            "streak": streak,
+            "is_private": bool(is_private),
+            "idle_sec": idle_sec,
+        }
+
+        preset = self._resolved_persona_preset()
+        states = preset.get("states") if isinstance(preset.get("states"), dict) else {}
+        candidates = []
+        for name, cfg in states.items():
+            if name == default_state or not isinstance(cfg, dict):
+                continue
+            try:
+                priority = float(cfg.get("priority", 0) or 0)
+            except (TypeError, ValueError):
+                priority = 0.0
+            candidates.append((priority, name, cfg.get("when")))
+        candidates.sort(key=lambda row: -row[0])
+        for _priority, name, when in candidates:
+            if self._persona_condition_matches(when, ctx):
+                return name
+        return default_state
+
+    def _current_persona_state(
+        self,
+        session_key: str,
+        session: Optional[Dict],
+        idle_sec: float,
+        env: Optional[Dict] = None,
+    ) -> str:
+        mood = float((session or {}).get("mood", self._mood_initial()))
+        merged: Dict = {"session_key": session_key, "idle_sec": idle_sec}
+        if isinstance(env, dict):
+            merged.update(env)
+        return self._map_mood_to_persona_state(mood, session, merged)
+
+    def _persona_state_style_hint(self, state: str) -> str:
+        return self._persona_state_field(state, "style_hint")
+
+    def _persona_state_prompt_note(self, state: str) -> str:
+        return self._persona_state_field(state, "prompt_note")
+
+    def _persona_state_length_range(self, state: str) -> str:
+        return self._persona_state_field(state, "length_range")
+
+    def _persona_state_prompt_block(self, state: str) -> str:
+        # Empty when the feature is disabled: no state block is injected.
+        if not self._persona_state_enabled():
+            return ""
+        note = self._persona_state_prompt_note(state)
+        block = f"当前情绪状态：{state}\n"
+        if note:
+            block += f"{note}\n"
+        return block
+
+    def _persona_state_suppresses_proactive(self, state: str) -> bool:
+        return bool(self._persona_state_config(state).get("suppress_proactive"))
+
     def _style_hint(
         self, session_key: str, session: Optional[Dict], idle_sec: float
     ) -> str:
         override = str((session or {}).get("decision_suggested_tone", "")).strip()
         if override:
             return override[:30]
+        if self._persona_state_enabled():
+            state = self._current_persona_state(session_key, session, idle_sec)
+            if state != self._persona_state_default_name():
+                hint = self._persona_state_style_hint(state)
+                if hint:
+                    if session_key.startswith("group:"):
+                        hint = f"{hint}；群聊中简短克制"
+                    return hint
         if session_key.startswith("group:"):
             if idle_sec > 6 * 3600:
                 return "群聊里简短自然、轻松抛题，不要过度热情"

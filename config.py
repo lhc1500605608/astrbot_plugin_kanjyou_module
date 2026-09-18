@@ -23,29 +23,37 @@ DEFAULT_CONFIG = {
     "decision_group_quiet_threshold": 3,
     "decision_trace_enabled": True,
     "quality_trace_enabled": True,
-    "dialogue_wait_enabled": True,
+    "dialogue_wait_enabled": False,
     "dialogue_wait_timeout_sec": 4,
     "dialogue_wait_max_merge": 2,
-    "output_segment_enabled": True,
+    "output_segment_enabled": False,
     "output_segment_max_parts": 4,
     "output_segment_max_chars": 20,
+    "proactive_segment_enabled": True,
+    "proactive_segment_max_parts": 3,
+    "proactive_segment_delay_min_ms": 300,
+    "proactive_segment_delay_max_ms": 900,
     "holiday_qa_main_llm_enabled": True,
     "proactive_lite_refine_enabled": True,
     "proactive_prompt_template": (
         "你是一个在聊天中主动关怀用户的助手。"
         "请严格基于下方人格设定进行表达，不要脱离人格。\n"
         "人格设定：\n{persona}\n\n"
+        "{persona_state_block}"
         "当前会话类型：{session_type}\n"
         "环境感知信息：{env_perception}\n"
         "距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n"
         "建议语气：{style_hint}\n"
+        "相关长期记忆（可能为空，仅在自然相关时引用，严禁生硬复述或暴露隐私）：\n"
+        "{recalled_memory}\n"
         "最近已发过的主动问候（避免重复）：\n{recent_history}\n"
         "请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n"
         "1) 语气自然、有温度，不要机械。\n"
         "2) 结尾带一个轻量开放问题，促进继续对话。\n"
         "3) 避免重复“在吗/你好”。\n"
-        "4) 长度 20-60 字。\n"
-        "5) 和最近问候不重复。"
+        "4) 长度 {length_range} 字。\n"
+        "5) 和最近问候不重复。\n"
+        "6) 记忆只在相关时自然带一句，不要罗列、不要生硬复述；避开记忆中主人明确不喜欢的话题。"
     ),
     "fallback_proactive_text": "刚刚想到你，最近有没有一件小事让你有点开心？",
     "enable_holiday_perception": True,
@@ -67,6 +75,20 @@ DEFAULT_CONFIG = {
     "mood_cost_on_proactive": 28.0,
     "mood_cost_on_dialogue": 8.0,
     "mood_recover_per_min": 1.2,
+    "persona_state_enabled": True,
+    "persona_state_preset": "chika",
+    "persona_state_custom": {},
+    "persona_state_overrides": {},
+    "persona_state_low_threshold": 35.0,
+    "persona_state_high_threshold": 75.0,
+    "persona_state_clingy_idle_sec": 14400,
+    "persona_state_low_persist_rounds": 2,
+    "memory_recall_enabled": True,
+    "memory_recall_limit": 3,
+    "memory_recall_timeout_sec": 2,
+    "memory_recall_private_only": True,
+    "memory_recall_group_enabled": False,
+    "memory_recall_plugin_name": "astrbot_plugin_tmemory",
     "debug_decision_log": True,
 }
 
@@ -100,6 +122,7 @@ EXECUTION_ORDER = (
     "unit_gate_period_limit",
     "unit_gate_idle",
     "unit_gate_mood",
+    "unit_gate_persona_state",
     "unit_gate_probability",
     "unit_gate_origin",
     "unit_execute_send",
@@ -115,4 +138,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.1.3"
+PLUGIN_VERSION = "2.2.0"

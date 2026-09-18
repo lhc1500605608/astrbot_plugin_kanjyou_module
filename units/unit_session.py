@@ -14,6 +14,11 @@ try:
 except ImportError:
     from config import DEFAULT_CONFIG
 
+try:
+    from .persona_presets import resolve_preset
+except ImportError:
+    from persona_presets import resolve_preset
+
 _GLOBAL_DEBUG_THROTTLE: dict[str, float] = {}
 _DEFAULT_DEBUG_WINDOWS = {
     "decision": 600,
@@ -38,6 +43,7 @@ _KEY_STATUS_REASONS = {
     "cooldown",
     "daily_limit",
     "mood_low",
+    "persona_state_low",
     "await_human_reply",
     "not_in_proactive_whitelist",
     "missing_origin",
@@ -71,6 +77,7 @@ class SessionConfigUnitsMixin:
             "recent_proactive_texts": [],
             "mood": float(self._mood_initial()),
             "mood_updated_at": now_ts,
+            "mood_low_streak": 0,
         }
 
     def _ensure_session_shape(self, session: Dict):
@@ -98,6 +105,8 @@ class SessionConfigUnitsMixin:
             session["mood"] = float(self._mood_initial())
         if not isinstance(session.get("mood_updated_at"), (int, float)):
             session["mood_updated_at"] = self._now().timestamp()
+        if not isinstance(session.get("mood_low_streak"), (int, float)):
+            session["mood_low_streak"] = 0
 
     def _rollover_daily_counter(self, session: Dict, now: datetime):
         today = now.strftime("%Y-%m-%d")
@@ -215,6 +224,92 @@ class SessionConfigUnitsMixin:
                 ),
             ),
         )
+
+    def _persona_state_enabled(self) -> bool:
+        return self._to_bool(
+            self.config.get("persona_state_enabled"),
+            DEFAULT_CONFIG["persona_state_enabled"],
+        )
+
+    def _persona_state_low_threshold(self) -> float:
+        return self._mood_clamp(
+            float(
+                self.config.get(
+                    "persona_state_low_threshold",
+                    DEFAULT_CONFIG["persona_state_low_threshold"],
+                )
+            )
+        )
+
+    def _persona_state_high_threshold(self) -> float:
+        return self._mood_clamp(
+            float(
+                self.config.get(
+                    "persona_state_high_threshold",
+                    DEFAULT_CONFIG["persona_state_high_threshold"],
+                )
+            )
+        )
+
+    def _persona_state_preset_name(self) -> str:
+        return (
+            str(
+                self.config.get(
+                    "persona_state_preset", DEFAULT_CONFIG["persona_state_preset"]
+                )
+                or ""
+            ).strip()
+            or "chika"
+        )
+
+    def _persona_state_custom(self) -> Dict:
+        value = self.config.get("persona_state_custom")
+        return value if isinstance(value, dict) else {}
+
+    def _persona_state_overrides(self) -> Dict:
+        value = self.config.get("persona_state_overrides")
+        return value if isinstance(value, dict) else {}
+
+    def _persona_state_clingy_idle_sec(self) -> float:
+        return max(
+            0.0,
+            float(
+                self.config.get(
+                    "persona_state_clingy_idle_sec",
+                    DEFAULT_CONFIG["persona_state_clingy_idle_sec"],
+                )
+            ),
+        )
+
+    def _persona_state_low_persist_rounds(self) -> int:
+        return max(
+            1,
+            int(
+                self.config.get(
+                    "persona_state_low_persist_rounds",
+                    DEFAULT_CONFIG["persona_state_low_persist_rounds"],
+                )
+            ),
+        )
+
+    def _resolved_persona_preset(self) -> Dict:
+        return resolve_preset(
+            self._persona_state_preset_name(),
+            self._persona_state_custom(),
+            self._persona_state_overrides(),
+        )
+
+    def _update_mood_low_streak(self, s: Dict):
+        # Persistence signal for the low-mood semantic state: how many
+        # consecutive decision rounds the session mood stayed below threshold.
+        if not self._persona_state_enabled():
+            s["mood_low_streak"] = 0
+            return
+        mood = float(s.get("mood", self._mood_initial()))
+        if mood < self._persona_state_low_threshold():
+            s["mood_low_streak"] = int(s.get("mood_low_streak", 0)) + 1
+        else:
+            s["mood_low_streak"] = 0
 
     def _mood_cost_on_proactive(self) -> float:
         return max(
@@ -498,6 +593,7 @@ class SessionConfigUnitsMixin:
                 "cooldown",
                 "daily_limit",
                 "mood_low",
+                "persona_state_low",
                 "await_human_reply",
                 "not_in_proactive_whitelist",
                 "missing_origin",
@@ -728,6 +824,44 @@ class SessionConfigUnitsMixin:
         if int(self.config.get("output_segment_max_chars", 0)) < 10:
             self.config["output_segment_max_chars"] = 10
             changed = True
+        if not isinstance(self.config.get("proactive_segment_enabled"), bool):
+            self.config["proactive_segment_enabled"] = self._to_bool(
+                self.config.get("proactive_segment_enabled"),
+                DEFAULT_CONFIG["proactive_segment_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("proactive_segment_max_parts"), (int, float)):
+            self.config["proactive_segment_max_parts"] = DEFAULT_CONFIG[
+                "proactive_segment_max_parts"
+            ]
+            changed = True
+        if int(self.config.get("proactive_segment_max_parts", 0)) < 1:
+            self.config["proactive_segment_max_parts"] = 1
+            changed = True
+        if not isinstance(
+            self.config.get("proactive_segment_delay_min_ms"), (int, float)
+        ):
+            self.config["proactive_segment_delay_min_ms"] = DEFAULT_CONFIG[
+                "proactive_segment_delay_min_ms"
+            ]
+            changed = True
+        if int(self.config.get("proactive_segment_delay_min_ms", 0)) < 0:
+            self.config["proactive_segment_delay_min_ms"] = 0
+            changed = True
+        if not isinstance(
+            self.config.get("proactive_segment_delay_max_ms"), (int, float)
+        ):
+            self.config["proactive_segment_delay_max_ms"] = DEFAULT_CONFIG[
+                "proactive_segment_delay_max_ms"
+            ]
+            changed = True
+        if int(self.config.get("proactive_segment_delay_max_ms", 0)) < int(
+            self.config.get("proactive_segment_delay_min_ms", 0)
+        ):
+            self.config["proactive_segment_delay_max_ms"] = int(
+                self.config.get("proactive_segment_delay_min_ms", 0)
+            )
+            changed = True
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(
                 self.config.get("holiday_qa_main_llm_enabled"),
@@ -926,6 +1060,98 @@ class SessionConfigUnitsMixin:
         )
         if self.config["mood_min_trigger"] > self.config["mood_initial"]:
             self.config["mood_initial"] = self.config["mood_min_trigger"]
+            changed = True
+        if not isinstance(self.config.get("persona_state_enabled"), bool):
+            self.config["persona_state_enabled"] = self._to_bool(
+                self.config.get("persona_state_enabled"),
+                DEFAULT_CONFIG["persona_state_enabled"],
+            )
+            changed = True
+        if not isinstance(
+            self.config.get("persona_state_low_threshold"), (int, float)
+        ):
+            self.config["persona_state_low_threshold"] = DEFAULT_CONFIG[
+                "persona_state_low_threshold"
+            ]
+            changed = True
+        if not isinstance(
+            self.config.get("persona_state_high_threshold"), (int, float)
+        ):
+            self.config["persona_state_high_threshold"] = DEFAULT_CONFIG[
+                "persona_state_high_threshold"
+            ]
+            changed = True
+        low = self._mood_clamp(self.config.get("persona_state_low_threshold"))
+        high = self._mood_clamp(self.config.get("persona_state_high_threshold"))
+        if high <= low:
+            high = min(100.0, low + 1.0)
+            if high <= low:
+                low = max(0.0, high - 1.0)
+            changed = True
+        self.config["persona_state_low_threshold"] = low
+        self.config["persona_state_high_threshold"] = high
+        if not isinstance(self.config.get("persona_state_preset"), str):
+            self.config["persona_state_preset"] = DEFAULT_CONFIG["persona_state_preset"]
+            changed = True
+        elif not self.config["persona_state_preset"].strip():
+            self.config["persona_state_preset"] = DEFAULT_CONFIG["persona_state_preset"]
+            changed = True
+        if not isinstance(self.config.get("persona_state_custom"), dict):
+            self.config["persona_state_custom"] = {}
+            changed = True
+        if not isinstance(self.config.get("persona_state_overrides"), dict):
+            self.config["persona_state_overrides"] = {}
+            changed = True
+        if not isinstance(
+            self.config.get("persona_state_clingy_idle_sec"), (int, float)
+        ):
+            self.config["persona_state_clingy_idle_sec"] = DEFAULT_CONFIG[
+                "persona_state_clingy_idle_sec"
+            ]
+            changed = True
+        if float(self.config.get("persona_state_clingy_idle_sec", 0)) < 0:
+            self.config["persona_state_clingy_idle_sec"] = 0
+            changed = True
+        if not isinstance(
+            self.config.get("persona_state_low_persist_rounds"), (int, float)
+        ):
+            self.config["persona_state_low_persist_rounds"] = DEFAULT_CONFIG[
+                "persona_state_low_persist_rounds"
+            ]
+            changed = True
+        if int(self.config.get("persona_state_low_persist_rounds", 1)) < 1:
+            self.config["persona_state_low_persist_rounds"] = 1
+            changed = True
+        if not isinstance(self.config.get("memory_recall_enabled"), bool):
+            self.config["memory_recall_enabled"] = self._to_bool(
+                self.config.get("memory_recall_enabled"),
+                DEFAULT_CONFIG["memory_recall_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("memory_recall_private_only"), bool):
+            self.config["memory_recall_private_only"] = self._to_bool(
+                self.config.get("memory_recall_private_only"),
+                DEFAULT_CONFIG["memory_recall_private_only"],
+            )
+            changed = True
+        if not isinstance(self.config.get("memory_recall_group_enabled"), bool):
+            self.config["memory_recall_group_enabled"] = self._to_bool(
+                self.config.get("memory_recall_group_enabled"),
+                DEFAULT_CONFIG["memory_recall_group_enabled"],
+            )
+            changed = True
+        if not isinstance(self.config.get("memory_recall_limit"), (int, float)):
+            self.config["memory_recall_limit"] = DEFAULT_CONFIG["memory_recall_limit"]
+            changed = True
+        if not isinstance(self.config.get("memory_recall_timeout_sec"), (int, float)):
+            self.config["memory_recall_timeout_sec"] = DEFAULT_CONFIG[
+                "memory_recall_timeout_sec"
+            ]
+            changed = True
+        if not str(self.config.get("memory_recall_plugin_name") or "").strip():
+            self.config["memory_recall_plugin_name"] = DEFAULT_CONFIG[
+                "memory_recall_plugin_name"
+            ]
             changed = True
         return changed
 
@@ -1150,6 +1376,7 @@ class SessionConfigUnitsMixin:
         no_reply_streak = int(s.get("no_reply_streak", 0))
         decay = self._no_reply_decay_factor(s)
         mood = float(s.get("mood", self._mood_initial()))
+        persona_state = self._current_persona_state(session_key, s, idle_sec)
         self._log_debug(
             "status",
             f"status reason={reason}",
@@ -1160,6 +1387,7 @@ class SessionConfigUnitsMixin:
                 "no_reply_streak": no_reply_streak,
                 "decay": round(decay, 2),
                 "mood": round(mood, 2),
+                "persona_state": persona_state,
                 "next_check_at": self._fmt_ts(next_check_at),
                 "next_check_in_sec": next_check_in,
                 "next_trigger_at": self._fmt_ts(earliest_trigger_at),

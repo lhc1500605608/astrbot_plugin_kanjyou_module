@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v2.3.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.4.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -17,6 +17,12 @@
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
+
+### v2.4.0 新增能力
+
+- **情绪状态表单化编辑**：`persona_state_custom` / `persona_state_overrides` 改为结构化子 schema（`states` 为可增删的 `template_list`），WebUI 表单逐字段填写状态名/优先级/触发条件/语气/长度，无需手写 JSON。
+- **旧手写 JSON 兼容**：兼容老版 `{"default":..., "states":{...}}` 字典写法，运行期形态与决策流水线零改动。
+- **空值不覆盖预设**：schema 注入的 `{default:"",states:[]}` 空形态不再误覆盖所选预设（修复回归）。
 
 ### v2.3.0 新增能力
 
@@ -81,12 +87,31 @@
 
 - `persona_state_enabled`：是否启用状态调制（默认开启）；关闭后退回通用 mood 行为且不注入状态区块
 - `persona_state_preset`：内置预设名，`chika`（默认）或 `generic`（中性通用）
-- `persona_state_custom`：非空时**整体替换**预设（完整自定义状态集，object，默认 `{}`）
-- `persona_state_overrides`：对当前生效预设做**深合并**部分覆盖（object，默认 `{}`）
+- `persona_state_custom`：**表单化**自定义状态集，填写后**整体替换**预设；`states` 列表留空则使用上方所选预设
+- `persona_state_overrides`：**表单化**部分覆盖，仅覆盖填写的状态/字段，其余沿用所选预设（同名状态走深合并）
 - `persona_state_low_threshold`：低情绪阈值（默认 35）
 - `persona_state_high_threshold`：高情绪阈值（默认 75）
 - `persona_state_clingy_idle_sec`：久未互动类状态所需空闲秒数（默认 14400＝4 小时）
 - `persona_state_low_persist_rounds`：低情绪状态需连续经过的决策轮数（默认 2）
+
+#### WebUI 表单用法
+
+在 AstrBot WebUI「高级·情绪」分组中展开 `persona_state_custom`（或 `persona_state_overrides`）：
+
+- **默认状态名**：所有规则都不匹配时使用；留空自动取 `states` 列表第一个状态。
+- **情绪状态列表**：点「添加」新增条目，每个条目只需填写：
+
+| 表单字段 | 说明 | 示例 |
+|----------|------|------|
+| 状态名 | 唯一名称 | `低落` |
+| 优先级 | 数值越大越优先匹配 | `80` |
+| 触发条件（JSON） | 可选；dict=AND，数组=OR，留空=无条件兜底 | `{"mood_below":"low","low_persist":true}` |
+| 语气提示 | 注入 prompt 的语气描述 | `简短克制、不追问` |
+| 提示词补充 | 追加到人格 prompt 的一句话 | `精力较低，表达简短。` |
+| 长度范围 | 形如 `20-60`（字） | `6-20` |
+| 暂停主动 | 该状态跳过闲时主动问候 | `true` |
+
+> `states` 列表留空时视为「未提供」，回退到上方 `persona_state_preset` 所选预设；不会用空值覆盖预设。旧的整段手写 JSON（`states` 为字典）仍然兼容。
 
 #### 预设结构 schema
 
@@ -127,7 +152,7 @@
 
 #### 非默认预设示例：三状态自定义预设
 
-无需改源码，把下面内容填入 `persona_state_custom`（或 `persona_state_preset=generic` 后调整）：
+无需改源码：在 WebUI 表单中按上表逐条添加状态即可。下面对应的等价旧版 JSON 写法仍然兼容（可直接粘贴进配置文件的历史 `persona_state_custom` 字段）：
 
 ```json
 {

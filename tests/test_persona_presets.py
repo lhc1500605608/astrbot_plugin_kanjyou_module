@@ -39,6 +39,57 @@ CUSTOM_PRESET = {
 }
 
 
+# Same content as CUSTOM_PRESET but in the WebUI ``template_list`` form:
+# ``states`` is a list of entries carrying a ``name`` key, with ``when`` as a
+# JSON string and AstrBot's ``__template_key`` bookkeeping.
+CUSTOM_PRESET_TEMPLATE_LIST = [
+    {
+        "__template_key": "state",
+        "name": "专注",
+        "priority": 100,
+        "when": '[{"holiday_qa": true}, {"important_topic": true}]',
+        "style_hint": "专注、条理清晰",
+        "prompt_note": "话题重要，表达有条理。",
+        "length_range": "40-80",
+        "suppress_proactive": False,
+    },
+    {
+        "__template_key": "state",
+        "name": "疲惫",
+        "priority": 80,
+        "when": '{"mood_below": "low", "low_persist": true}',
+        "style_hint": "简短、少追问",
+        "prompt_note": "精力偏低，表达简短。",
+        "length_range": "6-20",
+        "suppress_proactive": True,
+    },
+    {
+        "__template_key": "state",
+        "name": "平静",
+        "priority": 0,
+        "when": "",
+        "style_hint": "平实中性",
+        "prompt_note": "保持平实中性。",
+        "length_range": "20-60",
+        "suppress_proactive": False,
+    },
+]
+
+
+def _presets_module():
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "kanjyou_persona_presets_probe", root / "units" / "persona_presets.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def _map(plugin, mood, session=None, env=None):
     return plugin._map_mood_to_persona_state(mood, session or {}, env or {})
 
@@ -155,9 +206,19 @@ def test_generic_preset_is_persona_free(plugin):
     assert _map(plugin, 50) == "平静"
 
 
-def test_invalid_custom_preset_falls_back_to_generic(plugin):
-    plugin.config["persona_state_custom"] = {"states": {}}
-    assert _map(plugin, 50) == "平静"
+def test_empty_custom_does_not_override_selected_preset(plugin):
+    # AstrBot injects {default:"", states:[]} for the structured schema; it must
+    # not replace the selected preset (regression guard).
+    plugin.config["persona_state_custom"] = {"default": "", "states": []}
+    assert _map(plugin, 70) == "日常"
+    plugin.config["persona_state_preset"] = "generic"
+    assert _map(plugin, 70) == "平静"
+
+
+def test_empty_overrides_do_not_override_selected_preset(plugin):
+    plugin.config["persona_state_overrides"] = {"default": "", "states": []}
+    assert _map(plugin, 70) == "日常"
+    assert plugin._persona_state_length_range("日常") == "20-60"
 
 
 def test_unknown_condition_falls_back_to_default(plugin):
@@ -219,3 +280,117 @@ def test_custom_preset_reaches_generated_prompt(plugin):
     assert text == "在的，今天还好吗？"
     assert "情绪状态：疲惫" in captured["prompt"]
     assert "长度 6-20 字" in captured["prompt"]
+
+
+# --- v2.4.0: template_list form + legacy JSON compatibility -----------------
+
+
+def test_template_list_custom_maps_states(plugin):
+    plugin.config["persona_state_custom"] = {
+        "default": "平静",
+        "states": CUSTOM_PRESET_TEMPLATE_LIST,
+    }
+    plugin.config["persona_state_low_threshold"] = 20.0
+    plugin.config["persona_state_high_threshold"] = 60.0
+    plugin.config["persona_state_low_persist_rounds"] = 1
+
+    assert _map(plugin, 50, env={"holiday_qa": True}) == "专注"
+    assert _map(plugin, 10, {"mood_low_streak": 1}) == "疲惫"
+    assert _map(plugin, 50) == "平静"
+    assert plugin._persona_state_length_range("专注") == "40-80"
+    assert plugin._persona_state_prompt_note("平静") == "保持平实中性。"
+
+
+def test_template_list_custom_matches_legacy_dict_mapping(plugin):
+    plugin.config["persona_state_low_threshold"] = 20.0
+    plugin.config["persona_state_high_threshold"] = 60.0
+    plugin.config["persona_state_low_persist_rounds"] = 1
+    cases = (
+        (50, {}, {}),
+        (10, {"mood_low_streak": 1}, {}),
+        (50, {}, {"holiday_qa": True}),
+        (50, {}, {"important_topic": True}),
+        (90, {"no_reply_streak": 3}, {}),
+    )
+    plugin.config["persona_state_custom"] = CUSTOM_PRESET
+    expected = [_map(plugin, mood, session, env) for mood, session, env in cases]
+    plugin.config["persona_state_custom"] = {
+        "default": "平静",
+        "states": CUSTOM_PRESET_TEMPLATE_LIST,
+    }
+    actual = [_map(plugin, mood, session, env) for mood, session, env in cases]
+    assert actual == expected
+
+
+def test_template_list_overrides_deep_merge(plugin):
+    plugin.config["persona_state_overrides"] = {
+        "default": "",
+        "states": [
+            {
+                "name": "低落",
+                "priority": 80,
+                "style_hint": "极简",
+                "length_range": "1-5",
+            }
+        ],
+    }
+    assert plugin._persona_state_length_range("低落") == "1-5"
+    assert plugin._persona_state_style_hint("低落") == "极简"
+    # Field not overridden is preserved from the bundled preset.
+    assert plugin._persona_state_prompt_note("低落") == (
+        "心情有点低落，话少、语气轻，不主动追问，也不迁怒对方。"
+    )
+    # Empty override default must not clobber the preset default.
+    assert plugin._persona_state_default_name() == "日常"
+
+
+def test_normalize_legacy_dict_preserves_values():
+    normalize = _presets_module().normalize_state_payload
+    normalized = normalize(CUSTOM_PRESET)
+    assert normalized["default"] == "平静"
+    assert normalized["states"] == CUSTOM_PRESET["states"]
+    assert normalized["states"]["专注"]["when"] == [
+        {"holiday_qa": True},
+        {"important_topic": True},
+    ]
+
+
+def test_normalize_template_list_parses_when_and_strips_bookkeeping():
+    normalize = _presets_module().normalize_state_payload
+    normalized = normalize({"default": "平静", "states": CUSTOM_PRESET_TEMPLATE_LIST})
+    assert list(normalized["states"]) == ["专注", "疲惫", "平静"]
+    focus = normalized["states"]["专注"]
+    assert "__template_key" not in focus
+    assert "name" not in focus
+    assert focus["when"] == [{"holiday_qa": True}, {"important_topic": True}]
+    assert normalized["states"]["疲惫"]["when"] == {
+        "mood_below": "low",
+        "low_persist": True,
+    }
+    # Empty when string is dropped entirely.
+    assert "when" not in normalized["states"]["平静"]
+
+
+def test_normalize_skips_unknown_shapes_without_raising():
+    normalize = _presets_module().normalize_state_payload
+    assert normalize(None) == {}
+    assert normalize("not-a-dict") == {}
+    assert normalize({"states": "nope"}) == {"default": "", "states": {}}
+    assert normalize({"states": [None, {"priority": 1}, {"name": "  "}]}) == {
+        "default": "",
+        "states": {},
+    }
+    assert normalize({"states": [{"name": "a", "when": "{bad json"}]})["states"]["a"] == {}
+    dup = normalize(
+        {
+            "states": [
+                {"name": "a", "priority": 1},
+                {"name": "a", "priority": 2},
+            ]
+        }
+    )
+    assert dup["states"]["a"]["priority"] == 1
+
+    assert normalize({"default": "日常", "states": [{"name": "a", "priority": 1}]})[
+        "default"
+    ] == "日常"

@@ -3,16 +3,24 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 try:
-    from ..config import DEFAULT_CONFIG_FLAT, DEPRECATED_CONFIG_KEYS
+    from ..config import (
+        DEFAULT_CONFIG_FLAT,
+        DEPRECATED_CONFIG_KEYS,
+        migrate_persona_state_payload,
+    )
 except ImportError:
-    from config import DEFAULT_CONFIG_FLAT, DEPRECATED_CONFIG_KEYS
+    from config import (
+        DEFAULT_CONFIG_FLAT,
+        DEPRECATED_CONFIG_KEYS,
+        migrate_persona_state_payload,
+    )
 
 try:
     from .persona_presets import resolve_preset
@@ -262,13 +270,14 @@ class SessionConfigUnitsMixin:
             or "chika"
         )
 
-    def _persona_state_custom(self) -> Dict:
+    def _persona_state_custom(self) -> Any:
+        # dict = legacy hand-written JSON; list = WebUI template_list form.
         value = self.config.get("persona_state_custom")
-        return value if isinstance(value, dict) else {}
+        return value if isinstance(value, (dict, list)) else {}
 
-    def _persona_state_overrides(self) -> Dict:
+    def _persona_state_overrides(self) -> Any:
         value = self.config.get("persona_state_overrides")
-        return value if isinstance(value, dict) else {}
+        return value if isinstance(value, (dict, list)) else {}
 
     def _persona_state_clingy_idle_sec(self) -> float:
         return max(
@@ -1066,11 +1075,15 @@ class SessionConfigUnitsMixin:
         elif not self.config["persona_state_preset"].strip():
             self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT["persona_state_preset"]
             changed = True
-        if not isinstance(self.config.get("persona_state_custom"), dict):
+        if not isinstance(self.config.get("persona_state_custom"), (dict, list)):
             self.config["persona_state_custom"] = {}
             changed = True
-        if not isinstance(self.config.get("persona_state_overrides"), dict):
+        elif migrate_persona_state_payload(self.config.get("persona_state_custom")):
+            changed = True
+        if not isinstance(self.config.get("persona_state_overrides"), (dict, list)):
             self.config["persona_state_overrides"] = {}
+            changed = True
+        elif migrate_persona_state_payload(self.config.get("persona_state_overrides")):
             changed = True
         if not isinstance(
             self.config.get("persona_state_clingy_idle_sec"), (int, float)

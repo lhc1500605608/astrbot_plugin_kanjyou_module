@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "2.3.0"
+EXPECTED_VERSION = "2.4.0"
 
 
 def _load_config():
@@ -63,6 +63,34 @@ def test_schema_defaults_match_default_config():
                 assert field.get("default") == conf_node[key], sub_path
 
     _check(schema, config.DEFAULT_CONFIG)
+
+
+def _assert_field_contract(spec: dict, path: str) -> None:
+    for required in ("type", "description", "hint", "default"):
+        assert required in spec, f"{path} missing {required}"
+
+
+def test_persona_state_fields_are_structured_template_lists():
+    schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+    emotion_items = schema["emotion"]["items"]
+    for key in ("persona_state_custom", "persona_state_overrides"):
+        field = emotion_items[key]
+        # `dict` type crashes AstrBot 4.23-4.27 config loading.
+        assert field["type"] == "object", key
+        assert field["type"] != "dict"
+        assert field["default"] == {}
+        assert set(field["items"]) == {"default", "states"}
+        _assert_field_contract(field["items"]["default"], f"{key}.default")
+        assert field["items"]["default"]["type"] == "string"
+        states = field["items"]["states"]
+        _assert_field_contract(states, f"{key}.states")
+        assert states["type"] == "template_list"
+        assert states["default"] == []
+        template = states["templates"]["state"]
+        assert template["name"] and template["description"]
+        for name, spec in template["items"].items():
+            _assert_field_contract(spec, f"{key}.states.state.{name}")
+        assert '"type": "dict"' not in json.dumps(field, ensure_ascii=False)
 
 
 def test_schema_has_grouped_objects_and_schema_version():

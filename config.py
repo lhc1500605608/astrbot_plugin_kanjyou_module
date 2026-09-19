@@ -347,6 +347,63 @@ class PluginConfigView:
         return getattr(self._raw, item)
 
 
+PERSONA_STATE_MIGRATION_KEYS = ("persona_state_custom", "persona_state_overrides")
+
+
+def _when_to_template_string(value: Any) -> Any:
+    """把 ``when`` 的 dict/list 条件序列化为 JSON 文本，其它类型原样返回。"""
+    if isinstance(value, (dict, list)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return ""
+    return value
+
+
+def migrate_persona_state_payload(payload: Any) -> bool:
+    """把旧手写 JSON 的 ``states`` dict 幂等迁移为 template_list list。
+
+    v2.3.0 之前 ``persona_state_custom`` / ``persona_state_overrides`` 形状为
+    ``{"default": str, "states": {name: {...}}}``；v2.4.0 的 schema 要求
+    ``states`` 为 template_list（带 ``name`` 的条目列表），否则 WebUI 保存时被
+    类型校验拦截。此函数原地转换并保留全部字段（``when`` 的 dict/list 序列化
+    为 JSON 字符串）。已是 list 或非 dict 时保持原样，绝不抛异常。
+    返回是否发生变更。
+    """
+    if not isinstance(payload, dict):
+        return False
+    states = payload.get("states")
+    if not isinstance(states, dict):
+        return False
+    converted: list[Any] = []
+    for raw_name, entry in states.items():
+        name = str(raw_name).strip()
+        if not name:
+            continue
+        item: dict[str, Any] = {"__template_key": "state", "name": name}
+        if isinstance(entry, dict):
+            for key, value in entry.items():
+                if key == "when":
+                    item["when"] = _when_to_template_string(value)
+                else:
+                    item[key] = value
+        converted.append(item)
+    payload["states"] = converted
+    return True
+
+
+def migrate_persona_state_config(data: dict) -> bool:
+    """在配置树中处理嵌套（``emotion.*``）与旧扁平两处的人设状态迁移。"""
+    changed = False
+    for key in PERSONA_STATE_MIGRATION_KEYS:
+        if migrate_persona_state_payload(data.get(key)):
+            changed = True
+        emotion = data.get("emotion")
+        if isinstance(emotion, dict) and migrate_persona_state_payload(emotion.get(key)):
+            changed = True
+    return changed
+
+
 def migrate_flat_to_nested(data: dict) -> bool:
     """把旧扁平配置键幂等归一化进新嵌套结构，返回是否发生变更。
 
@@ -354,6 +411,8 @@ def migrate_flat_to_nested(data: dict) -> bool:
     - `config_mode` -> `advanced_enabled`
     - `lite_llm_enabled` -> `generation.proactive_lite_refine_enabled` /
       `generation.holiday_qa_main_llm_enabled`（保持旧主开关语义）
+    - 旧 dict 形态的 `persona_state_custom` / `persona_state_overrides` ->
+      template_list list（见 `migrate_persona_state_payload`）
     """
     changed = False
 
@@ -382,6 +441,9 @@ def migrate_flat_to_nested(data: dict) -> bool:
         if sub not in section:
             section[sub] = data[flat]
             changed = True
+
+    if migrate_persona_state_config(data):
+        changed = True
 
     return changed
 
@@ -452,4 +514,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.3.0"
+PLUGIN_VERSION = "2.4.0"

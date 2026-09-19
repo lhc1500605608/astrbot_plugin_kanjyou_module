@@ -42,7 +42,8 @@ Preset schema
 from __future__ import annotations
 
 import copy
-from typing import Dict, Optional
+import json
+from typing import Any, Dict, Optional
 
 # Neutral preset with no persona-specific vocabulary.
 GENERIC_PRESET: Dict = {
@@ -156,24 +157,107 @@ def is_valid_preset(preset: Optional[Dict]) -> bool:
     return True
 
 
+def _parse_when(value: Any) -> Any:
+    """Return a usable ``when`` value, or ``None`` when it must be dropped.
+
+    Accepts ready-made dict/list conditions as-is (legacy hand-written JSON);
+    a string is parsed as JSON and only kept when it yields a dict or list.
+    Anything else (empty string, malformed JSON, scalars) is discarded.
+    """
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, (dict, list)) else None
+    return None
+
+
+def _normalize_state_entry(entry: Dict) -> Dict:
+    """Strip template bookkeeping and coerce the ``when`` field."""
+    state = {
+        key: value
+        for key, value in entry.items()
+        if key not in ("__template_key", "name")
+    }
+    if "when" in state:
+        parsed = _parse_when(state["when"])
+        if parsed is None:
+            state.pop("when", None)
+        else:
+            state["when"] = parsed
+    return state
+
+
+def normalize_state_payload(payload: Any) -> Dict:
+    """Normalize a WebUI/legacy persona-state payload into the runtime shape.
+
+    Returns ``{"default": str, "states": {name: {...}}}``. Handles both the
+    AstrBot ``template_list`` form (``states`` is a list of entries carrying a
+    ``name`` key) and the legacy hand-written JSON (``states`` is a dict).
+    Never raises: unknown/missing shapes degrade to empty states so callers
+    fall back to the bundled preset.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    result: Dict[str, Any] = {"default": payload.get("default", "")}
+    states = payload.get("states")
+    normalized: Dict[str, Any] = {}
+    if isinstance(states, list):
+        for entry in states:
+            if not isinstance(entry, dict):
+                continue
+            raw_name = entry.get("name")
+            name = raw_name.strip() if isinstance(raw_name, str) else ""
+            if not name or name in normalized:
+                continue
+            normalized[name] = _normalize_state_entry(entry)
+    elif isinstance(states, dict):
+        for raw_name, entry in states.items():
+            name = str(raw_name).strip()
+            if not name:
+                continue
+            if isinstance(entry, dict):
+                normalized[name] = _normalize_state_entry(entry)
+            else:
+                normalized[name] = copy.deepcopy(entry)
+    result["states"] = normalized
+    return result
+
+
 def resolve_preset(
     name: Optional[str],
-    custom: Optional[Dict] = None,
-    overrides: Optional[Dict] = None,
+    custom: Any = None,
+    overrides: Any = None,
 ) -> Dict:
     """Resolve the effective preset.
 
-    ``custom`` (non-empty) replaces the bundled preset entirely; ``overrides``
-    (non-empty) deep-merges on top. Invalid payloads safely fall back to the
-    neutral generic preset so callers never crash on bad config.
+    ``custom`` replaces the bundled preset entirely when, after normalization,
+    it declares at least one state; ``overrides`` deep-merges on top under the
+    same rule. Empty/invalid payloads (including the ``{default:"",states:[]}``
+    shape AstrBot injects for the structured schema) are ignored so they never
+    clobber the selected preset. Invalid results fall back to the neutral
+    generic preset so callers never crash on bad config.
     """
-    if isinstance(custom, dict) and custom:
-        preset = copy.deepcopy(custom)
+    custom_norm = normalize_state_payload(custom)
+    if custom_norm.get("states"):
+        preset = copy.deepcopy(custom_norm)
     else:
         key = str(name or "").strip() or DEFAULT_PRESET_NAME
         preset = copy.deepcopy(BUILTIN_PRESETS.get(key) or GENERIC_PRESET)
-    if isinstance(overrides, dict) and overrides:
-        preset = deep_merge(preset, overrides)
+
+    overrides_norm = normalize_state_payload(overrides)
+    if overrides_norm.get("states"):
+        merge_payload: Dict[str, Any] = {"states": overrides_norm["states"]}
+        if str(overrides_norm.get("default") or "").strip():
+            merge_payload["default"] = overrides_norm["default"]
+        preset = deep_merge(preset, merge_payload)
+
     if not is_valid_preset(preset) or not isinstance(preset.get("states"), dict):
         preset = copy.deepcopy(GENERIC_PRESET)
     if not str(preset.get("default") or "").strip():

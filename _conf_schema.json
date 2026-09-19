@@ -368,17 +368,143 @@
       },
       "persona_state_custom": {
         "type": "object",
-        "description": "自定义状态集（object，非空时整体替换预设）",
-        "hint": "非空时整体替换所选预设（JSON object）。",
+        "description": "自定义状态集（非空时整体替换预设）",
+        "hint": "用下方表单定义情绪状态；states 留空则使用上方所选预设。",
         "default": {},
-        "items": {}
+        "items": {
+          "default": {
+            "type": "string",
+            "description": "默认状态名",
+            "hint": "所有规则都不匹配时使用；留空则取第一个状态。",
+            "default": ""
+          },
+          "states": {
+            "type": "template_list",
+            "description": "情绪状态列表",
+            "hint": "每个条目=一个状态，填写状态名/优先级/触发条件/语气与长度。",
+            "default": [],
+            "templates": {
+              "state": {
+                "name": "情绪状态",
+                "description": "定义一个情绪状态",
+                "items": {
+                  "name": {
+                    "type": "string",
+                    "description": "状态名",
+                    "hint": "唯一名称，如 低落 / 撒娇。",
+                    "default": ""
+                  },
+                  "priority": {
+                    "type": "int",
+                    "description": "优先级",
+                    "hint": "数值越大越优先匹配。",
+                    "default": 0
+                  },
+                  "when": {
+                    "type": "text",
+                    "description": "触发条件（JSON）",
+                    "hint": "可选 JSON，如 {\"mood_below\":\"low\",\"low_persist\":true}；数组表示 OR。留空=仅作默认兜底。",
+                    "default": ""
+                  },
+                  "style_hint": {
+                    "type": "string",
+                    "description": "语气提示",
+                    "hint": "注入 prompt 的语气描述。",
+                    "default": ""
+                  },
+                  "prompt_note": {
+                    "type": "string",
+                    "description": "提示词补充",
+                    "hint": "追加到人格 prompt 的一句话。",
+                    "default": ""
+                  },
+                  "length_range": {
+                    "type": "string",
+                    "description": "长度范围",
+                    "hint": "形如 20-60（字）。",
+                    "default": "20-60"
+                  },
+                  "suppress_proactive": {
+                    "type": "bool",
+                    "description": "暂停主动",
+                    "hint": "该状态跳过闲时主动问候。",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "persona_state_overrides": {
         "type": "object",
-        "description": "对当前预设做深合并覆盖（object）",
-        "hint": "对预设做部分深合并覆盖（JSON object）。",
+        "description": "对当前预设做深合并覆盖",
+        "hint": "仅覆盖填写的状态/字段，其余沿用所选预设。",
         "default": {},
-        "items": {}
+        "items": {
+          "default": {
+            "type": "string",
+            "description": "默认状态名",
+            "hint": "留空则沿用所选预设的默认状态。",
+            "default": ""
+          },
+          "states": {
+            "type": "template_list",
+            "description": "覆盖的状态列表",
+            "hint": "每个条目覆盖同名状态；未填写的字段沿用预设。",
+            "default": [],
+            "templates": {
+              "state": {
+                "name": "状态覆盖",
+                "description": "覆盖一个已有状态的部分字段",
+                "items": {
+                  "name": {
+                    "type": "string",
+                    "description": "状态名",
+                    "hint": "须与预设中的状态同名，如 低落。",
+                    "default": ""
+                  },
+                  "priority": {
+                    "type": "int",
+                    "description": "优先级",
+                    "hint": "数值越大越优先匹配。",
+                    "default": 0
+                  },
+                  "when": {
+                    "type": "text",
+                    "description": "触发条件（JSON）",
+                    "hint": "可选 JSON，如 {\"mood_below\":\"low\",\"low_persist\":true}；数组表示 OR。",
+                    "default": ""
+                  },
+                  "style_hint": {
+                    "type": "string",
+                    "description": "语气提示",
+                    "hint": "注入 prompt 的语气描述。",
+                    "default": ""
+                  },
+                  "prompt_note": {
+                    "type": "string",
+                    "description": "提示词补充",
+                    "hint": "追加到人格 prompt 的一句话。",
+                    "default": ""
+                  },
+                  "length_range": {
+                    "type": "string",
+                    "description": "长度范围",
+                    "hint": "形如 20-60（字）。",
+                    "default": ""
+                  },
+                  "suppress_proactive": {
+                    "type": "bool",
+                    "description": "暂停主动",
+                    "hint": "该状态跳过闲时主动问候。",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "persona_state_low_threshold": {
         "type": "float",

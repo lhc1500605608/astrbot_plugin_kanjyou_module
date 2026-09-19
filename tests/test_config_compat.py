@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -17,6 +18,10 @@ from astrbot_plugin_kanjyou_module.config import (  # noqa: E402
     INTERNAL_POLICY,
     PluginConfigView,
     migrate_flat_to_nested,
+    migrate_persona_state_payload,
+)
+from astrbot_plugin_kanjyou_module.units.persona_presets import (  # noqa: E402
+    normalize_state_payload,
 )
 
 
@@ -84,6 +89,96 @@ def test_proxy_writes_back_to_nested_group():
     assert raw["basic"]["enabled"] is False
     assert "min_idle_min" not in raw
     assert "enabled" not in raw
+
+
+LEGACY_PERSONA_CUSTOM = {
+    "default": "平静",
+    "states": {
+        "专注": {
+            "priority": 100,
+            "when": [{"holiday_qa": True}, {"important_topic": True}],
+            "style_hint": "专注、条理清晰",
+            "length_range": "40-80",
+        },
+        "疲惫": {
+            "priority": 80,
+            "when": {"mood_below": "low", "low_persist": True},
+            "suppress_proactive": True,
+        },
+        "平静": {"priority": 0},
+    },
+}
+
+
+def test_migrate_persona_state_payload_is_lossless_and_idempotent():
+    payload = json.loads(json.dumps(LEGACY_PERSONA_CUSTOM))
+    assert migrate_persona_state_payload(payload) is True
+    states = payload["states"]
+    assert isinstance(states, list)
+    assert [entry["name"] for entry in states] == ["专注", "疲惫", "平静"]
+    focus = states[0]
+    assert focus["__template_key"] == "state"
+    assert focus["when"] == '[{"holiday_qa": true}, {"important_topic": true}]'
+    assert focus["style_hint"] == "专注、条理清晰"
+    assert states[1]["when"] == '{"mood_below": "low", "low_persist": true}'
+    assert states[1]["suppress_proactive"] is True
+    # Round-trip: already-a-list payload is untouched.
+    assert migrate_persona_state_payload(payload) is False
+
+
+def test_migrate_persona_state_payload_handles_unknown_shapes():
+    assert migrate_persona_state_payload(None) is False
+    assert migrate_persona_state_payload({"states": []}) is False
+    assert migrate_persona_state_payload({"states": "nope"}) is False
+    assert migrate_persona_state_payload({"default": "", "states": []}) is False
+    payload = {"states": {"a": {"when": "{bad json"}, "": {"priority": 1}}}
+    assert migrate_persona_state_payload(payload) is True
+    assert [entry["name"] for entry in payload["states"]] == ["a"]
+    assert payload["states"][0]["when"] == "{bad json"
+
+
+def test_migrate_persona_state_payload_round_trips_through_runtime_normalizer():
+    legacy = json.loads(json.dumps(LEGACY_PERSONA_CUSTOM))
+    migrated = {"default": legacy["default"], "states": legacy["states"]}
+    assert migrate_persona_state_payload(migrated) is True
+    assert normalize_state_payload(migrated) == normalize_state_payload(legacy)
+
+
+def test_migrate_flat_to_nested_migrates_persona_state_in_both_positions():
+    legacy = json.loads(json.dumps(LEGACY_PERSONA_CUSTOM))
+    nested = {"emotion": {"persona_state_custom": legacy}}
+    assert migrate_flat_to_nested(nested) is True
+    assert isinstance(nested["emotion"]["persona_state_custom"]["states"], list)
+    assert migrate_flat_to_nested(nested) is False
+
+    flat = {"persona_state_overrides": json.loads(json.dumps(LEGACY_PERSONA_CUSTOM))}
+    assert migrate_flat_to_nested(flat) is True
+    assert isinstance(flat["emotion"]["persona_state_overrides"]["states"], list)
+
+
+def test_persona_state_already_template_list_is_noop():
+    data = {
+        "emotion": {
+            "persona_state_custom": {
+                "default": "平静",
+                "states": [{"name": "专注", "when": '{"holiday_qa": true}'}],
+            }
+        }
+    }
+    assert migrate_flat_to_nested(data) is False
+
+
+def test_plugin_normalizes_legacy_dict_persona_state_to_template_list(plugin_module):
+    legacy_custom = json.loads(json.dumps(LEGACY_PERSONA_CUSTOM))
+    raw = {"emotion": {"persona_state_custom": legacy_custom}}
+    instance = plugin_module.KanjyouIdleProactivePlugin(
+        context=plugin_module.Context(), config=raw
+    )
+    migrated = instance.config.get("persona_state_custom")
+    assert isinstance(migrated["states"], list)
+    assert [entry["name"] for entry in migrated["states"]] == ["专注", "疲惫", "平静"]
+    # Runtime mapping still works from the migrated list form.
+    assert instance._map_mood_to_persona_state(50, {}, {"holiday_qa": True}) == "专注"
 
 
 def test_plugin_upgrades_legacy_flat_config(plugin_module):

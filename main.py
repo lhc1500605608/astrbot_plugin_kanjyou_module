@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -10,9 +11,47 @@ from astrbot.api.star import Context, Star
 IMPORT_MODE = "package"
 IMPORT_FALLBACK_REASON = ""
 
+
+def _plugin_data_dir() -> Path:
+    """AstrBot 插件 data 目录（不在插件安装目录内落盘）。"""
+    plugin_name = Path(__file__).resolve().parent.name
+    try:
+        from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
+
+        base = Path(get_astrbot_plugin_data_path())
+    except Exception:
+        base = Path.cwd() / "data" / "plugin_data"
+    return base / plugin_name
+
+
+def _resolve_state_path() -> Path:
+    target_dir = _plugin_data_dir()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return target_dir / "idle_state.json"
+
+
+def _migrate_legacy_state(target: Path) -> None:
+    """一次性把插件目录下的旧 idle_state.json 迁移到 AstrBot data 目录。"""
+    legacy = Path(__file__).resolve().parent / "idle_state.json"
+    if not legacy.exists() or target.exists():
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy, target)
+    except Exception:
+        pass
+
+
 try:
     # Preferred package imports when AstrBot loads plugin as a package.
-    from .config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER
+    from .config import (
+        CONFIG_EXECUTION_ORDER,
+        EXECUTION_ORDER,
+        PluginConfigView,
+    )
     from .units.unit_advanced import AdvancedPolicyUnitsMixin
     from .units.unit_commands import CommandUnitsMixin
     from .units.unit_events import EventUnitsMixin
@@ -20,6 +59,7 @@ try:
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
     from .units.unit_session import SessionConfigUnitsMixin
+    from .units.unit_webui import WebUIUnitsMixin
 except ImportError:
     # Fallback for script-style loading in some runtimes.
     IMPORT_MODE = "fallback"
@@ -27,7 +67,11 @@ except ImportError:
     PLUGIN_DIR = Path(__file__).parent
     if str(PLUGIN_DIR) not in sys.path:
         sys.path.insert(0, str(PLUGIN_DIR))
-    from config import CONFIG_EXECUTION_ORDER, EXECUTION_ORDER
+    from config import (
+        CONFIG_EXECUTION_ORDER,
+        EXECUTION_ORDER,
+        PluginConfigView,
+    )
     from units.unit_advanced import AdvancedPolicyUnitsMixin
     from units.unit_commands import CommandUnitsMixin
     from units.unit_events import EventUnitsMixin
@@ -35,6 +79,7 @@ except ImportError:
     from units.unit_memory_recall import MemoryRecallUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
     from units.unit_session import SessionConfigUnitsMixin
+    from units.unit_webui import WebUIUnitsMixin
 
 
 class KanjyouIdleProactivePlugin(
@@ -45,12 +90,14 @@ class KanjyouIdleProactivePlugin(
     PolicyGenerationUnitsMixin,
     MemoryRecallUnitsMixin,
     RuntimeUnitsMixin,
+    WebUIUnitsMixin,
     Star,
 ):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.config = config
-        self._state_path = Path(__file__).parent / "idle_state.json"
+        self.config = PluginConfigView(config)
+        self._state_path = _resolve_state_path()
+        _migrate_legacy_state(self._state_path)
         self._normalize_webui_config()
         self._sessions: Dict[str, Dict] = self._load_state()
         self._global_send_history: List[float] = []
@@ -85,6 +132,7 @@ class KanjyouIdleProactivePlugin(
             f"check_interval={int(self.config.get('check_interval_sec', 30))}s"
         )
         self._run_startup_config_checks()
+        self._register_webui_routes()
         self._debug("plugin initialize complete")
 
     async def terminate(self):

@@ -12,9 +12,9 @@ from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
 try:
-    from ..config import DEFAULT_CONFIG
+    from ..config import DEFAULT_CONFIG_FLAT
 except ImportError:
-    from config import DEFAULT_CONFIG
+    from config import DEFAULT_CONFIG_FLAT
 
 try:
     import chinese_calendar as _cc
@@ -64,7 +64,7 @@ class PolicyGenerationUnitsMixin:
         fallback = self._sanitize_outgoing_text(
             str(
                 self.config.get("fallback_proactive_text")
-                or DEFAULT_CONFIG["fallback_proactive_text"]
+                or DEFAULT_CONFIG_FLAT["fallback_proactive_text"]
             ).strip()
         )
         try:
@@ -92,7 +92,7 @@ class PolicyGenerationUnitsMixin:
             )
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
-                or DEFAULT_CONFIG["proactive_prompt_template"]
+                or DEFAULT_CONFIG_FLAT["proactive_prompt_template"]
             )
             prompt = prompt_tpl.format(
                 persona=persona_text,
@@ -158,9 +158,10 @@ class PolicyGenerationUnitsMixin:
             return fallback
 
     def _lite_llm_enabled(self) -> bool:
+        # v2.3.0: 旧 lite_llm_enabled 已废弃，升级时归一化到 proactive_lite_refine_enabled。
         return self._to_bool(
-            self.config.get("lite_llm_enabled"),
-            DEFAULT_CONFIG["lite_llm_enabled"],
+            self.config.get("proactive_lite_refine_enabled"),
+            DEFAULT_CONFIG_FLAT["proactive_lite_refine_enabled"],
         )
 
     def _holiday_qa_main_llm_enabled(self) -> bool:
@@ -176,7 +177,7 @@ class PolicyGenerationUnitsMixin:
             1.0,
             float(
                 self.config.get(
-                    "lite_llm_timeout_sec", DEFAULT_CONFIG["lite_llm_timeout_sec"]
+                    "lite_llm_timeout_sec", DEFAULT_CONFIG_FLAT["lite_llm_timeout_sec"]
                 )
             ),
         )
@@ -184,7 +185,7 @@ class PolicyGenerationUnitsMixin:
     def _dialogue_wait_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("dialogue_wait_enabled"),
-            DEFAULT_CONFIG["dialogue_wait_enabled"],
+            DEFAULT_CONFIG_FLAT["dialogue_wait_enabled"],
         )
 
     def _dialogue_wait_timeout_sec(self) -> int:
@@ -193,7 +194,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "dialogue_wait_timeout_sec",
-                    DEFAULT_CONFIG["dialogue_wait_timeout_sec"],
+                    DEFAULT_CONFIG_FLAT["dialogue_wait_timeout_sec"],
                 )
             ),
         )
@@ -204,7 +205,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "dialogue_wait_max_merge",
-                    DEFAULT_CONFIG["dialogue_wait_max_merge"],
+                    DEFAULT_CONFIG_FLAT["dialogue_wait_max_merge"],
                 )
             ),
         )
@@ -212,7 +213,7 @@ class PolicyGenerationUnitsMixin:
     def _output_segment_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("output_segment_enabled"),
-            DEFAULT_CONFIG["output_segment_enabled"],
+            DEFAULT_CONFIG_FLAT["output_segment_enabled"],
         )
 
     def _output_segment_max_parts(self) -> int:
@@ -221,7 +222,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "output_segment_max_parts",
-                    DEFAULT_CONFIG["output_segment_max_parts"],
+                    DEFAULT_CONFIG_FLAT["output_segment_max_parts"],
                 )
             ),
         )
@@ -232,7 +233,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "output_segment_max_chars",
-                    DEFAULT_CONFIG["output_segment_max_chars"],
+                    DEFAULT_CONFIG_FLAT["output_segment_max_chars"],
                 )
             ),
         )
@@ -240,7 +241,7 @@ class PolicyGenerationUnitsMixin:
     def _proactive_segment_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("proactive_segment_enabled"),
-            DEFAULT_CONFIG["proactive_segment_enabled"],
+            DEFAULT_CONFIG_FLAT["proactive_segment_enabled"],
         )
 
     def _proactive_segment_max_parts(self) -> int:
@@ -249,7 +250,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "proactive_segment_max_parts",
-                    DEFAULT_CONFIG["proactive_segment_max_parts"],
+                    DEFAULT_CONFIG_FLAT["proactive_segment_max_parts"],
                 )
             ),
         )
@@ -260,7 +261,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "proactive_segment_delay_min_ms",
-                    DEFAULT_CONFIG["proactive_segment_delay_min_ms"],
+                    DEFAULT_CONFIG_FLAT["proactive_segment_delay_min_ms"],
                 )
             ),
         )
@@ -271,7 +272,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "proactive_segment_delay_max_ms",
-                    DEFAULT_CONFIG["proactive_segment_delay_max_ms"],
+                    DEFAULT_CONFIG_FLAT["proactive_segment_delay_max_ms"],
                 )
             ),
         )
@@ -774,11 +775,11 @@ class PolicyGenerationUnitsMixin:
     def _holiday_perception_text(self, now: datetime) -> str:
         if not self._to_bool(
             self.config.get("enable_holiday_perception"),
-            DEFAULT_CONFIG["enable_holiday_perception"],
+            DEFAULT_CONFIG_FLAT["enable_holiday_perception"],
         ):
             return ""
         country = (
-            str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"]))
+            str(self.config.get("holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]))
             .upper()
             .strip()
         )
@@ -798,7 +799,7 @@ class PolicyGenerationUnitsMixin:
     def _holiday_api_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("holiday_api_enabled"),
-            DEFAULT_CONFIG["holiday_api_enabled"],
+            DEFAULT_CONFIG_FLAT["holiday_api_enabled"],
         )
 
     def _holiday_api_timeout_sec(self) -> float:
@@ -806,7 +807,7 @@ class PolicyGenerationUnitsMixin:
             1.0,
             float(
                 self.config.get(
-                    "holiday_api_timeout_sec", DEFAULT_CONFIG["holiday_api_timeout_sec"]
+                    "holiday_api_timeout_sec", DEFAULT_CONFIG_FLAT["holiday_api_timeout_sec"]
                 )
             ),
         )
@@ -817,7 +818,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "holiday_api_cache_ttl_sec",
-                    DEFAULT_CONFIG["holiday_api_cache_ttl_sec"],
+                    DEFAULT_CONFIG_FLAT["holiday_api_cache_ttl_sec"],
                 )
             ),
         )
@@ -1431,11 +1432,11 @@ class PolicyGenerationUnitsMixin:
             return False
         if not self._to_bool(
             self.config.get("enable_holiday_perception"),
-            DEFAULT_CONFIG["enable_holiday_perception"],
+            DEFAULT_CONFIG_FLAT["enable_holiday_perception"],
         ):
             return False
         country = (
-            str(self.config.get("holiday_country", DEFAULT_CONFIG["holiday_country"]))
+            str(self.config.get("holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]))
             .upper()
             .strip()
         )
@@ -1560,7 +1561,7 @@ class PolicyGenerationUnitsMixin:
     ) -> str:
         if not self._to_bool(
             self.config.get("enable_platform_perception"),
-            DEFAULT_CONFIG["enable_platform_perception"],
+            DEFAULT_CONFIG_FLAT["enable_platform_perception"],
         ):
             return ""
         raw = (unified_msg_origin or "").strip()
@@ -1995,7 +1996,7 @@ class PolicyGenerationUnitsMixin:
             int(
                 self.config.get(
                     "security_max_text_length",
-                    DEFAULT_CONFIG["security_max_text_length"],
+                    DEFAULT_CONFIG_FLAT["security_max_text_length"],
                 )
             ),
         )

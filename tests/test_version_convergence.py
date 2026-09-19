@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "2.2.0"
+EXPECTED_VERSION = "2.3.0"
 
 
 def _load_config():
@@ -50,10 +50,30 @@ def test_version_consistent_across_config_metadata_readme():
 def test_schema_defaults_match_default_config():
     config = _load_config()
     schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
-    mismatches = {
-        key: (field.get("default"), config.DEFAULT_CONFIG[key])
+
+    def _check(schema_node: dict, conf_node: dict, path: str = "") -> None:
+        for key, field in schema_node.items():
+            sub_path = f"{path}.{key}" if path else key
+            if not isinstance(field, dict):
+                continue
+            if field.get("type") == "object":
+                assert isinstance(conf_node.get(key), dict), sub_path
+                _check(field.get("items", {}), conf_node[key], sub_path)
+            elif key in conf_node:
+                assert field.get("default") == conf_node[key], sub_path
+
+    _check(schema, config.DEFAULT_CONFIG)
+
+
+def test_schema_has_grouped_objects_and_schema_version():
+    schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+    groups = {
+        key: field
         for key, field in schema.items()
-        if key in config.DEFAULT_CONFIG
-        and field.get("default") != config.DEFAULT_CONFIG[key]
+        if isinstance(field, dict) and field.get("type") == "object"
     }
-    assert mismatches == {}
+    assert len(groups) >= 9
+    assert schema.get("schema_version", {}).get("invisible") is True
+    for key, field in groups.items():
+        assert field.get("items"), key
+        assert field.get("description"), key

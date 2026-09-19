@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v2.2.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.3.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -17,6 +17,12 @@
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
+
+### v2.3.0 新增能力
+
+- **配置分组重构**：91 个扁平配置项收敛为 9 个可折叠 object 组（基础/触发/时间/配额/生成/情绪/记忆/节假日/安全/调试），WebUI 按组折叠展示，体验更清晰。
+- **AstrBot Pages 自定义页面**：新增 `pages/` 目录，提供 Control（快捷开关）、Status（会话状态看板）、Logs（决策轨迹日志）三个自定义页面，可在 AstrBot WebUI 直接访问。
+- **配置平滑迁移**：旧扁平配置自动幂等迁移到新嵌套结构，升级无需手动调整。
 
 ### v2.2.0 新增能力
 
@@ -40,6 +46,8 @@
 
 ## WebUI 核心配置
 
+配置按 9 个分组折叠展示（基础/触发/时间/配额/生成/情绪/记忆/节假日/安全/调试），以下为常用项：
+
 - `enabled`：插件总开关
 - `advanced_enabled`：高级配置开关
 - `private_whitelist` / `group_whitelist`：主动问候会话白名单
@@ -48,6 +56,18 @@
 - `persona_id` / `proactive_provider_id`：人格与主模型
 - `enable_holiday_perception` / `holiday_api_enabled`：节假日感知开关
 - `debug_log`：调试日志开关
+
+## Pages 自定义页面
+
+插件附带 3 个 AstrBot Pages 页面，可在 WebUI 侧边栏直接访问：
+
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| Control | `pages/control/` | 快速开关插件、查看当前会话白名单 |
+| Status | `pages/status/` | 会话状态看板：情绪值、冷却、配额、最近主动记录 |
+| Logs | `pages/logs/` | 决策轨迹日志：触发判定、概率计算、发送结果 |
+
+> 截图待补充：首次使用可在 AstrBot WebUI → Pages 查看实际效果。
 
 ### 主动消息分段
 

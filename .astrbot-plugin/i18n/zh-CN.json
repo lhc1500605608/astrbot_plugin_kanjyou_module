@@ -1,0 +1,105 @@
+{
+  "plugin_name": "情绪价值提供者",
+  "status": {
+    "title": "kanjyou - 状态",
+    "heading": "状态",
+    "sse": {
+      "connecting": "连接中",
+      "live": "实时",
+      "disconnected": "已断开"
+    },
+    "global": {
+      "header": "全局",
+      "enabled": "启用",
+      "sessions": "会话数",
+      "fail_streak": "连续失败",
+      "paused_until": "暂停至"
+    },
+    "sessions": {
+      "header": "会话",
+      "refresh": "刷新",
+      "th_session": "会话",
+      "th_type": "类型",
+      "th_mood": "情绪",
+      "th_persona": "人设",
+      "th_idle": "空闲",
+      "th_next_trigger": "下次触发",
+      "th_today": "今日",
+      "empty": "暂无活跃会话"
+    },
+    "recent": {
+      "header": "最近决策",
+      "empty": "暂无最近决策"
+    },
+    "loading": "加载中..."
+  },
+  "control": {
+    "title": "kanjyou - 控制",
+    "heading": "控制",
+    "reload": "重载",
+    "master_switch": {
+      "header": "总开关",
+      "enabled": "启用"
+    },
+    "manual_test": {
+      "header": "手动测试",
+      "desc": "向白名单会话发送一条测试主动消息。",
+      "session_placeholder": "会话 ID（可选）",
+      "send": "发送测试"
+    },
+    "whitelist_private": {
+      "header": "白名单 - 私聊",
+      "placeholder": "用户 ID",
+      "add": "添加",
+      "remove": "移除"
+    },
+    "whitelist_group": {
+      "header": "白名单 - 群聊",
+      "placeholder": "群组 ID",
+      "add": "添加",
+      "remove": "移除"
+    },
+    "dnd": {
+      "header": "免打扰",
+      "start": "开始",
+      "end": "结束",
+      "save": "保存"
+    },
+    "mood": {
+      "header": "情绪调整",
+      "desc": "调整指定会话的情绪值。",
+      "session_placeholder": "会话 ID",
+      "label": "情绪 (0-100)",
+      "set": "设置"
+    }
+  },
+  "logs": {
+    "title": "kanjyou - 日志",
+    "heading": "决策日志",
+    "entries": "{count} 条",
+    "controls": {
+      "header": "控制",
+      "pause": "暂停",
+      "resume": "继续",
+      "clear": "清空",
+      "all_outcomes": "所有结果",
+      "all_sessions": "所有会话"
+    },
+    "empty_waiting": "等待事件...",
+    "empty_filtered": "无匹配日志"
+  },
+  "common": {
+    "on": "开启",
+    "off": "关闭",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "failed": "操作失败",
+    "added": "已添加",
+    "removed": "已移除",
+    "saved": "已保存",
+    "reloaded": "已重载",
+    "test_sent": "测试消息已发送至 {session}",
+    "mood_set": "情绪已设为 {mood}",
+    "session_required": "需要会话 ID 和数值"
+  }
+}

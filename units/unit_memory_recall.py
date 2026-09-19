@@ -2,9 +2,9 @@ import asyncio
 from typing import Dict, List, Optional
 
 try:
-    from ..config import DEFAULT_CONFIG
+    from ..config import DEFAULT_CONFIG_FLAT
 except ImportError:
-    from config import DEFAULT_CONFIG
+    from config import DEFAULT_CONFIG_FLAT
 
 
 class MemoryRecallAdapter:
@@ -75,18 +75,18 @@ class MemoryRecallUnitsMixin:
     def _memory_recall_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("memory_recall_enabled"),
-            DEFAULT_CONFIG["memory_recall_enabled"],
+            DEFAULT_CONFIG_FLAT["memory_recall_enabled"],
         )
 
     def _memory_recall_limit(self) -> int:
         try:
             value = int(
                 self.config.get(
-                    "memory_recall_limit", DEFAULT_CONFIG["memory_recall_limit"]
+                    "memory_recall_limit", DEFAULT_CONFIG_FLAT["memory_recall_limit"]
                 )
             )
         except (TypeError, ValueError):
-            value = DEFAULT_CONFIG["memory_recall_limit"]
+            value = DEFAULT_CONFIG_FLAT["memory_recall_limit"]
         return max(1, min(value, 20))
 
     def _memory_recall_timeout_sec(self) -> float:
@@ -94,34 +94,34 @@ class MemoryRecallUnitsMixin:
             value = float(
                 self.config.get(
                     "memory_recall_timeout_sec",
-                    DEFAULT_CONFIG["memory_recall_timeout_sec"],
+                    DEFAULT_CONFIG_FLAT["memory_recall_timeout_sec"],
                 )
             )
         except (TypeError, ValueError):
-            value = DEFAULT_CONFIG["memory_recall_timeout_sec"]
+            value = DEFAULT_CONFIG_FLAT["memory_recall_timeout_sec"]
         return max(0.1, min(value, 5.0))
 
     def _memory_recall_private_only(self) -> bool:
         return self._to_bool(
             self.config.get("memory_recall_private_only"),
-            DEFAULT_CONFIG["memory_recall_private_only"],
+            DEFAULT_CONFIG_FLAT["memory_recall_private_only"],
         )
 
     def _memory_recall_group_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("memory_recall_group_enabled"),
-            DEFAULT_CONFIG["memory_recall_group_enabled"],
+            DEFAULT_CONFIG_FLAT["memory_recall_group_enabled"],
         )
 
     def _memory_recall_plugin_name(self) -> str:
         name = str(
             self.config.get(
                 "memory_recall_plugin_name",
-                DEFAULT_CONFIG["memory_recall_plugin_name"],
+                DEFAULT_CONFIG_FLAT["memory_recall_plugin_name"],
             )
             or ""
         ).strip()
-        return name or DEFAULT_CONFIG["memory_recall_plugin_name"]
+        return name or DEFAULT_CONFIG_FLAT["memory_recall_plugin_name"]
 
     def _memory_recall_adapter(self):
         injected = getattr(self, "_memory_recall_adapter_override", None)

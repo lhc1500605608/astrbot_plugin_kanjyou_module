@@ -25,7 +25,9 @@ def _metadata() -> dict:
 def test_metadata_declares_astrbot_version():
     meta = _metadata()
     assert meta.get("astrbot_version") == ">=4.23,<5"
-    assert meta.get("version") == "v2.2.0"
+    from astrbot_plugin_kanjyou_module.config import PLUGIN_VERSION
+
+    assert meta.get("version") == f"v{PLUGIN_VERSION}"
 
 
 def test_metadata_version_matches_config():

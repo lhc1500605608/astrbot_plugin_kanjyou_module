@@ -1,0 +1,105 @@
+{
+  "plugin_name": "Idle Proactive Chat",
+  "status": {
+    "title": "kanjyou - Status",
+    "heading": "Status",
+    "sse": {
+      "connecting": "connecting",
+      "live": "live",
+      "disconnected": "disconnected"
+    },
+    "global": {
+      "header": "Global",
+      "enabled": "Enabled",
+      "sessions": "Sessions",
+      "fail_streak": "Fail Streak",
+      "paused_until": "Paused Until"
+    },
+    "sessions": {
+      "header": "Sessions",
+      "refresh": "Refresh",
+      "th_session": "Session",
+      "th_type": "Type",
+      "th_mood": "Mood",
+      "th_persona": "Persona",
+      "th_idle": "Idle",
+      "th_next_trigger": "Next Trigger",
+      "th_today": "Today",
+      "empty": "No active sessions"
+    },
+    "recent": {
+      "header": "Recent Decisions",
+      "empty": "No recent decisions"
+    },
+    "loading": "Loading..."
+  },
+  "control": {
+    "title": "kanjyou - Control",
+    "heading": "Control",
+    "reload": "Reload",
+    "master_switch": {
+      "header": "Master Switch",
+      "enabled": "Enabled"
+    },
+    "manual_test": {
+      "header": "Manual Test",
+      "desc": "Send a test proactive message to a whitelisted session.",
+      "session_placeholder": "Session ID (optional)",
+      "send": "Send Test"
+    },
+    "whitelist_private": {
+      "header": "Whitelist - Private",
+      "placeholder": "User ID",
+      "add": "Add",
+      "remove": "Remove"
+    },
+    "whitelist_group": {
+      "header": "Whitelist - Group",
+      "placeholder": "Group ID",
+      "add": "Add",
+      "remove": "Remove"
+    },
+    "dnd": {
+      "header": "Do Not Disturb",
+      "start": "Start",
+      "end": "End",
+      "save": "Save"
+    },
+    "mood": {
+      "header": "Mood Adjustment",
+      "desc": "Adjust mood for a specific session.",
+      "session_placeholder": "Session ID",
+      "label": "Mood (0-100)",
+      "set": "Set"
+    }
+  },
+  "logs": {
+    "title": "kanjyou - Logs",
+    "heading": "Decision Logs",
+    "entries": "{count} entries",
+    "controls": {
+      "header": "Controls",
+      "pause": "Pause",
+      "resume": "Resume",
+      "clear": "Clear",
+      "all_outcomes": "All Outcomes",
+      "all_sessions": "All Sessions"
+    },
+    "empty_waiting": "Waiting for events...",
+    "empty_filtered": "No matching logs"
+  },
+  "common": {
+    "on": "ON",
+    "off": "OFF",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "failed": "Failed",
+    "added": "Added",
+    "removed": "Removed",
+    "saved": "Saved",
+    "reloaded": "Reloaded",
+    "test_sent": "Test message sent to {session}",
+    "mood_set": "Mood set to {mood}",
+    "session_required": "Session ID and value required"
+  }
+}

@@ -1,664 +1,611 @@
 {
-  "enabled": {
-    "type": "bool",
-    "description": "[基础] 是否启用闲时主动回复",
-    "default": true
-  },
-  "advanced_enabled": {
-    "type": "bool",
-    "description": "[基础] 是否开启高级策略配置（开启后显示下方高级参数）",
-    "default": false
-  },
-  "advanced_group_expand": {
-    "type": "bool",
-    "description": "[兼容] 旧版二级折叠字段（已废弃）",
-    "default": false,
-    "invisible": true
-  },
-  "config_mode": {
-    "type": "string",
-    "description": "[兼容] 旧版配置字段（已废弃，请使用 advanced_enabled）",
-    "default": "basic",
-    "options": [
-      "basic",
-      "advanced"
-    ],
-    "invisible": true
-  },
-  "max_per_session_per_day": {
-    "type": "int",
-    "description": "[仅 advanced] 单会话每日最大主动触发次数",
-    "default": 8,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "trigger_base_prob": {
-    "type": "float",
-    "description": "[仅 advanced] 基础触发概率（0-1）",
-    "default": 0.02,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "trigger_max_prob": {
-    "type": "float",
-    "description": "[仅 advanced] 上限触发概率（0-1）",
-    "default": 0.18,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "require_human_reply_before_next_proactive": {
-    "type": "bool",
-    "description": "[仅 advanced] 主动发言后必须等待用户回复",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "period_quota_enabled": {
-    "type": "bool",
-    "description": "[仅 advanced] 是否启用分时段主动配额",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "period_quota_morning_max": {
-    "type": "int",
-    "description": "[仅 advanced] 上午最大主动次数",
-    "default": 1,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "period_quota_afternoon_max": {
-    "type": "int",
-    "description": "[仅 advanced] 下午最大主动次数",
-    "default": 1,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "period_quota_evening_max": {
-    "type": "int",
-    "description": "[仅 advanced] 晚间最大主动次数",
-    "default": 1,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "no_reply_decay_enabled": {
-    "type": "bool",
-    "description": "[仅 advanced] 是否启用未回复衰减",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "no_reply_decay_factor": {
-    "type": "float",
-    "description": "[仅 advanced] 每次未回复的衰减系数",
-    "default": 1.6,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "no_reply_decay_max_factor": {
-    "type": "float",
-    "description": "[仅 advanced] 衰减系数上限",
-    "default": 4.0,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "weekend_mode_enabled": {
-    "type": "bool",
-    "description": "[仅 advanced] 是否启用周末模式",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "weekend_min_idle_multiplier": {
-    "type": "float",
-    "description": "[仅 advanced] 周末 idle 倍率",
-    "default": 1.25,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "weekend_cooldown_multiplier": {
-    "type": "float",
-    "description": "[仅 advanced] 周末冷却倍率",
-    "default": 1.35,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "weekend_quota_multiplier": {
-    "type": "float",
-    "description": "[仅 advanced] 周末配额倍率",
-    "default": 0.8,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "quality_dedupe_enabled": {
-    "type": "bool",
-    "description": "[仅 advanced] 是否启用近期问候去重",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "quality_history_size": {
-    "type": "int",
-    "description": "[仅 advanced] 去重记忆条数",
-    "default": 6,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "private_whitelist": {
-    "type": "list",
-    "description": "[基础] 私聊白名单 user_id 列表",
-    "default": []
-  },
-  "group_whitelist": {
-    "type": "list",
-    "description": "[基础] 群聊白名单 group_id 列表",
-    "default": []
-  },
-  "lifecycle_log": {
-    "type": "bool",
-    "description": "[基础] 是否输出插件生命周期日志（initialized/terminated）",
-    "default": true
-  },
-  "timezone": {
-    "type": "string",
-    "description": "[时间] 时区，例如 Asia/Shanghai",
-    "default": "Asia/Shanghai"
-  },
-  "sleep_start": {
-    "type": "string",
-    "description": "[时间] 夜间免打扰开始时间（HH:MM）",
-    "default": "23:30"
-  },
-  "sleep_end": {
-    "type": "string",
-    "description": "[时间] 夜间免打扰结束时间（HH:MM）",
-    "default": "08:00"
-  },
-  "min_idle_min": {
-    "type": "int",
-    "description": "[时间] 最小 idle 阈值（分钟），低于此值不触发",
-    "default": 45
-  },
-  "max_idle_min": {
-    "type": "int",
-    "description": "[时间] 最大 idle 阈值（分钟），达到后强制触发",
-    "default": 180
-  },
-  "cooldown_min": {
-    "type": "int",
-    "description": "[时间] 单会话触发后的冷却时间（分钟）",
-    "default": 90
-  },
-  "check_interval_sec": {
-    "type": "int",
-    "description": "[时间] 后台巡检周期（秒）",
-    "default": 30
-  },
-  "persona_id": {
-    "type": "string",
-    "description": "[生成] 主动问候使用的人格（留空则按默认语气）",
-    "_special": "select_persona",
-    "default": ""
-  },
-  "proactive_provider_id": {
-    "type": "string",
-    "description": "[生成] 主动问候生成使用的模型提供商（留空则跟随当前会话）",
-    "_special": "select_provider",
-    "default": ""
-  },
-  "lite_llm_enabled": {
-    "type": "bool",
-    "description": "[兼容] 轻量 LLM 旧字段（已废弃）",
-    "default": false,
-    "invisible": true
-  },
-  "lite_provider_id": {
-    "type": "string",
-    "description": "[生成] 轻量任务使用的模型提供商（留空则跟随当前会话）",
-    "_special": "select_provider",
-    "default": "",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "lite_llm_timeout_sec": {
-    "type": "int",
-    "description": "[生成] 轻量 LLM 超时秒数",
-    "default": 6,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "decision_mode": {
-    "type": "string",
-    "description": "[生成] 决策模式：balanced/strict/active",
-    "default": "balanced",
-    "options": [
-      "balanced",
-      "strict",
-      "active"
-    ],
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "decision_min_confidence": {
-    "type": "float",
-    "description": "[生成] 轻量决策结果最小置信度（0-1）",
-    "default": 0.6,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "decision_group_quiet_threshold": {
-    "type": "int",
-    "description": "[生成] 群聊最小静默阈值（分钟）",
-    "default": 3,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "decision_trace_enabled": {
-    "type": "bool",
-    "description": "[调试] 是否记录决策轨迹（供状态指令查看）",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "quality_trace_enabled": {
-    "type": "bool",
-    "description": "[调试] 是否记录质量统计（命中/回退）",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "dialogue_wait_enabled": {
-    "type": "bool",
-    "description": "[兼容] 对话等待旧字段（已废弃）",
-    "default": false,
-    "invisible": true
-  },
-  "dialogue_wait_timeout_sec": {
-    "type": "int",
-    "description": "[兼容] 对话合并空窗旧字段（已废弃）",
-    "default": 4,
-    "invisible": true
-  },
-  "dialogue_wait_max_merge": {
-    "type": "int",
-    "description": "[兼容] 对话合并条数旧字段（已废弃）",
-    "default": 2,
-    "invisible": true
-  },
-  "output_segment_enabled": {
-    "type": "bool",
-    "description": "[兼容] 自动分段旧字段（已废弃）",
-    "default": false,
-    "invisible": true
-  },
-  "output_segment_max_parts": {
-    "type": "int",
-    "description": "[兼容] 自动分段句数旧字段（已废弃）",
-    "default": 4,
-    "invisible": true
-  },
-  "output_segment_max_chars": {
-    "type": "int",
-    "description": "[兼容] 自动分段字数旧字段（已废弃）",
-    "default": 20,
-    "invisible": true
-  },
-  "proactive_segment_enabled": {
-    "type": "bool",
-    "description": "[生成] 主动消息是否按真人打字节奏分段发送",
-    "default": true
-  },
-  "proactive_segment_max_parts": {
-    "type": "int",
-    "description": "[生成] 主动消息最大分片数",
-    "default": 3
-  },
-  "proactive_segment_delay_min_ms": {
-    "type": "int",
-    "description": "[生成] 主动消息分片间最小延迟（毫秒）",
-    "default": 300
-  },
-  "proactive_segment_delay_max_ms": {
-    "type": "int",
-    "description": "[生成] 主动消息分片间最大延迟（毫秒）",
-    "default": 900
-  },
-  "holiday_qa_main_llm_enabled": {
-    "type": "bool",
-    "description": "[生成] 节假日问答是否交给主 LLM 润色生成最终回复",
-    "default": true,
-    "invisible": true
-  },
-  "proactive_lite_refine_enabled": {
-    "type": "bool",
-    "description": "[生成] 是否使用轻量 LLM 对主动回复 Prompt 进行预加工",
-    "default": true,
-    "invisible": true
-  },
-  "proactive_prompt_template": {
-    "type": "string",
-    "description": "[生成] 主动问候 Prompt 模板。可用变量：{persona} {persona_state} {persona_state_note} {persona_state_block} {length_range} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recalled_memory} {recent_history}",
-    "editor_mode": true,
-    "default": "你是一个在聊天中主动关怀用户的助手。重要：本次问候是因为对话空闲时间达到阈值而自动触发的，用户并没有主动发送消息。请以开启新话题、自然寒暄的方式表达，不要表现出“回复用户上一条消息”的意图。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n{persona_state_block}当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n相关长期记忆（可能为空，仅在自然相关时引用，严禁生硬复述或暴露隐私）：\n{recalled_memory}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 {length_range} 字。\n5) 和最近问候不重复。\n6) 记忆只在相关时自然带一句，不要罗列、不要生硬复述；避开记忆中主人明确不喜欢的话题。",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "fallback_proactive_text": {
-    "type": "string",
-    "description": "[生成] 模型生成失败时的兜底主动问候",
-    "default": "刚刚想到你，最近有没有一件小事让你有点开心？",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "enable_holiday_perception": {
-    "type": "bool",
-    "description": "[生成] 是否启用节假日感知（目前内置支持 CN）",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "holiday_qa_enabled": {
-    "type": "bool",
-    "description": "[生成] 是否启用节假日问答（对“今天什么节/某节还有几天”自动回复）",
-    "default": true,
-    "invisible": true
-  },
-  "holiday_country": {
-    "type": "string",
-    "description": "[生成] 节假日感知地区代码（默认 CN）",
-    "default": "CN",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "holiday_api_enabled": {
-    "type": "bool",
-    "description": "[生成] 是否启用在线节假日接口（CN，优先于内置日历）",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "holiday_api_timeout_sec": {
-    "type": "int",
-    "description": "[生成] 在线节假日接口超时秒数",
-    "default": 3,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "holiday_api_cache_ttl_sec": {
-    "type": "int",
-    "description": "[生成] 在线节假日接口缓存时长（秒）",
-    "default": 21600,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "enable_platform_perception": {
-    "type": "bool",
-    "description": "[生成] 是否启用平台与会话场景感知",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_global_hourly_cap": {
-    "type": "int",
-    "description": "[安全] 全插件每小时最大主动消息数",
-    "default": 6,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_max_fail_streak": {
-    "type": "int",
-    "description": "[安全] 连续发送失败达到此值时暂停主动消息",
-    "default": 3,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_fail_pause_min": {
-    "type": "int",
-    "description": "[安全] 熔断后暂停时长（分钟）",
-    "default": 180,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_allow_links": {
-    "type": "bool",
-    "description": "[安全] 是否允许主动消息包含链接",
-    "default": false,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_blocked_words": {
-    "type": "list",
-    "description": "[安全] 主动消息禁用词列表（命中即拦截并改用兜底文案）",
-    "default": [],
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "security_max_text_length": {
-    "type": "int",
-    "description": "[安全] 主动消息最大长度（字符）",
-    "default": 90,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_enabled": {
-    "type": "bool",
-    "description": "[安全] 是否启用情绪值系统（低情绪不主动）",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_initial": {
-    "type": "float",
-    "description": "[安全] 会话初始情绪值（0-100）",
-    "default": 70.0,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_min_trigger": {
-    "type": "float",
-    "description": "[安全] 主动触发所需最低情绪值（0-100）",
-    "default": 35.0,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_cost_on_proactive": {
-    "type": "float",
-    "description": "[安全] 每次主动消息消耗的情绪值",
-    "default": 28.0,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_cost_on_dialogue": {
-    "type": "float",
-    "description": "[安全] 每次会话消息往来消耗的情绪值",
-    "default": 8.0,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "mood_recover_per_min": {
-    "type": "float",
-    "description": "[安全] 每分钟自动恢复的情绪值",
-    "default": 1.2,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "persona_state_enabled": {
-    "type": "bool",
-    "description": "[安全] 是否启用情绪状态调制（情绪状态影响语气/长度/主动程度）；关闭后退回通用 mood 行为且不注入状态区块",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "persona_state_preset": {
-    "type": "string",
-    "description": "[安全] 内置情绪状态预设：chika=默认预设，generic=中性通用预设",
-    "default": "chika",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "persona_state_custom": {
+  "basic": {
     "type": "object",
-    "description": "[安全] 自定义状态集（object，默认 {}）。非空时整体替换所选预设。结构：{\"default\":\"状态名\",\"states\":{\"状态名\":{\"priority\":100,\"when\":{...},\"style_hint\":\"...\",\"prompt_note\":\"...\",\"length_range\":\"20-60\",\"suppress_proactive\":false}}}",
-    "default": {},
-    "condition": {
-      "advanced_enabled": true
-    },
-    "items": {}
+    "description": "基础",
+    "hint": "插件总开关与高级模式入口。",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "是否启用闲时主动回复",
+        "hint": "关闭后所有会话均不再主动发言（可用 /idle_enable 重新开启）。",
+        "default": true
+      },
+      "advanced_enabled": {
+        "type": "bool",
+        "description": "是否启用高级策略参数",
+        "hint": "影响高级组（配额/情绪/安全/调试）中自定义数值是否生效。",
+        "default": false
+      }
+    }
   },
-  "persona_state_overrides": {
+  "trigger": {
     "type": "object",
-    "description": "[安全] 对当前生效预设做深合并部分覆盖（object，默认 {}）",
-    "default": {},
-    "condition": {
-      "advanced_enabled": true
-    },
-    "items": {}
-  },
-  "persona_state_low_threshold": {
-    "type": "float",
-    "description": "[安全] 低落态情绪阈值（低于且持续则进入低落、不主动）",
-    "default": 35.0,
-    "condition": {
-      "advanced_enabled": true
+    "description": "触发",
+    "hint": "空闲判定、巡检周期与触发概率。",
+    "items": {
+      "min_idle_min": {
+        "type": "int",
+        "description": "最小空闲阈值（分钟）",
+        "hint": "会话静默超过该时长后才可能触发主动问候。",
+        "obvious_hint": true,
+        "default": 45
+      },
+      "max_idle_min": {
+        "type": "int",
+        "description": "最大空闲阈值（分钟）",
+        "hint": "静默达到该时长后强制进入判定，需大于最小值。",
+        "default": 180
+      },
+      "cooldown_min": {
+        "type": "int",
+        "description": "单会话冷却时间（分钟）",
+        "hint": "同一会话两次主动发言之间的最小间隔。",
+        "obvious_hint": true,
+        "default": 90
+      },
+      "check_interval_sec": {
+        "type": "int",
+        "description": "后台巡检周期（秒）",
+        "hint": "越小越灵敏但更耗资源，建议 15-60 秒。",
+        "default": 30
+      },
+      "trigger_base_prob": {
+        "type": "float",
+        "description": "基础触发概率（0-1）",
+        "hint": "满足条件后每次巡检的基准触发概率（仅高级模式生效）。",
+        "default": 0.02
+      },
+      "trigger_max_prob": {
+        "type": "float",
+        "description": "触发概率上限（0-1）",
+        "hint": "久未回复时概率可上升到的上限（仅高级模式生效）。",
+        "default": 0.18
+      },
+      "decision_mode": {
+        "type": "string",
+        "description": "决策模式",
+        "hint": "balanced=均衡；strict=保守少打扰；active=更主动。",
+        "options": [
+          "balanced",
+          "strict",
+          "active"
+        ],
+        "default": "balanced"
+      },
+      "decision_min_confidence": {
+        "type": "float",
+        "description": "轻量决策最小置信度（0-1）",
+        "hint": "轻量决策置信度低于该值则放弃本次主动。",
+        "default": 0.6
+      },
+      "decision_group_quiet_threshold": {
+        "type": "int",
+        "description": "群聊静默阈值（分钟）",
+        "hint": "群聊需比私聊更安静才考虑主动。",
+        "default": 3
+      },
+      "require_human_reply_before_next_proactive": {
+        "type": "bool",
+        "description": "主动发言后需用户回复才再次主动",
+        "hint": "开启可避免机器人连续自说自话。",
+        "default": true
+      }
     }
   },
-  "persona_state_high_threshold": {
-    "type": "float",
-    "description": "[安全] 撒娇态情绪阈值（高于且私聊久未互动则更黏人）",
-    "default": 75.0,
-    "condition": {
-      "advanced_enabled": true
+  "schedule": {
+    "type": "object",
+    "description": "时间与免打扰",
+    "hint": "时区与夜间免打扰时段。",
+    "items": {
+      "timezone": {
+        "type": "string",
+        "description": "时区",
+        "hint": "影响免打扰时段判定与跨天计数。",
+        "options": [
+          "Asia/Shanghai",
+          "Asia/Hong_Kong",
+          "Asia/Taipei",
+          "Asia/Tokyo",
+          "Asia/Singapore",
+          "Asia/Seoul",
+          "UTC",
+          "Europe/London",
+          "America/New_York",
+          "America/Los_Angeles"
+        ],
+        "default": "Asia/Shanghai"
+      },
+      "sleep_start": {
+        "type": "string",
+        "description": "夜间免打扰开始时间（HH:MM）",
+        "hint": "该时间起停止主动，支持跨天（如 23:30）。",
+        "obvious_hint": true,
+        "default": "23:30"
+      },
+      "sleep_end": {
+        "type": "string",
+        "description": "夜间免打扰结束时间（HH:MM）",
+        "hint": "该时间起恢复主动（如 08:00）。",
+        "obvious_hint": true,
+        "default": "08:00"
+      }
     }
   },
-  "persona_state_clingy_idle_sec": {
+  "quota": {
+    "type": "object",
+    "description": "高级·配额",
+    "hint": "每日/分时段配额、未回复衰减与周末模式。",
+    "items": {
+      "max_per_session_per_day": {
+        "type": "int",
+        "description": "单会话每日主动上限",
+        "hint": "超过后该会话当日不再主动（仅高级模式生效）。",
+        "obvious_hint": true,
+        "default": 8
+      },
+      "period_quota_enabled": {
+        "type": "bool",
+        "description": "是否启用分时段配额",
+        "hint": "将每日配额按上午/下午/晚间三段拆分。",
+        "default": true
+      },
+      "period_quota_morning_max": {
+        "type": "int",
+        "description": "上午主动上限",
+        "hint": "00:00-12:00 最多主动次数。",
+        "default": 1
+      },
+      "period_quota_afternoon_max": {
+        "type": "int",
+        "description": "下午主动上限",
+        "hint": "12:00-18:00 最多主动次数。",
+        "default": 1
+      },
+      "period_quota_evening_max": {
+        "type": "int",
+        "description": "晚间主动上限",
+        "hint": "18:00-24:00 最多主动次数。",
+        "default": 1
+      },
+      "no_reply_decay_enabled": {
+        "type": "bool",
+        "description": "是否启用未回复衰减",
+        "hint": "连续未回复时自动降低触发概率。",
+        "default": true
+      },
+      "no_reply_decay_factor": {
+        "type": "float",
+        "description": "每次未回复的衰减系数",
+        "hint": "每次未回复在基础概率上叠加的衰减倍数。",
+        "default": 1.6
+      },
+      "no_reply_decay_max_factor": {
+        "type": "float",
+        "description": "衰减系数上限",
+        "hint": "衰减倍数的最大值，避免概率被降到 0。",
+        "default": 4.0
+      },
+      "weekend_mode_enabled": {
+        "type": "bool",
+        "description": "是否启用周末模式",
+        "hint": "周末按倍率放宽/收紧触发与配额。",
+        "default": true
+      },
+      "weekend_min_idle_multiplier": {
+        "type": "float",
+        "description": "周末空闲阈值倍率",
+        "hint": "周末空闲阈值乘以该倍率。",
+        "default": 1.25
+      },
+      "weekend_cooldown_multiplier": {
+        "type": "float",
+        "description": "周末冷却倍率",
+        "hint": "周末冷却时间乘以该倍率。",
+        "default": 1.35
+      },
+      "weekend_quota_multiplier": {
+        "type": "float",
+        "description": "周末配额倍率",
+        "hint": "周末每日配额乘以该倍率。",
+        "default": 0.8
+      },
+      "quality_dedupe_enabled": {
+        "type": "bool",
+        "description": "是否启用近期问候去重",
+        "hint": "避免与最近问候重复。",
+        "default": true
+      },
+      "quality_history_size": {
+        "type": "int",
+        "description": "去重记忆条数",
+        "hint": "保留多少条最近问候用于去重。",
+        "default": 6
+      }
+    }
+  },
+  "generation": {
+    "type": "object",
+    "description": "生成",
+    "hint": "人格/模型、Prompt 模板与分段发送。",
+    "items": {
+      "persona_id": {
+        "type": "string",
+        "description": "主动问候使用的人格",
+        "hint": "留空则使用默认语气或当前会话人格。",
+        "_special": "select_persona",
+        "default": ""
+      },
+      "proactive_provider_id": {
+        "type": "string",
+        "description": "主动问候生成使用的模型提供商",
+        "hint": "留空则跟随当前会话使用的 provider。",
+        "_special": "select_provider",
+        "default": ""
+      },
+      "proactive_prompt_template": {
+        "type": "string",
+        "description": "主动问候 Prompt 模板",
+        "hint": "可用变量：{persona} {persona_state_block} {length_range} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recalled_memory} {recent_history}",
+        "editor_mode": true,
+        "default": "你是一个在聊天中主动关怀用户的助手。重要：本次问候是因为对话空闲时间达到阈值而自动触发的，用户并没有主动发送消息。请以开启新话题、自然寒暄的方式表达，不要表现出“回复用户上一条消息”的意图。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n{persona_state_block}当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n相关长期记忆（可能为空，仅在自然相关时引用，严禁生硬复述或暴露隐私）：\n{recalled_memory}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 {length_range} 字。\n5) 和最近问候不重复。\n6) 记忆只在相关时自然带一句，不要罗列、不要生硬复述；避开记忆中主人明确不喜欢的话题。"
+      },
+      "fallback_proactive_text": {
+        "type": "string",
+        "description": "模型生成失败时的兜底问候",
+        "hint": "生成失败或安全校验不通过时发送。",
+        "default": "刚刚想到你，最近有没有一件小事让你有点开心？"
+      },
+      "proactive_lite_refine_enabled": {
+        "type": "bool",
+        "description": "是否启用轻量 LLM 决策/预加工",
+        "hint": "开启后会额外调用轻量模型，产生延迟与费用。",
+        "default": false
+      },
+      "proactive_segment_enabled": {
+        "type": "bool",
+        "description": "主动消息是否按真人节奏分段发送",
+        "hint": "按分片数拆分并加入打字节奏延迟发送。",
+        "default": true
+      },
+      "proactive_segment_max_parts": {
+        "type": "int",
+        "description": "主动消息最大分片数",
+        "hint": "建议 1-6。",
+        "default": 3
+      },
+      "proactive_segment_delay_min_ms": {
+        "type": "int",
+        "description": "分片间最小延迟（毫秒）",
+        "hint": "分片间随机延迟的下界。",
+        "default": 300
+      },
+      "proactive_segment_delay_max_ms": {
+        "type": "int",
+        "description": "分片间最大延迟（毫秒）",
+        "hint": "分片间随机延迟的上界，需不小于下界。",
+        "default": 900
+      },
+      "lite_llm_timeout_sec": {
+        "type": "int",
+        "description": "轻量 LLM 超时（秒）",
+        "hint": "轻量模型调用超时，超时按降级处理。",
+        "default": 6
+      },
+      "lite_provider_id": {
+        "type": "string",
+        "description": "轻量任务使用的模型提供商",
+        "hint": "留空则跟随当前会话 provider。",
+        "_special": "select_provider",
+        "default": ""
+      },
+      "enable_platform_perception": {
+        "type": "bool",
+        "description": "是否启用平台与会话场景感知",
+        "hint": "将平台/场景信息注入生成 prompt。",
+        "default": true
+      }
+    }
+  },
+  "emotion": {
+    "type": "object",
+    "description": "高级·情绪",
+    "hint": "情绪值系统与情绪状态调制。",
+    "items": {
+      "mood_enabled": {
+        "type": "bool",
+        "description": "是否启用情绪值系统",
+        "hint": "关闭后退回不消耗情绪的基础行为。",
+        "default": true
+      },
+      "mood_initial": {
+        "type": "float",
+        "description": "会话初始情绪值（0-100）",
+        "hint": "取值范围 0-100，越高越活跃。",
+        "obvious_hint": true,
+        "default": 70.0
+      },
+      "mood_min_trigger": {
+        "type": "float",
+        "description": "主动触发所需最低情绪值（0-100）",
+        "hint": "情绪低于该值时不再主动，取值范围 0-100。",
+        "obvious_hint": true,
+        "default": 35.0
+      },
+      "mood_cost_on_proactive": {
+        "type": "float",
+        "description": "每次主动消息消耗的情绪值",
+        "hint": "每次主动发言扣除的情绪值。",
+        "obvious_hint": true,
+        "default": 28.0
+      },
+      "mood_cost_on_dialogue": {
+        "type": "float",
+        "description": "每次对话消耗的情绪值",
+        "hint": "每轮对话扣除的情绪值。",
+        "default": 8.0
+      },
+      "mood_recover_per_min": {
+        "type": "float",
+        "description": "每分钟恢复的情绪值",
+        "hint": "随时间自动恢复的情绪速度。",
+        "default": 1.2
+      },
+      "persona_state_enabled": {
+        "type": "bool",
+        "description": "是否启用情绪状态调制",
+        "hint": "关闭后退回通用 mood 行为且不注入状态区块。",
+        "default": true
+      },
+      "persona_state_preset": {
+        "type": "string",
+        "description": "内置情绪状态预设",
+        "hint": "chika=默认预设；generic=中性通用预设。",
+        "options": [
+          "chika",
+          "generic"
+        ],
+        "default": "chika"
+      },
+      "persona_state_custom": {
+        "type": "object",
+        "description": "自定义状态集（object，非空时整体替换预设）",
+        "hint": "非空时整体替换所选预设（JSON object）。",
+        "default": {},
+        "items": {}
+      },
+      "persona_state_overrides": {
+        "type": "object",
+        "description": "对当前预设做深合并覆盖（object）",
+        "hint": "对预设做部分深合并覆盖（JSON object）。",
+        "default": {},
+        "items": {}
+      },
+      "persona_state_low_threshold": {
+        "type": "float",
+        "description": "低落态情绪阈值",
+        "hint": "低于该值且持续则进入低落态、不主动。",
+        "default": 35.0
+      },
+      "persona_state_high_threshold": {
+        "type": "float",
+        "description": "撒娇态情绪阈值",
+        "hint": "高于该值且私聊久未互动则更黏人。",
+        "default": 75.0
+      },
+      "persona_state_clingy_idle_sec": {
+        "type": "int",
+        "description": "触发久未互动状态所需空闲秒数",
+        "hint": "默认 14400＝4 小时。",
+        "default": 14400
+      },
+      "persona_state_low_persist_rounds": {
+        "type": "int",
+        "description": "低情绪状态需连续经过的决策轮数",
+        "hint": "低情绪需连续经过的判定轮数。",
+        "default": 2
+      }
+    }
+  },
+  "memory": {
+    "type": "object",
+    "description": "记忆",
+    "hint": "从 tmemory 召回长期记忆并注入 prompt。",
+    "items": {
+      "memory_recall_enabled": {
+        "type": "bool",
+        "description": "是否召回长期记忆并注入 prompt",
+        "hint": "仅从已注册的 tmemory 插件召回。",
+        "default": true
+      },
+      "memory_recall_limit": {
+        "type": "int",
+        "description": "每次召回的记忆条数上限",
+        "hint": "每次注入 prompt 的最大条数。",
+        "default": 3
+      },
+      "memory_recall_timeout_sec": {
+        "type": "float",
+        "description": "召回超时秒数（超时按无记忆继续）",
+        "hint": "超时则不注入记忆继续发送。",
+        "default": 2
+      },
+      "memory_recall_private_only": {
+        "type": "bool",
+        "description": "是否仅在私聊召回",
+        "hint": "群聊一律不注入记忆。",
+        "default": true
+      },
+      "memory_recall_group_enabled": {
+        "type": "bool",
+        "description": "是否允许群聊召回",
+        "hint": "仅在关闭 private_only 时生效。",
+        "default": false
+      },
+      "memory_recall_plugin_name": {
+        "type": "string",
+        "description": "tmemory 插件注册名",
+        "hint": "对应 tmemory 的插件注册名。",
+        "default": "astrbot_plugin_tmemory"
+      }
+    }
+  },
+  "holiday": {
+    "type": "object",
+    "description": "节假日",
+    "hint": "节假日感知与在线节假日接口。",
+    "items": {
+      "enable_holiday_perception": {
+        "type": "bool",
+        "description": "是否启用节假日感知",
+        "hint": "将节假日信息注入生成 prompt。",
+        "default": true
+      },
+      "holiday_country": {
+        "type": "string",
+        "description": "节假日感知地区代码",
+        "hint": "目前仅支持 CN。",
+        "options": [
+          "CN"
+        ],
+        "default": "CN"
+      },
+      "holiday_qa_enabled": {
+        "type": "bool",
+        "description": "是否启用节假日问答",
+        "hint": "支持“今天什么节/某节还有几天”类问答。",
+        "default": true
+      },
+      "holiday_api_enabled": {
+        "type": "bool",
+        "description": "是否启用在线节假日接口",
+        "hint": "CN 优先使用在线接口，失败回退内置日历。",
+        "default": true
+      },
+      "holiday_api_timeout_sec": {
+        "type": "int",
+        "description": "在线节假日接口超时（秒）",
+        "hint": "在线接口请求超时。",
+        "default": 3
+      },
+      "holiday_api_cache_ttl_sec": {
+        "type": "int",
+        "description": "在线节假日接口缓存时长（秒）",
+        "hint": "默认 21600＝6 小时。",
+        "default": 21600
+      },
+      "holiday_qa_main_llm_enabled": {
+        "type": "bool",
+        "description": "节假日问答是否交给主 LLM 润色（兼容保留）",
+        "hint": "旧字段，保留兼容；当前由轻量 LLM 开关统一控制。",
+        "default": true
+      }
+    }
+  },
+  "security": {
+    "type": "object",
+    "description": "高级·安全",
+    "hint": "频率上限、熔断、内容与白名单约束。",
+    "items": {
+      "security_global_hourly_cap": {
+        "type": "int",
+        "description": "全插件每小时最大主动消息数",
+        "hint": "全插件范围内每小时发送上限，防止刷屏。",
+        "obvious_hint": true,
+        "default": 6
+      },
+      "security_max_fail_streak": {
+        "type": "int",
+        "description": "连续发送失败达到此值时暂停",
+        "hint": "连续发送失败达到该值触发熔断。",
+        "obvious_hint": true,
+        "default": 3
+      },
+      "security_fail_pause_min": {
+        "type": "int",
+        "description": "熔断后暂停时长（分钟）",
+        "hint": "熔断后暂停主动消息的时长。",
+        "obvious_hint": true,
+        "default": 180
+      },
+      "security_allow_links": {
+        "type": "bool",
+        "description": "是否允许主动消息包含链接",
+        "hint": "关闭时含链接的消息会被拦截并改用兜底文案。",
+        "default": false
+      },
+      "security_blocked_words": {
+        "type": "list",
+        "description": "主动消息禁用词列表",
+        "hint": "命中即拦截并改用兜底文案。",
+        "default": []
+      },
+      "security_max_text_length": {
+        "type": "int",
+        "description": "主动消息最大长度（字符）",
+        "hint": "超出会被截断或改用兜底文案。",
+        "default": 90
+      },
+      "private_whitelist": {
+        "type": "list",
+        "description": "私聊白名单 user_id 列表",
+        "hint": "仅这些私聊会话允许主动。",
+        "default": []
+      },
+      "group_whitelist": {
+        "type": "list",
+        "description": "群聊白名单 group_id 列表",
+        "hint": "仅这些群聊会话允许主动。",
+        "default": []
+      }
+    }
+  },
+  "debug": {
+    "type": "object",
+    "description": "高级·调试",
+    "hint": "日志与轨迹开关。",
+    "items": {
+      "debug_log": {
+        "type": "bool",
+        "description": "是否开启调试日志",
+        "hint": "调试日志默认节流输出。",
+        "default": false
+      },
+      "debug_decision_log": {
+        "type": "bool",
+        "description": "是否输出结构化决策日志（JSON）",
+        "hint": "以 JSON 输出结构化决策信息。",
+        "default": true
+      },
+      "debug_status_window_sec": {
+        "type": "int",
+        "description": "状态摘要输出窗口（秒）",
+        "hint": "状态摘要输出的节流窗口，建议 300 或 600。",
+        "default": 300
+      },
+      "lifecycle_log": {
+        "type": "bool",
+        "description": "是否输出插件生命周期日志",
+        "hint": "输出 initialized/terminated 生命周期日志。",
+        "default": true
+      },
+      "decision_trace_enabled": {
+        "type": "bool",
+        "description": "是否记录决策轨迹",
+        "hint": "供 /idle_status 查看决策轨迹。",
+        "default": true
+      },
+      "quality_trace_enabled": {
+        "type": "bool",
+        "description": "是否记录质量统计",
+        "hint": "统计命中/回退等质量指标。",
+        "default": true
+      }
+    }
+  },
+  "schema_version": {
     "type": "int",
-    "description": "[安全] 触发久未互动类状态所需的空闲秒数（默认 14400＝4 小时）",
-    "default": 14400,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "persona_state_low_persist_rounds": {
-    "type": "int",
-    "description": "[安全] 低情绪状态需连续经过的决策轮数（默认 2）",
+    "description": "配置结构版本（内部使用）",
     "default": 2,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_enabled": {
-    "type": "bool",
-    "description": "[记忆] 主动消息生成时是否从 tmemory 召回记忆并注入 prompt",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_limit": {
-    "type": "int",
-    "description": "[记忆] 每次召回的记忆条数上限",
-    "default": 3,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_timeout_sec": {
-    "type": "float",
-    "description": "[记忆] 召回超时秒数（超时则按无记忆继续发送）",
-    "default": 2,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_private_only": {
-    "type": "bool",
-    "description": "[记忆] 仅在私聊召回，群聊一律不注入",
-    "default": true,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_group_enabled": {
-    "type": "bool",
-    "description": "[记忆] 是否允许群聊召回（仅注入非私有记忆，且需关闭 private_only）",
-    "default": false,
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "memory_recall_plugin_name": {
-    "type": "string",
-    "description": "[记忆] tmemory 插件注册名",
-    "default": "astrbot_plugin_tmemory",
-    "condition": {
-      "advanced_enabled": true
-    }
-  },
-  "debug_log": {
-    "type": "bool",
-    "description": "[调试] 是否开启调试分组（开启后显示调试子选项）",
-    "default": false
-  },
-  "debug_decision_log": {
-    "type": "bool",
-    "description": "[调试] 是否输出结构化决策日志（JSON）",
-    "default": true,
-    "condition": {
-      "debug_log": true
-    }
-  },
-  "debug_status_window_sec": {
-    "type": "int",
-    "description": "[调试] 状态摘要输出窗口（秒），建议 300 或 600",
-    "default": 300,
-    "condition": {
-      "debug_log": true
-    }
+    "invisible": true
   }
 }

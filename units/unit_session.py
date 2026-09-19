@@ -10,9 +10,9 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 try:
-    from ..config import DEFAULT_CONFIG
+    from ..config import DEFAULT_CONFIG_FLAT, DEPRECATED_CONFIG_KEYS
 except ImportError:
-    from config import DEFAULT_CONFIG
+    from config import DEFAULT_CONFIG_FLAT, DEPRECATED_CONFIG_KEYS
 
 try:
     from .persona_presets import resolve_preset
@@ -156,8 +156,8 @@ class SessionConfigUnitsMixin:
             and self._is_hhmm(start)
             and self._is_hhmm(end)
         ):
-            start = DEFAULT_CONFIG["sleep_start"]
-            end = DEFAULT_CONFIG["sleep_end"]
+            start = DEFAULT_CONFIG_FLAT["sleep_start"]
+            end = DEFAULT_CONFIG_FLAT["sleep_end"]
 
         if start <= end:
             if start <= hm <= end:
@@ -200,7 +200,7 @@ class SessionConfigUnitsMixin:
 
     def _mood_enabled(self) -> bool:
         return self._to_bool(
-            self.config.get("mood_enabled"), DEFAULT_CONFIG["mood_enabled"]
+            self.config.get("mood_enabled"), DEFAULT_CONFIG_FLAT["mood_enabled"]
         )
 
     def _mood_initial(self) -> float:
@@ -208,7 +208,7 @@ class SessionConfigUnitsMixin:
             0.0,
             min(
                 100.0,
-                float(self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"])),
+                float(self.config.get("mood_initial", DEFAULT_CONFIG_FLAT["mood_initial"])),
             ),
         )
 
@@ -219,7 +219,7 @@ class SessionConfigUnitsMixin:
                 100.0,
                 float(
                     self.config.get(
-                        "mood_min_trigger", DEFAULT_CONFIG["mood_min_trigger"]
+                        "mood_min_trigger", DEFAULT_CONFIG_FLAT["mood_min_trigger"]
                     )
                 ),
             ),
@@ -228,7 +228,7 @@ class SessionConfigUnitsMixin:
     def _persona_state_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("persona_state_enabled"),
-            DEFAULT_CONFIG["persona_state_enabled"],
+            DEFAULT_CONFIG_FLAT["persona_state_enabled"],
         )
 
     def _persona_state_low_threshold(self) -> float:
@@ -236,7 +236,7 @@ class SessionConfigUnitsMixin:
             float(
                 self.config.get(
                     "persona_state_low_threshold",
-                    DEFAULT_CONFIG["persona_state_low_threshold"],
+                    DEFAULT_CONFIG_FLAT["persona_state_low_threshold"],
                 )
             )
         )
@@ -246,7 +246,7 @@ class SessionConfigUnitsMixin:
             float(
                 self.config.get(
                     "persona_state_high_threshold",
-                    DEFAULT_CONFIG["persona_state_high_threshold"],
+                    DEFAULT_CONFIG_FLAT["persona_state_high_threshold"],
                 )
             )
         )
@@ -255,7 +255,7 @@ class SessionConfigUnitsMixin:
         return (
             str(
                 self.config.get(
-                    "persona_state_preset", DEFAULT_CONFIG["persona_state_preset"]
+                    "persona_state_preset", DEFAULT_CONFIG_FLAT["persona_state_preset"]
                 )
                 or ""
             ).strip()
@@ -276,7 +276,7 @@ class SessionConfigUnitsMixin:
             float(
                 self.config.get(
                     "persona_state_clingy_idle_sec",
-                    DEFAULT_CONFIG["persona_state_clingy_idle_sec"],
+                    DEFAULT_CONFIG_FLAT["persona_state_clingy_idle_sec"],
                 )
             ),
         )
@@ -287,7 +287,7 @@ class SessionConfigUnitsMixin:
             int(
                 self.config.get(
                     "persona_state_low_persist_rounds",
-                    DEFAULT_CONFIG["persona_state_low_persist_rounds"],
+                    DEFAULT_CONFIG_FLAT["persona_state_low_persist_rounds"],
                 )
             ),
         )
@@ -319,7 +319,7 @@ class SessionConfigUnitsMixin:
                 float(
                     self.config.get(
                         "mood_cost_on_proactive",
-                        DEFAULT_CONFIG["mood_cost_on_proactive"],
+                        DEFAULT_CONFIG_FLAT["mood_cost_on_proactive"],
                     )
                 ),
             ),
@@ -332,7 +332,7 @@ class SessionConfigUnitsMixin:
                 100.0,
                 float(
                     self.config.get(
-                        "mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"]
+                        "mood_cost_on_dialogue", DEFAULT_CONFIG_FLAT["mood_cost_on_dialogue"]
                     )
                 ),
             ),
@@ -343,7 +343,7 @@ class SessionConfigUnitsMixin:
             0.0,
             float(
                 self.config.get(
-                    "mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]
+                    "mood_recover_per_min", DEFAULT_CONFIG_FLAT["mood_recover_per_min"]
                 )
             ),
         )
@@ -419,7 +419,7 @@ class SessionConfigUnitsMixin:
             int(
                 self.config.get(
                     "security_global_hourly_cap",
-                    DEFAULT_CONFIG["security_global_hourly_cap"],
+                    DEFAULT_CONFIG_FLAT["security_global_hourly_cap"],
                 )
             ),
         )
@@ -430,7 +430,7 @@ class SessionConfigUnitsMixin:
             int(
                 self.config.get(
                     "security_max_fail_streak",
-                    DEFAULT_CONFIG["security_max_fail_streak"],
+                    DEFAULT_CONFIG_FLAT["security_max_fail_streak"],
                 )
             ),
         )
@@ -442,7 +442,7 @@ class SessionConfigUnitsMixin:
                 float(
                     self.config.get(
                         "security_fail_pause_min",
-                        DEFAULT_CONFIG["security_fail_pause_min"],
+                        DEFAULT_CONFIG_FLAT["security_fail_pause_min"],
                     )
                 )
                 * 60
@@ -452,14 +452,14 @@ class SessionConfigUnitsMixin:
     def _security_allow_links(self) -> bool:
         return self._to_bool(
             self.config.get(
-                "security_allow_links", DEFAULT_CONFIG["security_allow_links"]
+                "security_allow_links", DEFAULT_CONFIG_FLAT["security_allow_links"]
             ),
-            DEFAULT_CONFIG["security_allow_links"],
+            DEFAULT_CONFIG_FLAT["security_allow_links"],
         )
 
     def _security_blocked_words(self) -> List[str]:
         raw = self.config.get(
-            "security_blocked_words", DEFAULT_CONFIG["security_blocked_words"]
+            "security_blocked_words", DEFAULT_CONFIG_FLAT["security_blocked_words"]
         )
         if not isinstance(raw, list):
             return []
@@ -487,12 +487,12 @@ class SessionConfigUnitsMixin:
 
     def _debug_decision_enabled(self) -> bool:
         return self._to_bool(
-            self.config.get("debug_decision_log"), DEFAULT_CONFIG["debug_decision_log"]
+            self.config.get("debug_decision_log"), DEFAULT_CONFIG_FLAT["debug_decision_log"]
         )
 
     def _decision_mode(self) -> str:
         mode = (
-            str(self.config.get("decision_mode", DEFAULT_CONFIG["decision_mode"]))
+            str(self.config.get("decision_mode", DEFAULT_CONFIG_FLAT["decision_mode"]))
             .strip()
             .lower()
         )
@@ -508,7 +508,7 @@ class SessionConfigUnitsMixin:
                 float(
                     self.config.get(
                         "decision_min_confidence",
-                        DEFAULT_CONFIG["decision_min_confidence"],
+                        DEFAULT_CONFIG_FLAT["decision_min_confidence"],
                     )
                 ),
             ),
@@ -520,7 +520,7 @@ class SessionConfigUnitsMixin:
             int(
                 self.config.get(
                     "decision_group_quiet_threshold",
-                    DEFAULT_CONFIG["decision_group_quiet_threshold"],
+                    DEFAULT_CONFIG_FLAT["decision_group_quiet_threshold"],
                 )
             ),
         )
@@ -528,13 +528,13 @@ class SessionConfigUnitsMixin:
     def _decision_trace_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("decision_trace_enabled"),
-            DEFAULT_CONFIG["decision_trace_enabled"],
+            DEFAULT_CONFIG_FLAT["decision_trace_enabled"],
         )
 
     def _quality_trace_enabled(self) -> bool:
         return self._to_bool(
             self.config.get("quality_trace_enabled"),
-            DEFAULT_CONFIG["quality_trace_enabled"],
+            DEFAULT_CONFIG_FLAT["quality_trace_enabled"],
         )
 
     def _record_decision(self, session_key: str, payload: Dict):
@@ -615,6 +615,7 @@ class SessionConfigUnitsMixin:
 
     def _normalize_webui_config(self):
         changed = False
+        changed = self._normalize_legacy_flat_keys() or changed
         changed = self._normalize_defaults() or changed
         changed = self._normalize_basic_layer() or changed
         changed = self._normalize_timing_layer() or changed
@@ -625,9 +626,28 @@ class SessionConfigUnitsMixin:
         if changed:
             self._save_webui_config()
 
+    def _normalize_legacy_flat_keys(self) -> bool:
+        """把已废弃的旧扁平 key 归一化到新字段（幂等，旧 key 不删除）。"""
+        changed = False
+        # legacy config_mode -> advanced_enabled（仅当后者缺失）
+        if self.config.get("advanced_enabled") is None:
+            mode = str(self.config.get("config_mode") or "basic").strip().lower()
+            self.config["advanced_enabled"] = mode == "advanced"
+            changed = True
+        # legacy lite_llm_enabled 作为轻量 LLM 主开关，覆盖对应新字段
+        lite_raw = self.config.get("lite_llm_enabled")
+        if lite_raw is not None:
+            lite = self._to_bool(lite_raw, False)
+            if self.config.get("proactive_lite_refine_enabled") != lite:
+                self.config["proactive_lite_refine_enabled"] = lite
+                changed = True
+        return changed
+
     def _normalize_defaults(self) -> bool:
         changed = False
-        for key, value in DEFAULT_CONFIG.items():
+        for key, value in DEFAULT_CONFIG_FLAT.items():
+            if key in DEPRECATED_CONFIG_KEYS:
+                continue
             if self.config.get(key) is None:
                 self.config[key] = copy.deepcopy(value)
                 changed = True
@@ -637,12 +657,12 @@ class SessionConfigUnitsMixin:
         changed = False
         if not isinstance(self.config.get("private_whitelist"), list):
             self.config["private_whitelist"] = copy.deepcopy(
-                DEFAULT_CONFIG["private_whitelist"]
+                DEFAULT_CONFIG_FLAT["private_whitelist"]
             )
             changed = True
         if not isinstance(self.config.get("group_whitelist"), list):
             self.config["group_whitelist"] = copy.deepcopy(
-                DEFAULT_CONFIG["group_whitelist"]
+                DEFAULT_CONFIG_FLAT["group_whitelist"]
             )
             changed = True
 
@@ -653,14 +673,14 @@ class SessionConfigUnitsMixin:
             changed = True
         if not isinstance(self.config.get("advanced_enabled"), bool):
             self.config["advanced_enabled"] = self._to_bool(
-                self.config.get("advanced_enabled"), DEFAULT_CONFIG["advanced_enabled"]
+                self.config.get("advanced_enabled"), DEFAULT_CONFIG_FLAT["advanced_enabled"]
             )
             changed = True
 
         for key in ("enabled", "lifecycle_log", "debug_log"):
             if not isinstance(self.config.get(key), bool):
                 self.config[key] = self._to_bool(
-                    self.config.get(key), DEFAULT_CONFIG[key]
+                    self.config.get(key), DEFAULT_CONFIG_FLAT[key]
                 )
                 changed = True
         return changed
@@ -668,10 +688,10 @@ class SessionConfigUnitsMixin:
     def _normalize_timing_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("sleep_start"), str):
-            self.config["sleep_start"] = DEFAULT_CONFIG["sleep_start"]
+            self.config["sleep_start"] = DEFAULT_CONFIG_FLAT["sleep_start"]
             changed = True
         if not isinstance(self.config.get("sleep_end"), str):
-            self.config["sleep_end"] = DEFAULT_CONFIG["sleep_end"]
+            self.config["sleep_end"] = DEFAULT_CONFIG_FLAT["sleep_end"]
             changed = True
 
         # 兼容旧版秒级配置，自动迁移为分钟配置。
@@ -698,19 +718,19 @@ class SessionConfigUnitsMixin:
             changed = True
 
         if not isinstance(self.config.get("min_idle_min"), (int, float)):
-            self.config["min_idle_min"] = DEFAULT_CONFIG["min_idle_min"]
+            self.config["min_idle_min"] = DEFAULT_CONFIG_FLAT["min_idle_min"]
             changed = True
         if not isinstance(self.config.get("max_idle_min"), (int, float)):
-            self.config["max_idle_min"] = DEFAULT_CONFIG["max_idle_min"]
+            self.config["max_idle_min"] = DEFAULT_CONFIG_FLAT["max_idle_min"]
             changed = True
         if not isinstance(self.config.get("cooldown_min"), (int, float)):
-            self.config["cooldown_min"] = DEFAULT_CONFIG["cooldown_min"]
+            self.config["cooldown_min"] = DEFAULT_CONFIG_FLAT["cooldown_min"]
             changed = True
 
         if float(self.config["max_idle_min"]) <= float(self.config["min_idle_min"]):
             self.config["max_idle_min"] = max(
                 float(self.config["min_idle_min"]) + 30,
-                float(DEFAULT_CONFIG["max_idle_min"]),
+                float(DEFAULT_CONFIG_FLAT["max_idle_min"]),
             )
             changed = True
         return changed
@@ -718,40 +738,34 @@ class SessionConfigUnitsMixin:
     def _normalize_generation_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("persona_id"), str):
-            self.config["persona_id"] = DEFAULT_CONFIG["persona_id"]
+            self.config["persona_id"] = DEFAULT_CONFIG_FLAT["persona_id"]
             changed = True
         if not isinstance(self.config.get("proactive_provider_id"), str):
-            self.config["proactive_provider_id"] = DEFAULT_CONFIG[
+            self.config["proactive_provider_id"] = DEFAULT_CONFIG_FLAT[
                 "proactive_provider_id"
             ]
             changed = True
-        if not isinstance(self.config.get("lite_llm_enabled"), bool):
-            self.config["lite_llm_enabled"] = self._to_bool(
-                self.config.get("lite_llm_enabled"),
-                DEFAULT_CONFIG["lite_llm_enabled"],
-            )
-            changed = True
         if not isinstance(self.config.get("lite_provider_id"), str):
-            self.config["lite_provider_id"] = DEFAULT_CONFIG["lite_provider_id"]
+            self.config["lite_provider_id"] = DEFAULT_CONFIG_FLAT["lite_provider_id"]
             changed = True
         if not isinstance(self.config.get("lite_llm_timeout_sec"), (int, float)):
-            self.config["lite_llm_timeout_sec"] = DEFAULT_CONFIG["lite_llm_timeout_sec"]
+            self.config["lite_llm_timeout_sec"] = DEFAULT_CONFIG_FLAT["lite_llm_timeout_sec"]
             changed = True
         if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
             self.config["lite_llm_timeout_sec"] = 1
             changed = True
         mode = (
-            str(self.config.get("decision_mode", DEFAULT_CONFIG["decision_mode"]))
+            str(self.config.get("decision_mode", DEFAULT_CONFIG_FLAT["decision_mode"]))
             .strip()
             .lower()
         )
         if mode not in {"balanced", "strict", "active"}:
-            self.config["decision_mode"] = DEFAULT_CONFIG["decision_mode"]
+            self.config["decision_mode"] = DEFAULT_CONFIG_FLAT["decision_mode"]
             changed = True
         else:
             self.config["decision_mode"] = mode
         if not isinstance(self.config.get("decision_min_confidence"), (int, float)):
-            self.config["decision_min_confidence"] = DEFAULT_CONFIG[
+            self.config["decision_min_confidence"] = DEFAULT_CONFIG_FLAT[
                 "decision_min_confidence"
             ]
             changed = True
@@ -761,7 +775,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(
             self.config.get("decision_group_quiet_threshold"), (int, float)
         ):
-            self.config["decision_group_quiet_threshold"] = DEFAULT_CONFIG[
+            self.config["decision_group_quiet_threshold"] = DEFAULT_CONFIG_FLAT[
                 "decision_group_quiet_threshold"
             ]
             changed = True
@@ -771,67 +785,23 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("decision_trace_enabled"), bool):
             self.config["decision_trace_enabled"] = self._to_bool(
                 self.config.get("decision_trace_enabled"),
-                DEFAULT_CONFIG["decision_trace_enabled"],
+                DEFAULT_CONFIG_FLAT["decision_trace_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("quality_trace_enabled"), bool):
             self.config["quality_trace_enabled"] = self._to_bool(
                 self.config.get("quality_trace_enabled"),
-                DEFAULT_CONFIG["quality_trace_enabled"],
+                DEFAULT_CONFIG_FLAT["quality_trace_enabled"],
             )
-            changed = True
-        if not isinstance(self.config.get("dialogue_wait_enabled"), bool):
-            self.config["dialogue_wait_enabled"] = self._to_bool(
-                self.config.get("dialogue_wait_enabled"),
-                DEFAULT_CONFIG["dialogue_wait_enabled"],
-            )
-            changed = True
-        if not isinstance(self.config.get("dialogue_wait_timeout_sec"), (int, float)):
-            self.config["dialogue_wait_timeout_sec"] = DEFAULT_CONFIG[
-                "dialogue_wait_timeout_sec"
-            ]
-            changed = True
-        if int(self.config.get("dialogue_wait_timeout_sec", 0)) < 1:
-            self.config["dialogue_wait_timeout_sec"] = 1
-            changed = True
-        if not isinstance(self.config.get("dialogue_wait_max_merge"), (int, float)):
-            self.config["dialogue_wait_max_merge"] = DEFAULT_CONFIG[
-                "dialogue_wait_max_merge"
-            ]
-            changed = True
-        if int(self.config.get("dialogue_wait_max_merge", 0)) < 1:
-            self.config["dialogue_wait_max_merge"] = 1
-            changed = True
-        if not isinstance(self.config.get("output_segment_enabled"), bool):
-            self.config["output_segment_enabled"] = self._to_bool(
-                self.config.get("output_segment_enabled"),
-                DEFAULT_CONFIG["output_segment_enabled"],
-            )
-            changed = True
-        if not isinstance(self.config.get("output_segment_max_parts"), (int, float)):
-            self.config["output_segment_max_parts"] = DEFAULT_CONFIG[
-                "output_segment_max_parts"
-            ]
-            changed = True
-        if int(self.config.get("output_segment_max_parts", 0)) < 1:
-            self.config["output_segment_max_parts"] = 1
-            changed = True
-        if not isinstance(self.config.get("output_segment_max_chars"), (int, float)):
-            self.config["output_segment_max_chars"] = DEFAULT_CONFIG[
-                "output_segment_max_chars"
-            ]
-            changed = True
-        if int(self.config.get("output_segment_max_chars", 0)) < 10:
-            self.config["output_segment_max_chars"] = 10
             changed = True
         if not isinstance(self.config.get("proactive_segment_enabled"), bool):
             self.config["proactive_segment_enabled"] = self._to_bool(
                 self.config.get("proactive_segment_enabled"),
-                DEFAULT_CONFIG["proactive_segment_enabled"],
+                DEFAULT_CONFIG_FLAT["proactive_segment_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("proactive_segment_max_parts"), (int, float)):
-            self.config["proactive_segment_max_parts"] = DEFAULT_CONFIG[
+            self.config["proactive_segment_max_parts"] = DEFAULT_CONFIG_FLAT[
                 "proactive_segment_max_parts"
             ]
             changed = True
@@ -841,7 +811,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(
             self.config.get("proactive_segment_delay_min_ms"), (int, float)
         ):
-            self.config["proactive_segment_delay_min_ms"] = DEFAULT_CONFIG[
+            self.config["proactive_segment_delay_min_ms"] = DEFAULT_CONFIG_FLAT[
                 "proactive_segment_delay_min_ms"
             ]
             changed = True
@@ -851,7 +821,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(
             self.config.get("proactive_segment_delay_max_ms"), (int, float)
         ):
-            self.config["proactive_segment_delay_max_ms"] = DEFAULT_CONFIG[
+            self.config["proactive_segment_delay_max_ms"] = DEFAULT_CONFIG_FLAT[
                 "proactive_segment_delay_max_ms"
             ]
             changed = True
@@ -865,20 +835,20 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("holiday_qa_main_llm_enabled"), bool):
             self.config["holiday_qa_main_llm_enabled"] = self._to_bool(
                 self.config.get("holiday_qa_main_llm_enabled"),
-                DEFAULT_CONFIG["holiday_qa_main_llm_enabled"],
+                DEFAULT_CONFIG_FLAT["holiday_qa_main_llm_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("proactive_lite_refine_enabled"), bool):
             self.config["proactive_lite_refine_enabled"] = self._to_bool(
                 self.config.get("proactive_lite_refine_enabled"),
-                DEFAULT_CONFIG["proactive_lite_refine_enabled"],
+                DEFAULT_CONFIG_FLAT["proactive_lite_refine_enabled"],
             )
             changed = True
         if (
             not isinstance(self.config.get("proactive_prompt_template"), str)
             or not self.config["proactive_prompt_template"].strip()
         ):
-            self.config["proactive_prompt_template"] = DEFAULT_CONFIG[
+            self.config["proactive_prompt_template"] = DEFAULT_CONFIG_FLAT[
                 "proactive_prompt_template"
             ]
             changed = True
@@ -886,33 +856,33 @@ class SessionConfigUnitsMixin:
             not isinstance(self.config.get("fallback_proactive_text"), str)
             or not self.config["fallback_proactive_text"].strip()
         ):
-            self.config["fallback_proactive_text"] = DEFAULT_CONFIG[
+            self.config["fallback_proactive_text"] = DEFAULT_CONFIG_FLAT[
                 "fallback_proactive_text"
             ]
             changed = True
         if not isinstance(self.config.get("enable_holiday_perception"), bool):
             self.config["enable_holiday_perception"] = self._to_bool(
                 self.config.get("enable_holiday_perception"),
-                DEFAULT_CONFIG["enable_holiday_perception"],
+                DEFAULT_CONFIG_FLAT["enable_holiday_perception"],
             )
             changed = True
         if not isinstance(self.config.get("holiday_qa_enabled"), bool):
             self.config["holiday_qa_enabled"] = self._to_bool(
                 self.config.get("holiday_qa_enabled"),
-                DEFAULT_CONFIG["holiday_qa_enabled"],
+                DEFAULT_CONFIG_FLAT["holiday_qa_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("enable_platform_perception"), bool):
             self.config["enable_platform_perception"] = self._to_bool(
                 self.config.get("enable_platform_perception"),
-                DEFAULT_CONFIG["enable_platform_perception"],
+                DEFAULT_CONFIG_FLAT["enable_platform_perception"],
             )
             changed = True
         if (
             not isinstance(self.config.get("holiday_country"), str)
             or not self.config.get("holiday_country", "").strip()
         ):
-            self.config["holiday_country"] = DEFAULT_CONFIG["holiday_country"]
+            self.config["holiday_country"] = DEFAULT_CONFIG_FLAT["holiday_country"]
             changed = True
         else:
             self.config["holiday_country"] = (
@@ -921,11 +891,11 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("holiday_api_enabled"), bool):
             self.config["holiday_api_enabled"] = self._to_bool(
                 self.config.get("holiday_api_enabled"),
-                DEFAULT_CONFIG["holiday_api_enabled"],
+                DEFAULT_CONFIG_FLAT["holiday_api_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("holiday_api_timeout_sec"), (int, float)):
-            self.config["holiday_api_timeout_sec"] = DEFAULT_CONFIG[
+            self.config["holiday_api_timeout_sec"] = DEFAULT_CONFIG_FLAT[
                 "holiday_api_timeout_sec"
             ]
             changed = True
@@ -933,7 +903,7 @@ class SessionConfigUnitsMixin:
             self.config["holiday_api_timeout_sec"] = 1
             changed = True
         if not isinstance(self.config.get("holiday_api_cache_ttl_sec"), (int, float)):
-            self.config["holiday_api_cache_ttl_sec"] = DEFAULT_CONFIG[
+            self.config["holiday_api_cache_ttl_sec"] = DEFAULT_CONFIG_FLAT[
                 "holiday_api_cache_ttl_sec"
             ]
             changed = True
@@ -947,7 +917,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("security_allow_links"), bool):
             self.config["security_allow_links"] = self._to_bool(
                 self.config.get("security_allow_links"),
-                DEFAULT_CONFIG["security_allow_links"],
+                DEFAULT_CONFIG_FLAT["security_allow_links"],
             )
             changed = True
         # Backward compatibility: migrate legacy energy_* keys to mood_* when mood_* is missing.
@@ -968,23 +938,23 @@ class SessionConfigUnitsMixin:
 
         if not isinstance(self.config.get("mood_enabled"), bool):
             self.config["mood_enabled"] = self._to_bool(
-                self.config.get("mood_enabled"), DEFAULT_CONFIG["mood_enabled"]
+                self.config.get("mood_enabled"), DEFAULT_CONFIG_FLAT["mood_enabled"]
             )
             changed = True
         if not isinstance(self.config.get("debug_decision_log"), bool):
             self.config["debug_decision_log"] = self._to_bool(
                 self.config.get("debug_decision_log"),
-                DEFAULT_CONFIG["debug_decision_log"],
+                DEFAULT_CONFIG_FLAT["debug_decision_log"],
             )
             changed = True
         if not isinstance(self.config.get("security_blocked_words"), list):
             self.config["security_blocked_words"] = copy.deepcopy(
-                DEFAULT_CONFIG["security_blocked_words"]
+                DEFAULT_CONFIG_FLAT["security_blocked_words"]
             )
             changed = True
 
         if not isinstance(self.config.get("security_global_hourly_cap"), (int, float)):
-            self.config["security_global_hourly_cap"] = DEFAULT_CONFIG[
+            self.config["security_global_hourly_cap"] = DEFAULT_CONFIG_FLAT[
                 "security_global_hourly_cap"
             ]
             changed = True
@@ -992,7 +962,7 @@ class SessionConfigUnitsMixin:
             self.config["security_global_hourly_cap"] = 1
             changed = True
         if not isinstance(self.config.get("security_max_fail_streak"), (int, float)):
-            self.config["security_max_fail_streak"] = DEFAULT_CONFIG[
+            self.config["security_max_fail_streak"] = DEFAULT_CONFIG_FLAT[
                 "security_max_fail_streak"
             ]
             changed = True
@@ -1000,7 +970,7 @@ class SessionConfigUnitsMixin:
             self.config["security_max_fail_streak"] = 1
             changed = True
         if not isinstance(self.config.get("security_fail_pause_min"), (int, float)):
-            self.config["security_fail_pause_min"] = DEFAULT_CONFIG[
+            self.config["security_fail_pause_min"] = DEFAULT_CONFIG_FLAT[
                 "security_fail_pause_min"
             ]
             changed = True
@@ -1008,7 +978,7 @@ class SessionConfigUnitsMixin:
             self.config["security_fail_pause_min"] = 5
             changed = True
         if not isinstance(self.config.get("security_max_text_length"), (int, float)):
-            self.config["security_max_text_length"] = DEFAULT_CONFIG[
+            self.config["security_max_text_length"] = DEFAULT_CONFIG_FLAT[
                 "security_max_text_length"
             ]
             changed = True
@@ -1016,45 +986,45 @@ class SessionConfigUnitsMixin:
             self.config["security_max_text_length"] = 20
             changed = True
         if not isinstance(self.config.get("mood_initial"), (int, float)):
-            self.config["mood_initial"] = DEFAULT_CONFIG["mood_initial"]
+            self.config["mood_initial"] = DEFAULT_CONFIG_FLAT["mood_initial"]
             changed = True
         if not isinstance(self.config.get("mood_min_trigger"), (int, float)):
-            self.config["mood_min_trigger"] = DEFAULT_CONFIG["mood_min_trigger"]
+            self.config["mood_min_trigger"] = DEFAULT_CONFIG_FLAT["mood_min_trigger"]
             changed = True
         if not isinstance(self.config.get("mood_cost_on_proactive"), (int, float)):
-            self.config["mood_cost_on_proactive"] = DEFAULT_CONFIG[
+            self.config["mood_cost_on_proactive"] = DEFAULT_CONFIG_FLAT[
                 "mood_cost_on_proactive"
             ]
             changed = True
         if not isinstance(self.config.get("mood_cost_on_dialogue"), (int, float)):
-            self.config["mood_cost_on_dialogue"] = DEFAULT_CONFIG[
+            self.config["mood_cost_on_dialogue"] = DEFAULT_CONFIG_FLAT[
                 "mood_cost_on_dialogue"
             ]
             changed = True
         if not isinstance(self.config.get("mood_recover_per_min"), (int, float)):
-            self.config["mood_recover_per_min"] = DEFAULT_CONFIG["mood_recover_per_min"]
+            self.config["mood_recover_per_min"] = DEFAULT_CONFIG_FLAT["mood_recover_per_min"]
             changed = True
         self.config["mood_initial"] = self._mood_clamp(
-            self.config.get("mood_initial", DEFAULT_CONFIG["mood_initial"])
+            self.config.get("mood_initial", DEFAULT_CONFIG_FLAT["mood_initial"])
         )
         self.config["mood_min_trigger"] = self._mood_clamp(
-            self.config.get("mood_min_trigger", DEFAULT_CONFIG["mood_min_trigger"])
+            self.config.get("mood_min_trigger", DEFAULT_CONFIG_FLAT["mood_min_trigger"])
         )
         self.config["mood_cost_on_proactive"] = self._mood_clamp(
             self.config.get(
-                "mood_cost_on_proactive", DEFAULT_CONFIG["mood_cost_on_proactive"]
+                "mood_cost_on_proactive", DEFAULT_CONFIG_FLAT["mood_cost_on_proactive"]
             )
         )
         self.config["mood_cost_on_dialogue"] = self._mood_clamp(
             self.config.get(
-                "mood_cost_on_dialogue", DEFAULT_CONFIG["mood_cost_on_dialogue"]
+                "mood_cost_on_dialogue", DEFAULT_CONFIG_FLAT["mood_cost_on_dialogue"]
             )
         )
         self.config["mood_recover_per_min"] = max(
             0.0,
             float(
                 self.config.get(
-                    "mood_recover_per_min", DEFAULT_CONFIG["mood_recover_per_min"]
+                    "mood_recover_per_min", DEFAULT_CONFIG_FLAT["mood_recover_per_min"]
                 )
             ),
         )
@@ -1064,20 +1034,20 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("persona_state_enabled"), bool):
             self.config["persona_state_enabled"] = self._to_bool(
                 self.config.get("persona_state_enabled"),
-                DEFAULT_CONFIG["persona_state_enabled"],
+                DEFAULT_CONFIG_FLAT["persona_state_enabled"],
             )
             changed = True
         if not isinstance(
             self.config.get("persona_state_low_threshold"), (int, float)
         ):
-            self.config["persona_state_low_threshold"] = DEFAULT_CONFIG[
+            self.config["persona_state_low_threshold"] = DEFAULT_CONFIG_FLAT[
                 "persona_state_low_threshold"
             ]
             changed = True
         if not isinstance(
             self.config.get("persona_state_high_threshold"), (int, float)
         ):
-            self.config["persona_state_high_threshold"] = DEFAULT_CONFIG[
+            self.config["persona_state_high_threshold"] = DEFAULT_CONFIG_FLAT[
                 "persona_state_high_threshold"
             ]
             changed = True
@@ -1091,10 +1061,10 @@ class SessionConfigUnitsMixin:
         self.config["persona_state_low_threshold"] = low
         self.config["persona_state_high_threshold"] = high
         if not isinstance(self.config.get("persona_state_preset"), str):
-            self.config["persona_state_preset"] = DEFAULT_CONFIG["persona_state_preset"]
+            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT["persona_state_preset"]
             changed = True
         elif not self.config["persona_state_preset"].strip():
-            self.config["persona_state_preset"] = DEFAULT_CONFIG["persona_state_preset"]
+            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT["persona_state_preset"]
             changed = True
         if not isinstance(self.config.get("persona_state_custom"), dict):
             self.config["persona_state_custom"] = {}
@@ -1105,7 +1075,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(
             self.config.get("persona_state_clingy_idle_sec"), (int, float)
         ):
-            self.config["persona_state_clingy_idle_sec"] = DEFAULT_CONFIG[
+            self.config["persona_state_clingy_idle_sec"] = DEFAULT_CONFIG_FLAT[
                 "persona_state_clingy_idle_sec"
             ]
             changed = True
@@ -1115,7 +1085,7 @@ class SessionConfigUnitsMixin:
         if not isinstance(
             self.config.get("persona_state_low_persist_rounds"), (int, float)
         ):
-            self.config["persona_state_low_persist_rounds"] = DEFAULT_CONFIG[
+            self.config["persona_state_low_persist_rounds"] = DEFAULT_CONFIG_FLAT[
                 "persona_state_low_persist_rounds"
             ]
             changed = True
@@ -1125,31 +1095,31 @@ class SessionConfigUnitsMixin:
         if not isinstance(self.config.get("memory_recall_enabled"), bool):
             self.config["memory_recall_enabled"] = self._to_bool(
                 self.config.get("memory_recall_enabled"),
-                DEFAULT_CONFIG["memory_recall_enabled"],
+                DEFAULT_CONFIG_FLAT["memory_recall_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("memory_recall_private_only"), bool):
             self.config["memory_recall_private_only"] = self._to_bool(
                 self.config.get("memory_recall_private_only"),
-                DEFAULT_CONFIG["memory_recall_private_only"],
+                DEFAULT_CONFIG_FLAT["memory_recall_private_only"],
             )
             changed = True
         if not isinstance(self.config.get("memory_recall_group_enabled"), bool):
             self.config["memory_recall_group_enabled"] = self._to_bool(
                 self.config.get("memory_recall_group_enabled"),
-                DEFAULT_CONFIG["memory_recall_group_enabled"],
+                DEFAULT_CONFIG_FLAT["memory_recall_group_enabled"],
             )
             changed = True
         if not isinstance(self.config.get("memory_recall_limit"), (int, float)):
-            self.config["memory_recall_limit"] = DEFAULT_CONFIG["memory_recall_limit"]
+            self.config["memory_recall_limit"] = DEFAULT_CONFIG_FLAT["memory_recall_limit"]
             changed = True
         if not isinstance(self.config.get("memory_recall_timeout_sec"), (int, float)):
-            self.config["memory_recall_timeout_sec"] = DEFAULT_CONFIG[
+            self.config["memory_recall_timeout_sec"] = DEFAULT_CONFIG_FLAT[
                 "memory_recall_timeout_sec"
             ]
             changed = True
         if not str(self.config.get("memory_recall_plugin_name") or "").strip():
-            self.config["memory_recall_plugin_name"] = DEFAULT_CONFIG[
+            self.config["memory_recall_plugin_name"] = DEFAULT_CONFIG_FLAT[
                 "memory_recall_plugin_name"
             ]
             changed = True
@@ -1158,7 +1128,7 @@ class SessionConfigUnitsMixin:
     def _normalize_debug_layer(self) -> bool:
         changed = False
         if not isinstance(self.config.get("debug_status_window_sec"), int):
-            self.config["debug_status_window_sec"] = DEFAULT_CONFIG[
+            self.config["debug_status_window_sec"] = DEFAULT_CONFIG_FLAT[
                 "debug_status_window_sec"
             ]
             changed = True
@@ -1201,14 +1171,14 @@ class SessionConfigUnitsMixin:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _debug_enabled(self) -> bool:
-        return self._to_bool(self.config.get("debug_log"), DEFAULT_CONFIG["debug_log"])
+        return self._to_bool(self.config.get("debug_log"), DEFAULT_CONFIG_FLAT["debug_log"])
 
     def _debug_window_sec(self) -> int:
         return max(
             60,
             int(
                 self.config.get(
-                    "debug_status_window_sec", DEFAULT_CONFIG["debug_status_window_sec"]
+                    "debug_status_window_sec", DEFAULT_CONFIG_FLAT["debug_status_window_sec"]
                 )
             ),
         )

@@ -124,6 +124,10 @@ def _install_astrbot_stubs() -> None:
         def __init__(self):
             self.persona_manager = None
             self.provider_manager = None
+            self.registered_web_apis = []
+
+        def register_web_api(self, route, view_handler, methods, desc):
+            self.registered_web_apis.append((route, view_handler, methods, desc))
 
     class _StubStar:
         def __init__(self, context, config=None):
@@ -148,6 +152,48 @@ def _install_astrbot_stubs() -> None:
     star_mod.Star = _StubStar
     star_mod.register = _register
 
+    web_mod = types.ModuleType("astrbot.api.web")
+
+    class _StubPluginMultiDict:
+        def __init__(self, data=None):
+            self._data = data or {}
+
+        def get(self, key, default=None, type=None):
+            value = self._data.get(key, default)
+            if type is not None and value is not default:
+                try:
+                    return type(value)
+                except (TypeError, ValueError):
+                    return default
+            return value
+
+    class _StubPluginRequest:
+        """Minimal request body/query surface used by plugin Web handlers."""
+
+        def __init__(self, payload=None, query=None):
+            self._payload = payload if isinstance(payload, dict) else {}
+            self.query = _StubPluginMultiDict(query)
+
+        async def json(self, default=None):
+            return self._payload if self._payload else default
+
+    def _stub_json_response(data=None, **_kwargs):
+        return data
+
+    def _stub_error_response(message, **_kwargs):
+        return {"status": "error", "message": message}
+
+    def _stub_stream_response(content, **_kwargs):
+        return {
+            "__stream__": content,
+            "content_type": _kwargs.get("content_type"),
+        }
+
+    web_mod.request = _StubPluginRequest()
+    web_mod.json_response = _stub_json_response
+    web_mod.error_response = _stub_error_response
+    web_mod.stream_response = _stub_stream_response
+
     astrbot_mod.api = api_mod
     astrbot_mod.logger = logging.getLogger("astrbot")
 
@@ -156,6 +202,7 @@ def _install_astrbot_stubs() -> None:
     sys.modules["astrbot.api.event"] = event_mod
     sys.modules["astrbot.api.message_components"] = message_components_mod
     sys.modules["astrbot.api.star"] = star_mod
+    sys.modules["astrbot.api.web"] = web_mod
 
 
 def _load_package_module(module_name: str, file_name: str):

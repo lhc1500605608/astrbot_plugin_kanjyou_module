@@ -111,6 +111,12 @@ DEFAULT_CONFIG_FLAT = {
     "memory_recall_private_only": True,
     "memory_recall_group_enabled": False,
     "memory_recall_plugin_name": "astrbot_plugin_tmemory",
+    "companion_enabled": False,
+    "companion_plugin_name": "astrbot_plugin_tcompanion_core",
+    "companion_timeout_sec": 1.5,
+    "companion_inject_life_state": True,
+    "companion_inject_relationship": True,
+    "companion_inject_motivation": True,
     "debug_decision_log": True,
 }
 
@@ -210,6 +216,14 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "memory_recall_private_only",
         "memory_recall_group_enabled",
         "memory_recall_plugin_name",
+    ],
+    "companion": [
+        "companion_enabled",
+        "companion_plugin_name",
+        "companion_timeout_sec",
+        "companion_inject_life_state",
+        "companion_inject_relationship",
+        "companion_inject_motivation",
     ],
     "holiday": [
         "enable_holiday_perception",
@@ -514,4 +528,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.4.0"
+PLUGIN_VERSION = "2.5.0"

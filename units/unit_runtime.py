@@ -83,6 +83,12 @@ class RuntimeUnitsMixin:
         self._unit_finalize_result(
             session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts
         )
+        # companion-core 回执：发送结果确定后回传一次（不可用则静默降级）。
+        await self._report_companion_outcome(
+            str(decision.get("umo", s.get("unified_msg_origin")) or ""),
+            sent=success,
+            reason_code=(decision.get("reason_codes") or ["allow"])[0],
+        )
         self._debug_decision(
             session_key,
             {
@@ -285,6 +291,10 @@ class RuntimeUnitsMixin:
         elif mode == "active":
             multiplier = 1.25
         p = max(0.0, min(1.0, p_raw * multiplier))
+        # companion 配额软闸：只降权、绝不提升；现有安全闸始终权威。
+        companion_soft = self._companion_quota_soft_gate(s)
+        if companion_soft:
+            p = max(0.0, p * 0.5)
         roll = random.random()
         if roll >= p:
             self._unit_defer_session(
@@ -313,6 +323,8 @@ class RuntimeUnitsMixin:
                 state_changed,
             )
         reason_codes.append("probability_pass")
+        if companion_soft:
+            reason_codes.append("companion_quota_soft")
 
         umo = s.get("unified_msg_origin")
         if self._unit_gate_origin(session_key, s, umo, now_ts):

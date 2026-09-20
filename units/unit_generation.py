@@ -90,6 +90,11 @@ class PolicyGenerationUnitsMixin:
                 env_perception,
                 style_hint,
             )
+            # companion-core 上下文：仅在生成前拉取一次；不可用则空串不注入。
+            companion_ctx = await self._fetch_companion_context(
+                unified_msg_origin, self._companion_persona_id()
+            )
+            companion_fields = self._companion_prompt_fields(companion_ctx)
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
                 or DEFAULT_CONFIG_FLAT["proactive_prompt_template"]
@@ -107,6 +112,9 @@ class PolicyGenerationUnitsMixin:
                 style_hint=style_hint,
                 recalled_memory=recalled_memory,
                 recent_history=recent_history,
+                life_state=companion_fields["life_state"],
+                relationship=companion_fields["relationship"],
+                motivation=companion_fields["motivation"],
             )
             if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
                 if "{persona_state}" not in prompt_tpl:
@@ -120,6 +128,11 @@ class PolicyGenerationUnitsMixin:
                     "相关长期记忆（仅在自然相关时引用，不要生硬复述、不要暴露隐私）：\n"
                     f"{recalled_memory}\n"
                 )
+            prompt = self._append_companion_block(prompt, prompt_tpl, companion_fields)
+            if isinstance(session, dict):
+                quota_allow = self._companion_quota_allow(companion_ctx)
+                if quota_allow is not None:
+                    session["companion_quota_allow"] = quota_allow
 
             provider_id = str(self.config.get("proactive_provider_id") or "").strip()
             if not provider_id:

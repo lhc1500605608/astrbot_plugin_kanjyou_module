@@ -575,6 +575,49 @@
       }
     }
   },
+  "companion": {
+    "type": "object",
+    "description": "陪伴",
+    "hint": "从 tcompanion-core 拉取生活/关系/动机上下文并注入 prompt；未安装时行为等同 v2.4.0。",
+    "items": {
+      "companion_enabled": {
+        "type": "bool",
+        "description": "是否启用 companion-core 上下文消费",
+        "hint": "默认关闭以确保零回归；关闭或插件缺失时不注入、不阻塞发送。",
+        "default": false
+      },
+      "companion_plugin_name": {
+        "type": "string",
+        "description": "companion-core 插件注册名",
+        "hint": "对应 companion-core 的插件注册名。",
+        "default": "astrbot_plugin_tcompanion_core"
+      },
+      "companion_timeout_sec": {
+        "type": "float",
+        "description": "上下文拉取/回执超时秒数",
+        "hint": "默认 1.5s，超时按不注入继续发送（clamp 0.2~5.0）。",
+        "default": 1.5
+      },
+      "companion_inject_life_state": {
+        "type": "bool",
+        "description": "是否注入生活状态 {life_state}",
+        "hint": "关闭后该字段不注入 prompt。",
+        "default": true
+      },
+      "companion_inject_relationship": {
+        "type": "bool",
+        "description": "是否注入关系档案 {relationship}",
+        "hint": "关闭后该字段不注入 prompt。",
+        "default": true
+      },
+      "companion_inject_motivation": {
+        "type": "bool",
+        "description": "是否注入主动动机 {motivation}",
+        "hint": "关闭后该字段不注入 prompt。",
+        "default": true
+      }
+    }
+  },
   "holiday": {
     "type": "object",
     "description": "节假日",

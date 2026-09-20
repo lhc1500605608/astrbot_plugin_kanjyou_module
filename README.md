@@ -1,6 +1,6 @@
 # 情绪价值提供者
 
-[![Version](https://img.shields.io/badge/version-v2.4.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.5.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -17,6 +17,11 @@
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
+
+### v2.5.0 新增能力
+
+- **陪伴上下文消费（companion-core）**：可选对接 `astrbot_plugin_tcompanion_core`，主动消息生成前只读拉取生活/关系/动机上下文并注入 `{life_state}`/`{relationship}`/`{motivation}`（模板缺占位符时安全追加独立块）；发送后回传 `on_proactive_outcome` 结果。契约主版本不符 / 插件缺失 / 超时 / 异常一律降级，**未安装时行为等同 v2.4.0**。
+- **零回归**：`companion_enabled` 默认关闭，新增降级/注入测试守护 v2.4.0 行为。
 
 ### v2.4.0 新增能力
 
@@ -52,7 +57,7 @@
 
 ## WebUI 核心配置
 
-配置按 9 个分组折叠展示（基础/触发/时间/配额/生成/情绪/记忆/节假日/安全/调试），以下为常用项：
+配置按 11 个分组折叠展示（基础/触发/时间/配额/生成/情绪/记忆/陪伴/节假日/安全/调试），以下为常用项：
 
 - `enabled`：插件总开关
 - `advanced_enabled`：高级配置开关
@@ -192,6 +197,14 @@
 - `memory_recall_group_enabled`：是否允许群聊召回（默认关闭，需同时关闭 private_only）
 - `memory_recall_plugin_name`：tmemory 插件注册名（默认 `astrbot_plugin_tmemory`）
 
+### 陪伴上下文（高级配置）
+
+- `companion_enabled`：是否启用 companion-core 上下文消费（默认关闭，确保零回归）
+- `companion_plugin_name`：companion-core 插件注册名（默认 `astrbot_plugin_tcompanion_core`）
+- `companion_timeout_sec`：拉取/回执超时秒数（默认 1.5，超时按不注入继续发送）
+- `companion_inject_life_state` / `companion_inject_relationship` / `companion_inject_motivation`：分域注入开关（默认开启）
+- 实现契约 v1：`get_contract_info` 主版本不符即视为不可用；`get_proactive_context` 返回字段全部可缺省，逐字段兜底；`quota.allow` 仅作软闸（现有安全闸仍权威）。
+
 ## 打包规范
 
 发布/分发时使用**单一顶层目录**（目录名与插件同名 `astrbot_plugin_kanjyou_module`），并排除以下内容：
@@ -218,6 +231,7 @@ astrbot_plugin_kanjyou_module/
     ├── __init__.py
     ├── unit_advanced.py
     ├── unit_commands.py
+    ├── unit_companion.py
     ├── unit_events.py
     ├── unit_generation.py
     ├── unit_memory_recall.py

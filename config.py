@@ -117,6 +117,56 @@ DEFAULT_CONFIG_FLAT = {
     "companion_inject_life_state": True,
     "companion_inject_relationship": True,
     "companion_inject_motivation": True,
+    # Phase 2-A/2-C: emotion event detection + expression consumption.
+    # 默认开启，但仅在 companion_enabled 且 companion-core 暴露 emotion/expression
+    # capability 时生效；否则行为等同 v2.4.0（fail-closed）。
+    "emotion_event_enabled": True,
+    "emotion_reply_window_sec": 21600,
+    "emotion_ignore_window_sec": 21600,
+    "emotion_cold_shoulder_streak": 3,
+    "emotion_llm_judge_enabled": False,
+    "emotion_keywords": {
+        "gratitude": [
+            "谢谢",
+            "感谢",
+            "多谢",
+            "谢了",
+            "辛苦你",
+            "辛苦啦",
+            "有你真好",
+            "爱你",
+            "thanks",
+            "thank you",
+            "thx",
+            "3q",
+        ],
+        "misunderstood": [
+            "你误会",
+            "误会了",
+            "不是这个意思",
+            "你怎么这样",
+            "别烦我",
+            "生气",
+            "失望",
+            "讨厌",
+            "不许",
+            "别说了",
+            "烦死",
+        ],
+        "sudden_warmth": [
+            "注意身体",
+            "注意休息",
+            "早点休息",
+            "早点睡",
+            "想你了",
+            "抱抱",
+            "在吗",
+            "还好吗",
+            "担心你",
+            "多穿点",
+        ],
+        "cold_shoulder": ["嗯", "哦", "噢", "好", "呗", "额", "呃", "呵", "?", "？"],
+    },
     "debug_decision_log": True,
 }
 
@@ -224,6 +274,14 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "companion_inject_life_state",
         "companion_inject_relationship",
         "companion_inject_motivation",
+    ],
+    "emotion_event": [
+        "emotion_event_enabled",
+        "emotion_reply_window_sec",
+        "emotion_ignore_window_sec",
+        "emotion_cold_shoulder_streak",
+        "emotion_llm_judge_enabled",
+        "emotion_keywords",
     ],
     "holiday": [
         "enable_holiday_perception",
@@ -528,4 +586,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.5.0"
+PLUGIN_VERSION = "2.6.0"

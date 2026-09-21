@@ -53,6 +53,8 @@ class RuntimeUnitsMixin:
         self._unit_rollover_counters(s, now)
         self._recover_session_mood(s, now_ts)
         self._update_mood_low_streak(s)
+        # Phase 2-A: settle a stale proactive receipt as ignored_proactive.
+        receipt_settled = await self._settle_expired_receipt(s, now_ts)
 
         decision = await self._decision_engine(session_key, s, now, now_ts)
         self._record_decision(session_key, decision)
@@ -67,15 +69,16 @@ class RuntimeUnitsMixin:
             },
         )
         if not decision.get("allow", False):
-            return bool(decision.get("state_changed", False))
+            return bool(decision.get("state_changed", False)) or receipt_settled
 
         period = str(decision.get("period", self._get_period(now)))
         idle_sec = float(
             decision.get("idle_sec", now_ts - s.get("last_interaction_at", now_ts))
         )
         decay = float(decision.get("decay", self._no_reply_decay_factor(s)))
+        umo = str(decision.get("umo", s.get("unified_msg_origin")) or "")
         success, sent_text = await self._unit_execute_send(
-            str(decision.get("umo", s.get("unified_msg_origin"))),
+            umo,
             session_key,
             idle_sec,
             s,
@@ -83,9 +86,12 @@ class RuntimeUnitsMixin:
         self._unit_finalize_result(
             session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts
         )
+        if success:
+            # Phase 2-A: record the pending receipt (state only; no ledger write).
+            await self._begin_proactive_receipt(s, umo, now_ts)
         # companion-core 回执：发送结果确定后回传一次（不可用则静默降级）。
         await self._report_companion_outcome(
-            str(decision.get("umo", s.get("unified_msg_origin")) or ""),
+            umo,
             sent=success,
             reason_code=(decision.get("reason_codes") or ["allow"])[0],
         )
@@ -295,6 +301,10 @@ class RuntimeUnitsMixin:
         companion_soft = self._companion_quota_soft_gate(s)
         if companion_soft:
             p = max(0.0, p * 0.5)
+        # Phase 2-C expression 软闸：proactive_bias < 0 时只降权（一次性）。
+        expression_bias = self._companion_expression_proactive_soft_gate(s)
+        if expression_bias is not None and expression_bias < 0:
+            p = max(0.0, p * max(0.0, 1.0 + expression_bias))
         roll = random.random()
         if roll >= p:
             self._unit_defer_session(
@@ -325,6 +335,8 @@ class RuntimeUnitsMixin:
         reason_codes.append("probability_pass")
         if companion_soft:
             reason_codes.append("companion_quota_soft")
+        if expression_bias is not None and expression_bias < 0:
+            reason_codes.append("companion_expression_damp")
 
         umo = s.get("unified_msg_origin")
         if self._unit_gate_origin(session_key, s, umo, now_ts):

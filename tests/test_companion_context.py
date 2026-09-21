@@ -82,7 +82,14 @@ class _ContractStar:
         self.outcomes = []
 
     async def get_contract_info(self):
-        return {"api_version": self._version, "capabilities": ["life_state"]}
+        return {
+            "api_version": self._version,
+            "capabilities": {
+                "life_state": True,
+                "emotion": True,
+                "expression": True,
+            },
+        }
 
     async def get_proactive_context(self, umo, persona_id=None):
         if self._delay:

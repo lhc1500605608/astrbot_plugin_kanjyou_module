@@ -80,7 +80,28 @@ class PolicyGenerationUnitsMixin:
             state_note = self._persona_state_prompt_note(persona_state)
             length_range = self._persona_state_length_range(persona_state)
             state_block = self._persona_state_prompt_block(persona_state)
+            # companion-core 上下文：仅在生成前拉取一次；不可用则空串不注入。
+            companion_ctx = await self._fetch_companion_context(
+                unified_msg_origin, self._companion_persona_id()
+            )
+            companion_fields = self._companion_prompt_fields(companion_ctx)
+            # Phase 2-C：expression 为档位权威约束，persona_state 降为风格细节。
+            expression = self._companion_expression(companion_ctx, session_key)
+            merged_style = self._expression_style_merge(
+                expression, persona_state, session, session_key
+            )
+            emotion_state_text = self._companion_emotion_state_text(
+                companion_ctx, session_key
+            )
+            expression_mode = merged_style["mode"] if merged_style else ""
             style_hint = self._style_hint(session_key, session, idle_sec)
+            if merged_style:
+                style_hint = self._expression_style_hint(merged_style)
+                length_range = self._expression_length_range(merged_style, length_range)
+                if isinstance(session, dict):
+                    session["companion_expression_proactive_bias"] = merged_style[
+                        "proactive_bias"
+                    ]
             recent_history = self._recent_history_text(session)
             recalled_memory = await self._recall_memory_for_prompt(
                 unified_msg_origin,
@@ -90,11 +111,6 @@ class PolicyGenerationUnitsMixin:
                 env_perception,
                 style_hint,
             )
-            # companion-core 上下文：仅在生成前拉取一次；不可用则空串不注入。
-            companion_ctx = await self._fetch_companion_context(
-                unified_msg_origin, self._companion_persona_id()
-            )
-            companion_fields = self._companion_prompt_fields(companion_ctx)
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
                 or DEFAULT_CONFIG_FLAT["proactive_prompt_template"]
@@ -115,6 +131,8 @@ class PolicyGenerationUnitsMixin:
                 life_state=companion_fields["life_state"],
                 relationship=companion_fields["relationship"],
                 motivation=companion_fields["motivation"],
+                emotion_state=emotion_state_text,
+                expression_mode=expression_mode,
             )
             if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
                 if "{persona_state}" not in prompt_tpl:
@@ -129,6 +147,9 @@ class PolicyGenerationUnitsMixin:
                     f"{recalled_memory}\n"
                 )
             prompt = self._append_companion_block(prompt, prompt_tpl, companion_fields)
+            prompt = self._append_expression_block(
+                prompt, prompt_tpl, emotion_state_text, merged_style
+            )
             if isinstance(session, dict):
                 quota_allow = self._companion_quota_allow(companion_ctx)
                 if quota_allow is not None:

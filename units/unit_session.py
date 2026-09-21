@@ -86,6 +86,9 @@ class SessionConfigUnitsMixin:
             "mood": float(self._mood_initial()),
             "mood_updated_at": now_ts,
             "mood_low_streak": 0,
+            "companion_cold_streak": 0,
+            "companion_positive_seen": False,
+            "companion_receipt_pending": None,
         }
 
     def _ensure_session_shape(self, session: Dict):
@@ -115,6 +118,12 @@ class SessionConfigUnitsMixin:
             session["mood_updated_at"] = self._now().timestamp()
         if not isinstance(session.get("mood_low_streak"), (int, float)):
             session["mood_low_streak"] = 0
+        if not isinstance(session.get("companion_cold_streak"), (int, float)):
+            session["companion_cold_streak"] = 0
+        if "companion_positive_seen" not in session:
+            session["companion_positive_seen"] = False
+        if "companion_receipt_pending" not in session:
+            session["companion_receipt_pending"] = None
 
     def _rollover_daily_counter(self, session: Dict, now: datetime):
         today = now.strftime("%Y-%m-%d")

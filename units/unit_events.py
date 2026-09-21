@@ -46,9 +46,20 @@ class EventUnitsMixin:
             return
 
         now_ts = self._now().timestamp()
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        decided = None
         async with self._lock:
             s = self._get_or_create_session(event)
             self._ensure_session_shape(s)
+            umo = str(s.get("unified_msg_origin") or umo)
+            # Phase 2-A: settle at most one emotion event for this inbound message.
+            try:
+                decided = self._collect_inbound_emotion_event(
+                    session_key, s, text, event, umo, now_ts
+                )
+            except Exception as exc:
+                self._debug(f"emotion detect failed session={session_key} err={exc}")
+                decided = None
             self._consume_session_mood_by_dialogue(s, now_ts)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
@@ -59,6 +70,11 @@ class EventUnitsMixin:
             self._save_state()
             self._debug(
                 f"touch by human session={session_key} last_interaction={self._fmt_ts(now_ts)} next_check={self._fmt_ts(s['next_check_at'])}"
+            )
+        if decided:
+            event_type, dedupe_key, reason = decided
+            await self._record_companion_emotion_event(
+                umo, event_type, reason=reason, dedupe_key=dedupe_key
             )
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):

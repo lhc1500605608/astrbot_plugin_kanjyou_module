@@ -50,6 +50,19 @@ def _clamp01(value) -> Optional[float]:
     return max(0.0, min(1.0, number))
 
 
+def _clamp_signed(value) -> Optional[float]:
+    """Clamp a numeric field into ``[-1, 1]``; ``None`` for non-numeric/NaN."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return max(-1.0, min(1.0, number))
+
+
 def _clean_int(value) -> Optional[int]:
     if isinstance(value, bool):
         return None
@@ -131,6 +144,51 @@ def sanitize_companion_context(raw) -> Dict:
     if streak is not None and streak >= 0:
         ctx["unanswered_streak"] = streak
 
+    emotion = raw.get("emotion_state")
+    if isinstance(emotion, dict):
+        clean_emotion: Dict = {}
+        state = _clean_text(emotion.get("state"))
+        if state:
+            clean_emotion["state"] = state
+        valence = _clamp_signed(emotion.get("valence"))
+        if valence is not None:
+            clean_emotion["valence"] = valence
+        last_event = _clean_text(emotion.get("last_event"))
+        if last_event:
+            clean_emotion["last_event"] = last_event
+        as_of = _clean_text(emotion.get("as_of"))
+        if as_of:
+            clean_emotion["as_of"] = as_of
+        if clean_emotion:
+            ctx["emotion_state"] = clean_emotion
+
+    expression = raw.get("expression")
+    if isinstance(expression, dict):
+        clean_expr: Dict = {}
+        mode = _clean_text(expression.get("mode"))
+        if mode:
+            clean_expr["mode"] = mode
+        hints = expression.get("style_hints")
+        if isinstance(hints, dict):
+            clean_hints: Dict = {}
+            tone = _clean_text(hints.get("tone"))
+            if tone:
+                clean_hints["tone"] = tone
+            warmth = _clamp01(hints.get("warmth"))
+            if warmth is not None:
+                clean_hints["warmth"] = warmth
+            for key in ("length_bias", "proactive_bias"):
+                value = _clamp_signed(hints.get(key))
+                if value is not None:
+                    clean_hints[key] = value
+            if clean_hints:
+                clean_expr["style_hints"] = clean_hints
+        reason = _clean_text(expression.get("reason"))
+        if reason:
+            clean_expr["reason"] = reason
+        if clean_expr:
+            ctx["expression"] = clean_expr
+
     return ctx
 
 
@@ -150,6 +208,7 @@ class CompanionContextAdapter:
         self._plugin = plugin
         self._plugin_name = str(plugin_name or DEFAULT_COMPANION_PLUGIN_NAME)
         self._timeout_sec = max(0.05, float(timeout_sec))
+        self._info: Optional[Dict] = None
 
     def _resolve_star(self):
         context = getattr(self._plugin, "context", None)
@@ -197,6 +256,66 @@ class CompanionContextAdapter:
             return False
         return self._version_ok(info)
 
+    async def contract_info(self) -> Dict:
+        """Fetch + cache ``get_contract_info()``; ``{}`` when unavailable.
+
+        Cached per adapter instance so a single consume cycle probes the
+        contract at most once (``fetch_context`` + capability checks).
+        """
+        if self._info is not None:
+            return self._info
+        info_fn = self._resolve_method("get_contract_info")
+        if info_fn is None:
+            self._info = {}
+            return self._info
+        try:
+            info = await self._call(info_fn)
+        except Exception:
+            info = {}
+        self._info = info if isinstance(info, dict) else {}
+        return self._info
+
+    async def capabilities(self) -> Dict:
+        """Return the contract ``capabilities`` dict; ``{}`` when unavailable."""
+        info = await self.contract_info()
+        if not self._version_ok(info):
+            return {}
+        caps = info.get("capabilities")
+        return caps if isinstance(caps, dict) else {}
+
+    async def has_capability(self, name: str) -> bool:
+        return bool((await self.capabilities()).get(name))
+
+    async def record_emotion_event(
+        self,
+        umo: str,
+        *,
+        event_type: str,
+        reason: str = "",
+        dedupe_key: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Report one emotion event; ``None`` when unavailable/degraded.
+
+        Probes ``api_version`` + ``capabilities.emotion`` before calling, so a
+        legacy companion-core (no such capability/method) is never called.
+        """
+        fn = self._resolve_method("record_emotion_event")
+        if fn is None:
+            return None
+        if not await self.has_capability("emotion"):
+            return None
+        try:
+            result = await self._call(
+                fn,
+                umo,
+                event_type=str(event_type or ""),
+                reason=str(reason or ""),
+                dedupe_key=dedupe_key,
+            )
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
+
     async def fetch_context(
         self, umo: str, persona_id: Optional[str] = None
     ) -> Optional[Dict]:
@@ -215,7 +334,13 @@ class CompanionContextAdapter:
             return None
         if not isinstance(raw, dict):
             return None
-        return sanitize_companion_context(raw)
+        ctx = sanitize_companion_context(raw)
+        caps = await self.capabilities()
+        if not caps.get("emotion"):
+            ctx.pop("emotion_state", None)
+        if not caps.get("expression"):
+            ctx.pop("expression", None)
+        return ctx
 
     async def report_outcome(
         self,

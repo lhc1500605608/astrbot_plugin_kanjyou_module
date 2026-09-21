@@ -55,6 +55,7 @@ try:
     from .units.unit_advanced import AdvancedPolicyUnitsMixin
     from .units.unit_commands import CommandUnitsMixin
     from .units.unit_companion import CompanionContextUnitsMixin
+    from .units.unit_emotion_events import EmotionEventUnitsMixin
     from .units.unit_events import EventUnitsMixin
     from .units.unit_generation import PolicyGenerationUnitsMixin
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
@@ -76,6 +77,7 @@ except ImportError:
     from units.unit_advanced import AdvancedPolicyUnitsMixin
     from units.unit_commands import CommandUnitsMixin
     from units.unit_companion import CompanionContextUnitsMixin
+    from units.unit_emotion_events import EmotionEventUnitsMixin
     from units.unit_events import EventUnitsMixin
     from units.unit_generation import PolicyGenerationUnitsMixin
     from units.unit_memory_recall import MemoryRecallUnitsMixin
@@ -92,6 +94,7 @@ class KanjyouIdleProactivePlugin(
     PolicyGenerationUnitsMixin,
     MemoryRecallUnitsMixin,
     CompanionContextUnitsMixin,
+    EmotionEventUnitsMixin,
     RuntimeUnitsMixin,
     WebUIUnitsMixin,
     Star,

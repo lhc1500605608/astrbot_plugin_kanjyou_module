@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="情绪价值提供者" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.5.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.6.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -21,6 +21,13 @@
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
+
+### v2.6.0 新增能力
+
+- **Phase 2-A 情绪事件探测（零 LLM）**：在入站消息/主动回执链路上判定 `gratitude` / `misunderstood` / `sudden_warmth` / `cold_shoulder` 四类关键词事件，以及 `valued_reply` / `ignored_proactive` 两类主动回执（状态机结算）。单条入站消息**只结算一次**：落在主动回复窗口内只记 `valued_reply`，否则按 `misunderstood > gratitude > sudden_warmth > cold_shoulder` 取一；两类回执**共用** `dedupe_key=f"proactive:{send_ts}"`，由 companion-core 主键真互斥（后到者 `duplicate`，不改账）。事件只存类型/时间/去重键，**不存消息原文**。
+- **Phase 2-C expression 消费**：消费 `get_proactive_context` 的可选 `emotion_state` / `expression`，注入占位符 `{emotion_state}` / `{expression_mode}`（模板缺则安全追加）；`expression.mode + style_hints` 为档位权威约束，kanjyou 的 `persona_state` 降为风格细节，按 plan §4.1 映射（`length_range`→`length_bias`、session `mood`→`warmth`、`suppress_proactive` 只降不升），数值调整总量 ≤ ±0.10 且**不覆盖 mode**。
+- **群聊硬抑制再校验**：群聊只允许 `放松/活泼/温暖` 且 `warmth ≤ 0.55`，不注入私聊情绪/关系。
+- **能力协商与降级**：调用 `record_emotion_event` 前先探测 `capabilities`（dict，读 `emotion`/`expression`）与 `api_version`；缺失/版本不符/超时/异常一律静默降级，**未安装 companion-core 时行为等同 v2.4.0**。
 
 ### v2.5.0 新增能力
 
@@ -61,7 +68,7 @@
 
 ## WebUI 核心配置
 
-配置按 11 个分组折叠展示（基础/触发/时间/配额/生成/情绪/记忆/陪伴/节假日/安全/调试），以下为常用项：
+配置按 12 个分组折叠展示（基础/触发/时间/配额/生成/情绪/记忆/陪伴/情绪事件/节假日/安全/调试），以下为常用项：
 
 - `enabled`：插件总开关
 - `advanced_enabled`：高级配置开关

@@ -618,6 +618,174 @@
       }
     }
   },
+  "emotion_event": {
+    "type": "object",
+    "description": "情绪事件与表达",
+    "hint": "Phase 2-A 零 LLM 事件探测 + Phase 2-C expression 消费；未安装 companion-core 时行为等同 v2.4.0。",
+    "items": {
+      "emotion_event_enabled": {
+        "type": "bool",
+        "description": "是否启用情绪事件探测/消费",
+        "hint": "仅在 companion_enabled 且 companion-core 暴露 emotion/expression capability 时生效。",
+        "default": true
+      },
+      "emotion_reply_window_sec": {
+        "type": "int",
+        "description": "主动消息回复窗口（秒）",
+        "hint": "窗口内收到该用户消息记 valued_reply；默认 21600s（6h），clamp 3600~86400。",
+        "default": 21600
+      },
+      "emotion_ignore_window_sec": {
+        "type": "int",
+        "description": "主动消息无回复判定窗口（秒）",
+        "hint": "超过该时长仍无回复记 ignored_proactive；默认 21600s（6h），clamp 3600~172800。",
+        "default": 21600
+      },
+      "emotion_cold_shoulder_streak": {
+        "type": "int",
+        "description": "敷衍冷淡连续计数阈值",
+        "hint": "连续 N 条极短敷衍（长度≤2）且此前有正向互动时记 cold_shoulder；默认 3，clamp 2~10。",
+        "default": 3
+      },
+      "emotion_llm_judge_enabled": {
+        "type": "bool",
+        "description": "保留开关：短 LLM 情绪判定",
+        "hint": "v1.1.0 不纳入实现，保持 false；预留后续版本。",
+        "default": false
+      },
+      "emotion_keywords": {
+        "type": "object",
+        "description": "零 LLM 关键词表覆盖",
+        "hint": "可覆盖 gratitude/misunderstood/sudden_warmth/cold_shoulder 词表；留空使用内置默认。",
+        "items": {
+          "gratitude": {
+            "type": "list",
+            "description": "感谢类关键词",
+            "hint": "命中记 gratitude（+0.02）。",
+            "default": [
+              "谢谢",
+              "感谢",
+              "多谢",
+              "谢了",
+              "辛苦你",
+              "辛苦啦",
+              "有你真好",
+              "爱你",
+              "thanks",
+              "thank you",
+              "thx",
+              "3q"
+            ]
+          },
+          "misunderstood": {
+            "type": "list",
+            "description": "误解/不满类关键词",
+            "hint": "命中记 misunderstood（-0.03），优先级最高。",
+            "default": [
+              "你误会",
+              "误会了",
+              "不是这个意思",
+              "你怎么这样",
+              "别烦我",
+              "生气",
+              "失望",
+              "讨厌",
+              "不许",
+              "别说了",
+              "烦死"
+            ]
+          },
+          "sudden_warmth": {
+            "type": "list",
+            "description": "突然温柔/关心类关键词",
+            "hint": "命中记 sudden_warmth（+0.02）。",
+            "default": [
+              "注意身体",
+              "注意休息",
+              "早点休息",
+              "早点睡",
+              "想你了",
+              "抱抱",
+              "在吗",
+              "还好吗",
+              "担心你",
+              "多穿点"
+            ]
+          },
+          "cold_shoulder": {
+            "type": "list",
+            "description": "敷衍冷淡短应答词",
+            "hint": "长度≤2 且命中时计入连续敷衍计数。",
+            "default": [
+              "嗯",
+              "哦",
+              "噢",
+              "好",
+              "呗",
+              "额",
+              "呃",
+              "呵",
+              "?",
+              "？"
+            ]
+          }
+        },
+        "default": {
+          "gratitude": [
+            "谢谢",
+            "感谢",
+            "多谢",
+            "谢了",
+            "辛苦你",
+            "辛苦啦",
+            "有你真好",
+            "爱你",
+            "thanks",
+            "thank you",
+            "thx",
+            "3q"
+          ],
+          "misunderstood": [
+            "你误会",
+            "误会了",
+            "不是这个意思",
+            "你怎么这样",
+            "别烦我",
+            "生气",
+            "失望",
+            "讨厌",
+            "不许",
+            "别说了",
+            "烦死"
+          ],
+          "sudden_warmth": [
+            "注意身体",
+            "注意休息",
+            "早点休息",
+            "早点睡",
+            "想你了",
+            "抱抱",
+            "在吗",
+            "还好吗",
+            "担心你",
+            "多穿点"
+          ],
+          "cold_shoulder": [
+            "嗯",
+            "哦",
+            "噢",
+            "好",
+            "呗",
+            "额",
+            "呃",
+            "呵",
+            "?",
+            "？"
+          ]
+        }
+      }
+    }
+  },
   "holiday": {
     "type": "object",
     "description": "节假日",

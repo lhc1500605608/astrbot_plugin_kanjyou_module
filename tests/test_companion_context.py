@@ -35,7 +35,6 @@ FULL_CONTEXT = {
     },
     "relationship": {"stage": "熟悉", "affinity": 0.42, "bond": False, "mode": "放松"},
     "motivation": {"reason": "她刚看到你提过的乐队出新歌", "score": 0.71},
-    "open_threads": ["你答应周末推荐的电影还没给"],
     "quota": {"hourly_remaining": 1, "daily_remaining": 2, "allow": True},
     "unanswered_streak": 0,
 }
@@ -159,7 +158,7 @@ def test_sanitize_clamps_and_drops_unknown_fields():
     assert ctx["relationship"]["affinity"] == 0.0
     assert ctx["relationship"]["bond"] is True
     assert ctx["motivation"]["score"] == 1.0
-    assert ctx["open_threads"] == ["电影"]
+    assert "open_threads" not in ctx
     assert ctx["quota"] == {"hourly_remaining": 0, "allow": False}
     assert ctx["unanswered_streak"] == 3
     assert "future_key" not in ctx

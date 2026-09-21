@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.1] - 2026-09-21
+
+### Fixed
+- 修复主动消息可能重复提到对方之前提过的事：即使处于冷却时间或已提过多次，提醒内容
+  仍可能被带上。现在冷却中、已达提醒次数上限、未到沉淀时间或功能关闭时都不会再提及，
+  通过闸门时也只会提一件事。
+- 兜底：动机字段（`motivation.reason`）若携带任何未完话题短标签则整条丢弃，确保该标签
+  只能经闸门后的续接块进入 prompt（配合 companion-core v1.2.0 的泛化 reason）。
+
 ## [2.8.0] - 2026-09-21
 
 ### Added

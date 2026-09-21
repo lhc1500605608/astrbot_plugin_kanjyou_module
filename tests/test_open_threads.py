@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import datetime as _dt
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -569,3 +570,147 @@ def test_generation_group_never_injects_open_thread(plugin):
         plugin._generate_proactive_text("aiocqhttp:group:g1", "group:g1", 3600, _session())
     )
     assert "【未完话题】" not in captured["prompt"]
+
+
+# --------------------------------------------------------------------------- #
+# motivation field must not bypass the follow-up gate (TMEAAA-503)
+# --------------------------------------------------------------------------- #
+
+LEGACY_LABEL = "给你带的那本书"
+LEGACY_CTX = {"open_threads": [LEGACY_LABEL, "另一件没做完的事"]}
+
+
+def _ctx_with_legacy_labels(**overrides):
+    ctx = _ctx(**overrides)
+    ctx.update(LEGACY_CTX)
+    return ctx
+
+
+def test_motivation_text_drops_open_thread_labels(plugin):
+    text = plugin._companion_motivation_text(
+        {"motivation": {"reason": "想起你提过的事"}, **LEGACY_CTX}
+    )
+    assert "想起你提过的事" in text
+    assert LEGACY_LABEL not in text
+    assert "未完成话题" not in text
+
+
+def test_generation_cooldown_keeps_label_out_of_prompt(plugin):
+    _enable(plugin)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_legacy_labels())
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session(companion_open_thread_cooldown={"thread:a": time.time()})
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    assert "【未完话题】" not in captured["prompt"]
+    assert LEGACY_LABEL not in captured["prompt"]
+    assert "companion_open_thread_followup" not in session
+
+
+def test_generation_followup_cap_keeps_label_out_of_prompt(plugin):
+    _enable(plugin)
+    ctx = _ctx_with_legacy_labels(
+        open_thread_details=[_detail(followup_count=OPEN_THREAD_FOLLOWUP_MAX)]
+    )
+    plugin._companion_adapter_override = _FetchAdapter(ctx)
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session()
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    assert "【未完话题】" not in captured["prompt"]
+    assert LEGACY_LABEL not in captured["prompt"]
+
+
+def test_generation_toggle_off_keeps_label_out_of_prompt(plugin):
+    _enable(plugin, open_thread_followup_enabled=False)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_legacy_labels())
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session()
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    assert "【未完话题】" not in captured["prompt"]
+    assert LEGACY_LABEL not in captured["prompt"]
+
+
+def test_generation_single_injection_path_when_gate_passes(plugin):
+    _enable(plugin)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_legacy_labels())
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session()
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    prompt = captured["prompt"]
+    assert prompt.count("把方案发你") == 1
+    assert LEGACY_LABEL not in prompt
+
+
+# --------------------------------------------------------------------------- #
+# core motivation.reason must not carry the label either (TMEAAA-504)
+# --------------------------------------------------------------------------- #
+
+MOTIVATION_LABEL = "把方案发你"
+LEAKY_REASON = f"未完成话题「{MOTIVATION_LABEL}」，想找机会收个尾。"
+GENERIC_REASON = "有件对方提过、还没收尾的事，想找机会提一句。"
+
+
+def _ctx_with_motivation(reason, **overrides):
+    ctx = _ctx(**overrides)
+    ctx["motivation"] = {"reason": reason, "score": 0.85}
+    return ctx
+
+
+def test_motivation_text_drops_core_leaked_label(plugin):
+    text = plugin._companion_motivation_text(_ctx_with_motivation(LEAKY_REASON))
+    assert text == ""
+
+
+def test_motivation_text_keeps_generic_reason(plugin):
+    text = plugin._companion_motivation_text(_ctx_with_motivation(GENERIC_REASON))
+    assert GENERIC_REASON in text
+    assert MOTIVATION_LABEL not in text
+
+
+def test_generation_cooldown_hides_motivation_label(plugin):
+    _enable(plugin)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_motivation(LEAKY_REASON))
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session(companion_open_thread_cooldown={"thread:a": time.time()})
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    assert MOTIVATION_LABEL not in captured["prompt"]
+    assert "companion_open_thread_followup" not in session
+
+
+def test_generation_followup_cap_hides_motivation_label(plugin):
+    _enable(plugin)
+    ctx = _ctx_with_motivation(
+        LEAKY_REASON, open_thread_details=[_detail(followup_count=OPEN_THREAD_FOLLOWUP_MAX)]
+    )
+    plugin._companion_adapter_override = _FetchAdapter(ctx)
+    captured = {}
+    _mock_llm(plugin, captured)
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, _session()))
+    assert MOTIVATION_LABEL not in captured["prompt"]
+
+
+def test_generation_toggle_off_hides_motivation_label(plugin):
+    _enable(plugin, open_thread_followup_enabled=False)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_motivation(LEAKY_REASON))
+    captured = {}
+    _mock_llm(plugin, captured)
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, _session()))
+    assert MOTIVATION_LABEL not in captured["prompt"]
+
+
+def test_generation_gate_pass_keeps_label_only_in_followup_block(plugin):
+    _enable(plugin)
+    plugin._companion_adapter_override = _FetchAdapter(_ctx_with_motivation(GENERIC_REASON))
+    captured = {}
+    _mock_llm(plugin, captured)
+    session = _session()
+    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    prompt = captured["prompt"]
+    assert GENERIC_REASON in prompt
+    assert prompt.count(MOTIVATION_LABEL) == 1
+    assert "【未完话题】" in prompt
+

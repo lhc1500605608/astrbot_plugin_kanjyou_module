@@ -38,6 +38,32 @@ def _clean_text(value) -> str:
         return ""
 
 
+def _open_thread_labels(ctx) -> list:
+    """Non-empty short labels carried by ``ctx['open_thread_details']``."""
+    if not isinstance(ctx, dict):
+        return []
+    labels = []
+    details = ctx.get("open_thread_details")
+    if isinstance(details, (list, tuple)):
+        for item in details:
+            if not isinstance(item, dict):
+                continue
+            label = _clean_text(item.get("label"))
+            if label:
+                labels.append(label)
+    return labels
+
+
+def _mentions_open_thread_label(ctx, text: str) -> bool:
+    """True when ``text`` embeds a short label from the follow-up candidates.
+
+    Used to keep the motivation field label-free: an open-thread label rides the
+    prompt only through the gated follow-up block, never the motivation reason
+    (TMEAAA-504).
+    """
+    return any(label in text for label in _open_thread_labels(ctx))
+
+
 def _clamp01(value) -> Optional[float]:
     if isinstance(value, bool):
         return None
@@ -120,12 +146,6 @@ def sanitize_companion_context(raw) -> Dict:
             clean_mot["score"] = score
         if clean_mot:
             ctx["motivation"] = clean_mot
-
-    threads = raw.get("open_threads")
-    if isinstance(threads, (list, tuple)):
-        clean_threads = [text for text in (_clean_text(t) for t in threads) if text]
-        if clean_threads:
-            ctx["open_threads"] = clean_threads[:5]
 
     details = raw.get("open_thread_details")
     if isinstance(details, (list, tuple)):
@@ -588,18 +608,13 @@ class CompanionContextUnitsMixin:
         reason = ""
         if isinstance(motivation, dict):
             reason = _clean_text(motivation.get("reason"))
-        threads = ctx.get("open_threads")
-        thread_text = ""
-        if isinstance(threads, (list, tuple)):
-            items = [text for text in (_clean_text(t) for t in threads) if text]
-            if items:
-                thread_text = "未完成话题：" + "；".join(items[:3])
-        parts = []
-        if reason:
-            parts.append(f"此刻想主动联系的理由：{reason}")
-        if thread_text:
-            parts.append(thread_text)
-        return "；".join(parts)
+        if not reason:
+            return ""
+        # Defense-in-depth: an open-thread label may only reach the prompt via
+        # the gated follow-up block. Drop a reason that embeds one (TMEAAA-504).
+        if _mentions_open_thread_label(ctx, reason):
+            return ""
+        return f"此刻想主动联系的理由：{reason}"
 
     def _companion_prompt_fields(self, ctx) -> Dict[str, str]:
         """返回注入用的三个字段文本；关闭注入 / 缺失字段为空串。"""

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2] - 2026-09-21
+
+### Changed
+- Config/UI copy cleanup (TMEAAA-488): removed internal implementation terms and
+  version-history wording from `_conf_schema.json` and `README.md` (Phase labels,
+  "behavior unchanged from vX.Y.Z", internal event/capability names, `clamp`
+  ranges), trimmed over-long `hint`s into user-friendly one-liners.
+- README: replaced the version-by-version "新增能力" history with a single
+  non-versioned 进阶能力 overview.
+- No key names, defaults, or runtime behavior changed.
+
 ## [2.6.0] - 2026-09-21
 
 ### Added

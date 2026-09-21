@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="情绪价值提供者" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.7.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.7.2-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -22,42 +22,15 @@
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
 
-### v2.7.0 新增能力
+### 进阶能力
 
-- **被动回复语义分段（方案 B）**：普通被动回复按语义边界拆分为 1-3 条独立消息（同一轮内多条 `plain`）发送，分片间插入随机打字延迟（默认 300-900ms）、末片不延迟；通过 `on_decorating_result` 钩子清空原始聚合结果后逐条发送，避免重复。
-- **安全放行**：仅在 LLM 结果上分段，命令、流式结束（`STREAMING_FINISH`）等非 LLM 结果一律原样放行，避免丢消息。
-- **配置项**：`output_segment_enabled` / `output_segment_mode` / `output_segment_max_parts` / `output_segment_max_chars` / 延迟区间 / `output_segment_private_only`；与主动消息的 `proactive_segment_*` 完全解耦，两套开关互不影响。
-
-### v2.6.0 新增能力
-
-- **Phase 2-A 情绪事件探测（零 LLM）**：在入站消息/主动回执链路上判定 `gratitude` / `misunderstood` / `sudden_warmth` / `cold_shoulder` 四类关键词事件，以及 `valued_reply` / `ignored_proactive` 两类主动回执（状态机结算）。单条入站消息**只结算一次**：落在主动回复窗口内只记 `valued_reply`，否则按 `misunderstood > gratitude > sudden_warmth > cold_shoulder` 取一；两类回执**共用** `dedupe_key=f"proactive:{send_ts}"`，由 companion-core 主键真互斥（后到者 `duplicate`，不改账）。事件只存类型/时间/去重键，**不存消息原文**。
-- **Phase 2-C expression 消费**：消费 `get_proactive_context` 的可选 `emotion_state` / `expression`，注入占位符 `{emotion_state}` / `{expression_mode}`（模板缺则安全追加）；`expression.mode + style_hints` 为档位权威约束，kanjyou 的 `persona_state` 降为风格细节，按 plan §4.1 映射（`length_range`→`length_bias`、session `mood`→`warmth`、`suppress_proactive` 只降不升），数值调整总量 ≤ ±0.10 且**不覆盖 mode**。
-- **群聊硬抑制再校验**：群聊只允许 `放松/活泼/温暖` 且 `warmth ≤ 0.55`，不注入私聊情绪/关系。
-- **能力协商与降级**：调用 `record_emotion_event` 前先探测 `capabilities`（dict，读 `emotion`/`expression`）与 `api_version`；缺失/版本不符/超时/异常一律静默降级，**未安装 companion-core 时行为等同 v2.4.0**。
-
-### v2.5.0 新增能力
-
-- **陪伴上下文消费（companion-core）**：可选对接 `astrbot_plugin_tcompanion_core`，主动消息生成前只读拉取生活/关系/动机上下文并注入 `{life_state}`/`{relationship}`/`{motivation}`（模板缺占位符时安全追加独立块）；发送后回传 `on_proactive_outcome` 结果。契约主版本不符 / 插件缺失 / 超时 / 异常一律降级，**未安装时行为等同 v2.4.0**。
-- **零回归**：`companion_enabled` 默认关闭，新增降级/注入测试守护 v2.4.0 行为。
-
-### v2.4.0 新增能力
-
-- **情绪状态表单化编辑**：`persona_state_custom` / `persona_state_overrides` 改为结构化子 schema（`states` 为可增删的 `template_list`），WebUI 表单逐字段填写状态名/优先级/触发条件/语气/长度，无需手写 JSON。
-- **旧手写 JSON 兼容**：兼容老版 `{"default":..., "states":{...}}` 字典写法，运行期形态与决策流水线零改动。
-- **空值不覆盖预设**：schema 注入的 `{default:"",states:[]}` 空形态不再误覆盖所选预设（修复回归）。
-
-### v2.3.0 新增能力
-
-- **配置分组重构**：91 个扁平配置项收敛为 9 个可折叠 object 组（基础/触发/时间/配额/生成/情绪/记忆/节假日/安全/调试），WebUI 按组折叠展示，体验更清晰。
-- **AstrBot Pages 自定义页面**：新增 `pages/` 目录，提供 Control（快捷开关）、Status（会话状态看板）、Logs（决策轨迹日志）三个自定义页面，可在 AstrBot WebUI 直接访问。
-- **配置平滑迁移**：旧扁平配置自动幂等迁移到新嵌套结构，升级无需手动调整。
-
-### v2.2.0 新增能力
-
-- **主动消息真人化分段**：主动问候按语义边界拆分为 1-3 条发送，分片间插入随机打字延迟，末片不延迟。
-- **情绪状态调制（可配置预设）**：情绪映射为语义状态，影响语气、目标字数与主动程度；状态集、风格提示、字数区间与映射规则全部走配置（内置 `chika` 默认预设与 `generic` 中性预设），换人格无需改源码；带 `suppress_proactive` 的状态持续时不主动。
-- **tmemory 长期记忆召回**：生成主动消息前从 `astrbot_plugin_tmemory` 只读召回相关记忆并注入 prompt；插件缺失/超时/异常时自动降级为无记忆，不阻塞发送。
-- **AstrBot 4.23.2 兼容**：图片回复按 URL/本地路径分流 `url_image`/`file_image`；`metadata.yaml` 声明 `astrbot_version: ">=4.23,<5"`。
+- **被动回复分段**：普通回复可自动拆成多条、按打字节奏逐条发送，更像真人聊天。
+- **主动消息分段**：主动问候按语义拆成 1-3 条发送，分片间插入随机打字延迟。
+- **情绪状态调制**：根据会话情绪切换语气、目标字数与主动程度，状态内容可在 WebUI 配置，换人格无需改源码。
+- **长期记忆**：生成主动消息前从 tmemory 召回相关记忆并自然融入。
+- **陪伴上下文**：可选对接 companion-core，使用其生活/关系/动机上下文。
+- **情绪事件**：识别感谢、误解、突然亲近等互动，动态调整表达方式。
+- **兼容性**：图片回复按 URL/本地路径分流；支持 AstrBot 4.23 及以上版本。
 
 ## 安装方式
 
@@ -135,7 +108,7 @@
 
 > `states` 列表留空时视为「未提供」，回退到上方 `persona_state_preset` 所选预设；不会用空值覆盖预设。旧的整段手写 JSON（`states` 为字典）仍然兼容。
 
-#### 预设结构 schema
+#### 预设结构示例
 
 ```jsonc
 {
@@ -216,11 +189,11 @@
 
 ### 陪伴上下文（高级配置）
 
-- `companion_enabled`：是否启用 companion-core 上下文消费（默认关闭，确保零回归）
+- `companion_enabled`：是否启用 companion-core 上下文消费（默认关闭）
 - `companion_plugin_name`：companion-core 插件注册名（默认 `astrbot_plugin_tcompanion_core`）
 - `companion_timeout_sec`：拉取/回执超时秒数（默认 1.5，超时按不注入继续发送）
 - `companion_inject_life_state` / `companion_inject_relationship` / `companion_inject_motivation`：分域注入开关（默认开启）
-- 实现契约 v1：`get_contract_info` 主版本不符即视为不可用；`get_proactive_context` 返回字段全部可缺省，逐字段兜底；`quota.allow` 仅作软闸（现有安全闸仍权威）。
+- 上游插件缺失、超时或返回异常时自动降级，不影响正常发送。
 
 ## 打包规范
 

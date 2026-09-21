@@ -245,7 +245,7 @@
       "proactive_prompt_template": {
         "type": "string",
         "description": "主动问候 Prompt 模板",
-        "hint": "可用变量：{persona} {persona_state_block} {length_range} {session_type} {env_perception} {idle_minutes} {idle_seconds} {style_hint} {recalled_memory} {recent_history}",
+        "hint": "可用变量：{persona}、{idle_minutes}、{style_hint}、{recalled_memory}等。",
         "editor_mode": true,
         "default": "你是一个在聊天中主动关怀用户的助手。重要：本次问候是因为对话空闲时间达到阈值而自动触发的，用户并没有主动发送消息。请以开启新话题、自然寒暄的方式表达，不要表现出“回复用户上一条消息”的意图。请严格基于下方人格设定进行表达，不要脱离人格。\n人格设定：\n{persona}\n\n{persona_state_block}当前会话类型：{session_type}\n环境感知信息：{env_perception}\n距离上次互动约 {idle_minutes} 分钟（{idle_seconds} 秒）。\n建议语气：{style_hint}\n相关长期记忆（可能为空，仅在自然相关时引用，严禁生硬复述或暴露隐私）：\n{recalled_memory}\n最近已发过的主动问候（避免重复）：\n{recent_history}\n请输出 1 条中文主动问候（只输出消息正文，不加引号），要求：\n1) 语气自然、有温度，不要机械。\n2) 结尾带一个轻量开放问题，促进继续对话。\n3) 避免重复“在吗/你好”。\n4) 长度 {length_range} 字。\n5) 和最近问候不重复。\n6) 记忆只在相关时自然带一句，不要罗列、不要生硬复述；避开记忆中主人明确不喜欢的话题。"
       },
@@ -625,12 +625,12 @@
   "companion": {
     "type": "object",
     "description": "陪伴",
-    "hint": "从 tcompanion-core 拉取生活/关系/动机上下文并注入 prompt；未安装时行为等同 v2.4.0。",
+    "hint": "从 companion-core 拉取生活、关系与动机上下文，用于生成主动问候。",
     "items": {
       "companion_enabled": {
         "type": "bool",
         "description": "是否启用 companion-core 上下文消费",
-        "hint": "默认关闭以确保零回归；关闭或插件缺失时不注入、不阻塞发送。",
+        "hint": "默认关闭；关闭或未安装时不注入，也不影响正常发送。",
         "default": false
       },
       "companion_plugin_name": {
@@ -642,7 +642,7 @@
       "companion_timeout_sec": {
         "type": "float",
         "description": "上下文拉取/回执超时秒数",
-        "hint": "默认 1.5s，超时按不注入继续发送（clamp 0.2~5.0）。",
+        "hint": "默认 1.5 秒，超时按无上下文继续发送，范围 0.2-5.0。",
         "default": 1.5
       },
       "companion_inject_life_state": {
@@ -668,47 +668,47 @@
   "emotion_event": {
     "type": "object",
     "description": "情绪事件与表达",
-    "hint": "Phase 2-A 零 LLM 事件探测 + Phase 2-C expression 消费；未安装 companion-core 时行为等同 v2.4.0。",
+    "hint": "识别感谢、误解、突然亲近等情绪事件，并据此调整表达方式。",
     "items": {
       "emotion_event_enabled": {
         "type": "bool",
         "description": "是否启用情绪事件探测/消费",
-        "hint": "仅在 companion_enabled 且 companion-core 暴露 emotion/expression capability 时生效。",
+        "hint": "需同时启用「陪伴」且 companion-core 提供情绪能力。",
         "default": true
       },
       "emotion_reply_window_sec": {
         "type": "int",
         "description": "主动消息回复窗口（秒）",
-        "hint": "窗口内收到该用户消息记 valued_reply；默认 21600s（6h），clamp 3600~86400。",
+        "hint": "此时间内回复算作已回应；默认 21600 秒（6 小时），范围 3600-86400。",
         "default": 21600
       },
       "emotion_ignore_window_sec": {
         "type": "int",
         "description": "主动消息无回复判定窗口（秒）",
-        "hint": "超过该时长仍无回复记 ignored_proactive；默认 21600s（6h），clamp 3600~172800。",
+        "hint": "超过此时间无回复视为被忽略；默认 21600 秒（6 小时），范围 3600-172800。",
         "default": 21600
       },
       "emotion_cold_shoulder_streak": {
         "type": "int",
         "description": "敷衍冷淡连续计数阈值",
-        "hint": "连续 N 条极短敷衍（长度≤2）且此前有正向互动时记 cold_shoulder；默认 3，clamp 2~10。",
+        "hint": "连续多条极短回复（≤2 字）且此前有正向互动时判定为冷淡；默认 3，范围 2-10。",
         "default": 3
       },
       "emotion_llm_judge_enabled": {
         "type": "bool",
-        "description": "保留开关：短 LLM 情绪判定",
-        "hint": "v1.1.0 不纳入实现，保持 false；预留后续版本。",
+        "description": "短 LLM 情绪判定（预留）",
+        "hint": "暂未实现，保持关闭即可。",
         "default": false
       },
       "emotion_keywords": {
         "type": "object",
-        "description": "零 LLM 关键词表覆盖",
-        "hint": "可覆盖 gratitude/misunderstood/sudden_warmth/cold_shoulder 词表；留空使用内置默认。",
+        "description": "关键词表覆盖",
+        "hint": "可自定义各类情绪事件的关键词；留空使用内置默认词表。",
         "items": {
           "gratitude": {
             "type": "list",
             "description": "感谢类关键词",
-            "hint": "命中记 gratitude（+0.02）。",
+            "hint": "命中后判定为感谢情绪。",
             "default": [
               "谢谢",
               "感谢",
@@ -727,7 +727,7 @@
           "misunderstood": {
             "type": "list",
             "description": "误解/不满类关键词",
-            "hint": "命中记 misunderstood（-0.03），优先级最高。",
+            "hint": "命中后判定为误解或不快。",
             "default": [
               "你误会",
               "误会了",
@@ -745,7 +745,7 @@
           "sudden_warmth": {
             "type": "list",
             "description": "突然温柔/关心类关键词",
-            "hint": "命中记 sudden_warmth（+0.02）。",
+            "hint": "命中后判定为突然亲近。",
             "default": [
               "注意身体",
               "注意休息",
@@ -762,7 +762,7 @@
           "cold_shoulder": {
             "type": "list",
             "description": "敷衍冷淡短应答词",
-            "hint": "长度≤2 且命中时计入连续敷衍计数。",
+            "hint": "极短回复命中时计入冷淡次数。",
             "default": [
               "嗯",
               "哦",
@@ -879,8 +879,8 @@
       },
       "holiday_qa_main_llm_enabled": {
         "type": "bool",
-        "description": "节假日问答是否交给主 LLM 润色（兼容保留）",
-        "hint": "旧字段，保留兼容；当前由轻量 LLM 开关统一控制。",
+        "description": "节假日问答是否交给主 LLM 润色",
+        "hint": "由轻量 LLM 开关统一控制。",
         "default": true
       }
     }
@@ -969,7 +969,7 @@
       "lifecycle_log": {
         "type": "bool",
         "description": "是否输出插件生命周期日志",
-        "hint": "输出 initialized/terminated 生命周期日志。",
+        "hint": "输出插件启动与停止的日志。",
         "default": true
       },
       "decision_trace_enabled": {

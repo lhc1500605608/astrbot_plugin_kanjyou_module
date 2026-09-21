@@ -169,10 +169,21 @@ class SegmentationUnitsMixin:
             return None
         return out
 
+    def _has_explicit_separators(self, text: str) -> bool:
+        raw = text or ""
+        if "||" in raw:
+            return True
+        return len([line for line in raw.splitlines() if line.strip()]) >= 2
+
     def _apply_sentence_budget(self, parts: List[str], text: str) -> List[str]:
+        max_parts = self._output_segment_max_parts()
+        if self._has_explicit_separators(text):
+            # The model already split the reply on purpose: the complexity
+            # budget may only cap the part count, never merge it down to one.
+            return self._trim_reply_segments(parts, max_parts)
         level = self._complexity_level(text)
         budget = 1 if level == "simple" else (2 if level == "complex" else 3)
-        cap = max(1, min(self._output_segment_max_parts(), budget))
+        cap = max(1, min(max_parts, budget))
         if len(parts) <= cap:
             return parts
         return parts[: cap - 1] + ["".join(parts[cap - 1 :])]
@@ -198,7 +209,9 @@ class SegmentationUnitsMixin:
         if len(restored) < 2:
             return [raw]
         joined = "".join(restored)
-        if re.sub(r"\s+", "", joined) != re.sub(r"\s+", "", raw):
+        # `||` is an explicit delimiter consumed by the split, not content.
+        expected = raw.replace("||", "")
+        if re.sub(r"\s+", "", joined) != re.sub(r"\s+", "", expected):
             return [raw]
         return restored
 

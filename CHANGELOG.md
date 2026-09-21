@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.3] - 2026-09-21
+
+### Fixed
+- Passive segmentation no longer merges the model's own explicit line breaks
+  back into a single message: when the reply already contains `||` or two or
+  more non-empty lines, the complexity budget acts only as an upper bound
+  (`max_parts`) and never collapses the parts to one.
+- `||` is now treated as an explicit delimiter during the lossless check, so
+  pipe-separated replies are actually split instead of falling back to one
+  message.
+
 ## [2.7.2] - 2026-09-21
 
 ### Changed

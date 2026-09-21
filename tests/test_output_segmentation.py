@@ -71,6 +71,36 @@ def test_build_segments_short_reply_stays_single(plugin):
     assert plugin._build_output_segments("好的，没问题。") == ["好的，没问题。"]
 
 
+def test_explicit_newlines_never_merged_by_budget(plugin):
+    text = "哦，逗我玩\n\n那我白担心了\n\n好耶"
+    parts = plugin._build_output_segments(text)
+    assert parts == ["哦，逗我玩", "那我白担心了", "好耶"]
+    assert "".join(parts) == text.replace("\n", "")
+
+
+def test_explicit_pipe_separator_is_respected(plugin):
+    parts = plugin._build_output_segments("哦，逗我玩||那我白担心了")
+    assert parts == ["哦，逗我玩", "那我白担心了"]
+
+
+def test_explicit_newlines_capped_at_max_parts(plugin):
+    plugin.config["output_segment_max_parts"] = 2
+    text = "A\n\nB\n\nC\n\nD"
+    parts = plugin._build_output_segments(text)
+    assert len(parts) == 2
+    assert "".join(parts) == "ABCD"
+
+
+def test_hook_sends_explicit_multiline_segments(plugin, plugin_module):
+    plugin.config["output_segment_delay_min_ms"] = 0
+    plugin.config["output_segment_delay_max_ms"] = 0
+    text = "哦，逗我玩\n\n那我白担心了\n\n好耶"
+    event = _llm_event(plugin_module, text)
+    _run(plugin, plugin._evt_on_decorating_result(event))
+    assert [c.chain[0].text for c in event.sent] == ["哦，逗我玩", "那我白担心了", "好耶"]
+    assert event.get_result() is None
+
+
 def test_code_block_is_not_split(plugin):
     text = "看这段代码：\n```python\nprint(1)\n```\n这样就完成了实现。后续可以继续优化方案。"
     parts = plugin._build_output_segments(text)

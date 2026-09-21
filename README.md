@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="情绪价值提供者" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.6.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.7.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -21,6 +21,12 @@
 - 情绪值系统（按会话消耗与恢复）
 - 管理员指令控制（自动继承 AstrBot 管理员权限）
 - 低打扰 Debug 日志（默认不刷屏）
+
+### v2.7.0 新增能力
+
+- **被动回复语义分段（方案 B）**：普通被动回复按语义边界拆分为 1-3 条独立消息（同一轮内多条 `plain`）发送，分片间插入随机打字延迟（默认 300-900ms）、末片不延迟；通过 `on_decorating_result` 钩子清空原始聚合结果后逐条发送，避免重复。
+- **安全放行**：仅在 LLM 结果上分段，命令、流式结束（`STREAMING_FINISH`）等非 LLM 结果一律原样放行，避免丢消息。
+- **配置项**：`output_segment_enabled` / `output_segment_mode` / `output_segment_max_parts` / `output_segment_max_chars` / 延迟区间 / `output_segment_private_only`；与主动消息的 `proactive_segment_*` 完全解耦，两套开关互不影响。
 
 ### v2.6.0 新增能力
 

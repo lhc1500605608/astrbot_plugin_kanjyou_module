@@ -53,6 +53,28 @@ class _StubMessageChain:
         return self
 
 
+class _StubResult:
+    """Minimal MessageEventResult stub: chain + content type + is_llm_result()."""
+
+    def __init__(self, chain=None, content_type: str = "general"):
+        self.chain = list(chain or [])
+        self.result_content_type = content_type
+
+    def message(self, text: str):
+        self.chain.append(_StubPlain(text))
+        return self
+
+    def is_llm_result(self) -> bool:
+        return self.result_content_type == "llm"
+
+    def is_model_result(self) -> bool:
+        return self.result_content_type in ("llm", "agent_error")
+
+    def stop_event(self):
+        self.result_content_type = "stop"
+        return self
+
+
 class _StubAstrMessageEvent:
     def __init__(self, message_str: str = "", message_obj=None, umo: str = ""):
         self.message_str = message_str
@@ -60,16 +82,37 @@ class _StubAstrMessageEvent:
         self.unified_msg_origin = umo
         self.call_llm = False
         self._stopped = False
+        self._result = None
+        self._extra: dict = {}
+        self.sent: list = []
 
     def get_sender_id(self) -> str:
         sender = getattr(self.message_obj, "sender", None)
         return str(getattr(sender, "user_id", "") or "")
 
     def plain_result(self, text: str):
-        return _StubPlain(text)
+        return _StubResult([_StubPlain(text)])
 
     async def send(self, chain):
+        self.sent.append(chain)
         return None
+
+    def get_result(self):
+        return self._result
+
+    def set_result(self, result):
+        self._result = result
+
+    def clear_result(self):
+        self._result = None
+
+    def set_extra(self, key, value):
+        self._extra[key] = value
+
+    def get_extra(self, key=None, default=None):
+        if key is None:
+            return self._extra
+        return self._extra.get(key, default)
 
     def stop_event(self):
         self._stopped = True
@@ -98,6 +141,7 @@ class _StubFilter:
 
     event_message_type = _decorator_factory
     after_message_sent = _decorator_factory
+    on_decorating_result = _decorator_factory
     command = _decorator_factory
     permission_type = _decorator_factory
     regex = _decorator_factory

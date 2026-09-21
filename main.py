@@ -60,6 +60,7 @@ try:
     from .units.unit_generation import PolicyGenerationUnitsMixin
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
+    from .units.unit_segmentation import SegmentationUnitsMixin
     from .units.unit_session import SessionConfigUnitsMixin
     from .units.unit_webui import WebUIUnitsMixin
 except ImportError:
@@ -82,6 +83,7 @@ except ImportError:
     from units.unit_generation import PolicyGenerationUnitsMixin
     from units.unit_memory_recall import MemoryRecallUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
+    from units.unit_segmentation import SegmentationUnitsMixin
     from units.unit_session import SessionConfigUnitsMixin
     from units.unit_webui import WebUIUnitsMixin
 
@@ -92,6 +94,7 @@ class KanjyouIdleProactivePlugin(
     SessionConfigUnitsMixin,
     AdvancedPolicyUnitsMixin,
     PolicyGenerationUnitsMixin,
+    SegmentationUnitsMixin,
     MemoryRecallUnitsMixin,
     CompanionContextUnitsMixin,
     EmotionEventUnitsMixin,
@@ -156,6 +159,14 @@ class KanjyouIdleProactivePlugin(
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_all_message(self, event: AstrMessageEvent):
         await self._evt_on_all_message(event)
+
+    @filter.event_message_type(filter.EventMessageType.ALL)
+    async def segment_prepare(self, event: AstrMessageEvent):
+        await self._evt_segment_prepare(event)
+
+    @filter.on_decorating_result()
+    async def on_decorating_result(self, event: AstrMessageEvent):
+        await self._evt_on_decorating_result(event)
 
     @filter.after_message_sent()
     async def after_message_sent(self, event: AstrMessageEvent):

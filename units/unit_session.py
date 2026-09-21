@@ -772,6 +772,74 @@ class SessionConfigUnitsMixin:
         if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
             self.config["lite_llm_timeout_sec"] = 1
             changed = True
+        if not isinstance(self.config.get("output_segment_enabled"), bool):
+            self.config["output_segment_enabled"] = self._to_bool(
+                self.config.get("output_segment_enabled"),
+                DEFAULT_CONFIG_FLAT["output_segment_enabled"],
+            )
+            changed = True
+        segment_mode = (
+            str(
+                self.config.get(
+                    "output_segment_mode", DEFAULT_CONFIG_FLAT["output_segment_mode"]
+                )
+            )
+            .strip()
+            .lower()
+        )
+        if segment_mode not in {"off", "semantic", "native_compat"}:
+            self.config["output_segment_mode"] = DEFAULT_CONFIG_FLAT[
+                "output_segment_mode"
+            ]
+            changed = True
+        else:
+            self.config["output_segment_mode"] = segment_mode
+        if not isinstance(self.config.get("output_segment_max_parts"), (int, float)):
+            self.config["output_segment_max_parts"] = DEFAULT_CONFIG_FLAT[
+                "output_segment_max_parts"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_max_parts", 0)) < 1:
+            self.config["output_segment_max_parts"] = 1
+            changed = True
+        if not isinstance(self.config.get("output_segment_max_chars"), (int, float)):
+            self.config["output_segment_max_chars"] = DEFAULT_CONFIG_FLAT[
+                "output_segment_max_chars"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_max_chars", 0)) < 10:
+            self.config["output_segment_max_chars"] = 10
+            changed = True
+        if not isinstance(
+            self.config.get("output_segment_delay_min_ms"), (int, float)
+        ):
+            self.config["output_segment_delay_min_ms"] = DEFAULT_CONFIG_FLAT[
+                "output_segment_delay_min_ms"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_delay_min_ms", 0)) < 0:
+            self.config["output_segment_delay_min_ms"] = 0
+            changed = True
+        if not isinstance(
+            self.config.get("output_segment_delay_max_ms"), (int, float)
+        ):
+            self.config["output_segment_delay_max_ms"] = DEFAULT_CONFIG_FLAT[
+                "output_segment_delay_max_ms"
+            ]
+            changed = True
+        if int(self.config.get("output_segment_delay_max_ms", 0)) < int(
+            self.config.get("output_segment_delay_min_ms", 0)
+        ):
+            self.config["output_segment_delay_max_ms"] = int(
+                self.config.get("output_segment_delay_min_ms", 0)
+            )
+            changed = True
+        if not isinstance(self.config.get("output_segment_private_only"), bool):
+            self.config["output_segment_private_only"] = self._to_bool(
+                self.config.get("output_segment_private_only"),
+                DEFAULT_CONFIG_FLAT["output_segment_private_only"],
+            )
+            changed = True
         mode = (
             str(self.config.get("decision_mode", DEFAULT_CONFIG_FLAT["decision_mode"]))
             .strip()

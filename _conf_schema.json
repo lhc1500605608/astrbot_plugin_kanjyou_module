@@ -261,6 +261,53 @@
         "hint": "开启后会额外调用轻量模型，产生延迟与费用。",
         "default": false
       },
+      "output_segment_enabled": {
+        "type": "bool",
+        "description": "被动回复是否按语义分段发送",
+        "hint": "开启后普通回复会按语义拆成多条、带打字延迟逐条发送；关闭则回到单条。",
+        "default": true
+      },
+      "output_segment_mode": {
+        "type": "string",
+        "description": "被动回复分段模式",
+        "hint": "semantic=插件语义分段（推荐）；native_compat=交给 AstrBot 原生分条；off=关闭。",
+        "options": [
+          "semantic",
+          "native_compat",
+          "off"
+        ],
+        "default": "semantic"
+      },
+      "output_segment_max_parts": {
+        "type": "int",
+        "description": "被动回复最大分片数",
+        "hint": "建议 1-6。",
+        "default": 3
+      },
+      "output_segment_max_chars": {
+        "type": "int",
+        "description": "被动回复分片字数预算",
+        "hint": "超长兜底切分与句数预算使用；建议 15-40。",
+        "default": 20
+      },
+      "output_segment_delay_min_ms": {
+        "type": "int",
+        "description": "被动分片间最小延迟（毫秒）",
+        "hint": "分片间随机延迟的下界。",
+        "default": 300
+      },
+      "output_segment_delay_max_ms": {
+        "type": "int",
+        "description": "被动分片间最大延迟（毫秒）",
+        "hint": "分片间随机延迟的上界，需不小于下界。",
+        "default": 900
+      },
+      "output_segment_private_only": {
+        "type": "bool",
+        "description": "仅私聊启用被动分段",
+        "hint": "开启后群聊保持单条回复。",
+        "default": false
+      },
       "proactive_segment_enabled": {
         "type": "bool",
         "description": "主动消息是否按真人节奏分段发送",

@@ -59,6 +59,7 @@ try:
     from .units.unit_events import EventUnitsMixin
     from .units.unit_generation import PolicyGenerationUnitsMixin
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
+    from .units.unit_open_threads import OpenThreadUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
     from .units.unit_segmentation import SegmentationUnitsMixin
     from .units.unit_session import SessionConfigUnitsMixin
@@ -82,6 +83,7 @@ except ImportError:
     from units.unit_events import EventUnitsMixin
     from units.unit_generation import PolicyGenerationUnitsMixin
     from units.unit_memory_recall import MemoryRecallUnitsMixin
+    from units.unit_open_threads import OpenThreadUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
     from units.unit_segmentation import SegmentationUnitsMixin
     from units.unit_session import SessionConfigUnitsMixin
@@ -98,6 +100,7 @@ class KanjyouIdleProactivePlugin(
     MemoryRecallUnitsMixin,
     CompanionContextUnitsMixin,
     EmotionEventUnitsMixin,
+    OpenThreadUnitsMixin,
     RuntimeUnitsMixin,
     WebUIUnitsMixin,
     Star,

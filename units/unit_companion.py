@@ -127,6 +127,35 @@ def sanitize_companion_context(raw) -> Dict:
         if clean_threads:
             ctx["open_threads"] = clean_threads[:5]
 
+    details = raw.get("open_thread_details")
+    if isinstance(details, (list, tuple)):
+        clean_details = []
+        for item in details:
+            if not isinstance(item, dict):
+                continue
+            thread_id = _clean_text(item.get("thread_id"))
+            label = _clean_text(item.get("label"))
+            if not thread_id or not label:
+                continue
+            clean_item: Dict = {
+                "thread_id": thread_id,
+                "label": label,
+                "kind": _clean_text(item.get("kind")) or "topic",
+                "status": _clean_text(item.get("status")) or "open",
+            }
+            last_seen = _clean_text(item.get("last_seen"))
+            if last_seen:
+                clean_item["last_seen"] = last_seen
+            followup_count = _clean_int(item.get("followup_count"))
+            if followup_count is not None and followup_count >= 0:
+                clean_item["followup_count"] = followup_count
+            confidence = _clamp01(item.get("confidence"))
+            if confidence is not None:
+                clean_item["confidence"] = confidence
+            clean_details.append(clean_item)
+        if clean_details:
+            ctx["open_thread_details"] = clean_details[:5]
+
     quota = raw.get("quota")
     if isinstance(quota, dict):
         clean_quota: Dict = {}
@@ -340,7 +369,86 @@ class CompanionContextAdapter:
             ctx.pop("emotion_state", None)
         if not caps.get("expression"):
             ctx.pop("expression", None)
+        if not caps.get("open_threads_followup"):
+            ctx.pop("open_thread_details", None)
         return ctx
+
+    async def record_open_thread(
+        self,
+        umo: str,
+        *,
+        label: str,
+        kind: str,
+        reason: str = "",
+        dedupe_key: Optional[str] = None,
+        confidence: float = 1.0,
+        source: str = "",
+    ) -> Optional[Dict]:
+        """Report one unfinished item; ``None`` when unavailable/degraded.
+
+        Probes ``api_version`` + ``capabilities.open_threads_followup`` before
+        calling, so a legacy companion-core is never called.
+        """
+        fn = self._resolve_method("record_open_thread")
+        if fn is None:
+            return None
+        if not await self.has_capability("open_threads_followup"):
+            return None
+        try:
+            result = await self._call(
+                fn,
+                umo,
+                label=str(label or ""),
+                kind=str(kind or ""),
+                reason=str(reason or ""),
+                dedupe_key=dedupe_key,
+                confidence=float(confidence),
+                source=str(source or ""),
+            )
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
+
+    async def open_threads(self, umo: str, limit: int = 3) -> list:
+        """Return unfinished items (open + stale); ``[]`` when unavailable."""
+        fn = self._resolve_method("get_open_threads")
+        if fn is None:
+            return []
+        if not await self.has_capability("open_threads_followup"):
+            return []
+        try:
+            result = await self._call(fn, umo, limit=int(limit))
+        except Exception:
+            return []
+        return result if isinstance(result, list) else []
+
+    async def close_open_thread(
+        self, umo: str, thread_id: str, reason: str = ""
+    ) -> Optional[Dict]:
+        """Close one unfinished item; ``None`` when unavailable/degraded."""
+        fn = self._resolve_method("close_open_thread")
+        if fn is None:
+            return None
+        if not await self.has_capability("open_threads_followup"):
+            return None
+        try:
+            result = await self._call(fn, umo, thread_id, reason=str(reason or ""))
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
+
+    async def mark_thread_followup(self, umo: str, thread_id: str) -> Optional[Dict]:
+        """Record a follow-up of ``thread_id``; ``None`` when unavailable."""
+        fn = self._resolve_method("mark_thread_followup")
+        if fn is None:
+            return None
+        if not await self.has_capability("open_threads_followup"):
+            return None
+        try:
+            result = await self._call(fn, umo, thread_id)
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
 
     async def report_outcome(
         self,

@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="情绪价值提供者" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.7.3-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.8.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -30,6 +30,7 @@
 - **长期记忆**：生成主动消息前从 tmemory 召回相关记忆并自然融入。
 - **陪伴上下文**：可选对接 companion-core，使用其生活/关系/动机上下文。
 - **情绪事件**：识别感谢、误解、突然亲近等互动，动态调整表达方式。
+- **未完话题**：记住对方提过、还没继续的事，在合适的主动消息里自然提起一次。
 - **兼容性**：图片回复按 URL/本地路径分流；支持 AstrBot 4.23 及以上版本。
 
 ## 安装方式

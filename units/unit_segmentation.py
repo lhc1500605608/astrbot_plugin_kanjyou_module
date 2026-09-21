@@ -102,6 +102,7 @@ class SegmentationUnitsMixin:
 
     async def _evt_on_decorating_result(self, event: AstrMessageEvent):
         """发送前钩子：仅接管纯文本 LLM 结果，逐条自发送并抑制原结果。"""
+        await self._maybe_record_assistant_open_topic(event)
         original = None
         try:
             if not self._output_segment_active():

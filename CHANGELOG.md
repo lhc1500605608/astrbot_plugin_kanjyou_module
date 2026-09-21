@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.0] - 2026-09-21
+
+### Added
+- **未完话题续接**：零 LLM 从私聊入站消息里提取「对方提过、还没继续」的事
+  （承诺/计划/悬而未决的提问），上报 companion-core；生成主动消息时至多挑选 1 条
+  自然提起，发送成功后回执计数。默认开启，可在配置中关闭或调整冷却/沉淀时间。
+  需启用「陪伴」且 companion-core 提供对应能力，否则行为不变。
+
+### Changed
+- 版本收敛到 `2.8.0`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.7.3] - 2026-09-21
 
 ### Fixed

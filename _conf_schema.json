@@ -833,6 +833,31 @@
       }
     }
   },
+  "open_thread": {
+    "type": "object",
+    "description": "未完话题",
+    "hint": "记住对方提过、还没继续的事，在合适的主动消息里自然提起一次。",
+    "items": {
+      "open_thread_followup_enabled": {
+        "type": "bool",
+        "description": "是否启用未完话题续接",
+        "hint": "需同时启用「陪伴」且 companion-core 提供相应能力。",
+        "default": true
+      },
+      "open_thread_followup_cooldown_hours": {
+        "type": "int",
+        "description": "同一话题续接冷却（小时）",
+        "hint": "两次提起同一话题至少间隔；默认 24，范围 1-168。",
+        "default": 24
+      },
+      "open_thread_followup_min_age_hours": {
+        "type": "int",
+        "description": "话题最短沉淀时间（小时）",
+        "hint": "距最近一次提及超过此时间才可提起；默认 6，范围 1-72。",
+        "default": 6
+      }
+    }
+  },
   "holiday": {
     "type": "object",
     "description": "节假日",

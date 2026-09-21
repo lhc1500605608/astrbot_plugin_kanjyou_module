@@ -93,6 +93,15 @@ class PolicyGenerationUnitsMixin:
             emotion_state_text = self._companion_emotion_state_text(
                 companion_ctx, session_key
             )
+            # Phase 2-B：至多挑选 1 条未完话题作自然续接动机。
+            selected_thread = self._select_open_thread_followup(
+                companion_ctx,
+                session_key,
+                session,
+                self._now().timestamp(),
+                expression,
+            )
+            open_thread_text = self._open_thread_followup_text(selected_thread)
             expression_mode = merged_style["mode"] if merged_style else ""
             style_hint = self._style_hint(session_key, session, idle_sec)
             if merged_style:
@@ -133,6 +142,7 @@ class PolicyGenerationUnitsMixin:
                 motivation=companion_fields["motivation"],
                 emotion_state=emotion_state_text,
                 expression_mode=expression_mode,
+                open_thread_followup=open_thread_text,
             )
             if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
                 if "{persona_state}" not in prompt_tpl:
@@ -149,6 +159,9 @@ class PolicyGenerationUnitsMixin:
             prompt = self._append_companion_block(prompt, prompt_tpl, companion_fields)
             prompt = self._append_expression_block(
                 prompt, prompt_tpl, emotion_state_text, merged_style
+            )
+            prompt = self._append_open_thread_block(
+                prompt, prompt_tpl, open_thread_text
             )
             if isinstance(session, dict):
                 quota_allow = self._companion_quota_allow(companion_ctx)
@@ -182,6 +195,12 @@ class PolicyGenerationUnitsMixin:
             self._debug(
                 f"generate ok provider={provider_id} session={session_key} text={cleaned}"
             )
+            if selected_thread and isinstance(session, dict):
+                # 只有真正生成成功才登记回执候选；降级/fallback 不计入续接。
+                session["companion_open_thread_followup"] = {
+                    "thread_id": selected_thread["thread_id"],
+                    "umo": unified_msg_origin,
+                }
             return cleaned
         except Exception as exc:
             self._log_error(

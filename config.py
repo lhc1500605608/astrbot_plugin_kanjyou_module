@@ -129,6 +129,11 @@ DEFAULT_CONFIG_FLAT = {
     "emotion_ignore_window_sec": 21600,
     "emotion_cold_shoulder_streak": 3,
     "emotion_llm_judge_enabled": False,
+    # Phase 2-B: 未完话题续接（默认开启，但仅在 companion_enabled 且
+    # companion-core 暴露 open_threads_followup 能力时生效；否则 fail-closed）。
+    "open_thread_followup_enabled": True,
+    "open_thread_followup_cooldown_hours": 24,
+    "open_thread_followup_min_age_hours": 6,
     "emotion_keywords": {
         "gratitude": [
             "谢谢",
@@ -194,7 +199,7 @@ INTERNAL_POLICY = {
     "quality_history_size": 6,
 }
 
-# 9 个可折叠配置组（顺序即 WebUI 展示顺序）。
+# 10 个可折叠配置组（顺序即 WebUI 展示顺序）。
 CONFIG_GROUPS: dict[str, list[str]] = {
     "basic": [
         "enabled",
@@ -293,6 +298,11 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "emotion_cold_shoulder_streak",
         "emotion_llm_judge_enabled",
         "emotion_keywords",
+    ],
+    "open_thread": [
+        "open_thread_followup_enabled",
+        "open_thread_followup_cooldown_hours",
+        "open_thread_followup_min_age_hours",
     ],
     "holiday": [
         "enable_holiday_perception",
@@ -594,4 +604,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.7.3"
+PLUGIN_VERSION = "2.8.0"

@@ -89,6 +89,10 @@ class RuntimeUnitsMixin:
         if success:
             # Phase 2-A: record the pending receipt (state only; no ledger write).
             await self._begin_proactive_receipt(s, umo, now_ts)
+            # Phase 2-B: 发送成功才回执续接计数（失败清空候选，静默降级）。
+            await self._commit_open_thread_followup(s, umo, now_ts)
+        else:
+            s.pop("companion_open_thread_followup", None)
         # companion-core 回执：发送结果确定后回传一次（不可用则静默降级）。
         await self._report_companion_outcome(
             umo,

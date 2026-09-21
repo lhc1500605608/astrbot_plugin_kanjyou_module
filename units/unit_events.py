@@ -48,6 +48,7 @@ class EventUnitsMixin:
         now_ts = self._now().timestamp()
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         decided = None
+        open_thread_decision = None
         async with self._lock:
             s = self._get_or_create_session(event)
             self._ensure_session_shape(s)
@@ -60,6 +61,14 @@ class EventUnitsMixin:
             except Exception as exc:
                 self._debug(f"emotion detect failed session={session_key} err={exc}")
                 decided = None
+            # Phase 2-B: extract at most one unfinished item / settle a completion.
+            try:
+                open_thread_decision = self._collect_inbound_open_thread(
+                    session_key, text, umo
+                )
+            except Exception as exc:
+                self._debug(f"open thread detect failed session={session_key} err={exc}")
+                open_thread_decision = None
             self._consume_session_mood_by_dialogue(s, now_ts)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
@@ -76,6 +85,8 @@ class EventUnitsMixin:
             await self._record_companion_emotion_event(
                 umo, event_type, reason=reason, dedupe_key=dedupe_key
             )
+        if open_thread_decision:
+            await self._apply_inbound_open_thread(umo, open_thread_decision)
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)

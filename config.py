@@ -121,6 +121,7 @@ DEFAULT_CONFIG_FLAT = {
     "companion_inject_life_state": True,
     "companion_inject_relationship": True,
     "companion_inject_motivation": True,
+    "companion_inject_life_detail": True,
     # Phase 2-A/2-C: emotion event detection + expression consumption.
     # 默认开启，但仅在 companion_enabled 且 companion-core 暴露 emotion/expression
     # capability 时生效；否则行为等同 v2.4.0（fail-closed）。
@@ -290,6 +291,7 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "companion_inject_life_state",
         "companion_inject_relationship",
         "companion_inject_motivation",
+        "companion_inject_life_detail",
     ],
     "emotion_event": [
         "emotion_event_enabled",
@@ -604,4 +606,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.9.0"
+PLUGIN_VERSION = "2.10.0"

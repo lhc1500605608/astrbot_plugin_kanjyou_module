@@ -22,11 +22,19 @@ COMPANION_BLOCK_HEADER = "【陪伴上下文】"
 
 _FIELD_LABELS = (
     ("life_state", "生活"),
+    ("life_detail", "生活细节"),
     ("relationship", "关系"),
     ("motivation", "动机"),
 )
 
 _LIFE_STATE_TEXT_KEYS = ("activity", "scene", "summary", "as_of", "mood_hint", "source")
+
+# Defensive bounds for the optional ``life_detail`` payload (v2.10.0). The
+# upstream already clips; these only guard against malformed/oversized input.
+_LIFE_DETAIL_MAX_LINES = 5
+_LIFE_DETAIL_TEXT_MAX_CHARS = 120
+_LIFE_DETAIL_FIELD_MAX_CHARS = 40
+_LIFE_DETAIL_DIARY_MAX_CHARS = 200
 
 # Defensive bounds for the optional ``memory`` bridge payload (v2.9.0). The
 # upstream already clips; these only guard against malformed/oversized input.
@@ -118,6 +126,88 @@ def _clean_int(value) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _clean_float(value) -> Optional[float]:
+    """Return a finite float; ``None`` for non-numeric/NaN (bools excluded)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
+def _sanitize_life_detail(raw) -> Dict:
+    """Whitelist + bounds for the optional v1.4 ``life_detail`` payload.
+
+    Keeps only derived, non-textual structure (weather/meal/sleep/quiet/diary);
+    unknown keys are dropped. Group scopes never reach here (upstream strips and
+    the adapter re-checks), but a malformed payload degrades to ``{}``.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    detail: Dict = {}
+
+    weather = raw.get("weather")
+    if isinstance(weather, dict):
+        clean_weather: Dict = {}
+        text = _clean_text(weather.get("text"))
+        if text:
+            clean_weather["text"] = text[:_LIFE_DETAIL_TEXT_MAX_CHARS]
+        code = _clean_int(weather.get("code"))
+        if code is not None:
+            clean_weather["code"] = code
+        temp = _clean_float(weather.get("temp"))
+        if temp is not None:
+            clean_weather["temp"] = temp
+        if clean_weather:
+            detail["weather"] = clean_weather
+
+    meal = raw.get("meal")
+    if isinstance(meal, dict):
+        clean_meal: Dict = {}
+        for key in ("slot", "label", "at"):
+            value = _clean_text(meal.get(key))
+            if value:
+                clean_meal[key] = value[:_LIFE_DETAIL_FIELD_MAX_CHARS]
+        if isinstance(meal.get("in_window"), bool):
+            clean_meal["in_window"] = meal["in_window"]
+        if clean_meal:
+            detail["meal"] = clean_meal
+
+    sleep = raw.get("sleep")
+    if isinstance(sleep, dict):
+        clean_sleep: Dict = {}
+        for key in ("window", "since", "source"):
+            value = _clean_text(sleep.get(key))
+            if value:
+                clean_sleep[key] = value[:_LIFE_DETAIL_FIELD_MAX_CHARS]
+        if clean_sleep:
+            detail["sleep"] = clean_sleep
+
+    if isinstance(raw.get("quiet"), bool):
+        detail["quiet"] = raw["quiet"]
+
+    diary = raw.get("diary")
+    if isinstance(diary, dict):
+        clean_diary: Dict = {}
+        day = _clean_text(diary.get("day"))
+        if day:
+            clean_diary["day"] = day[:_LIFE_DETAIL_FIELD_MAX_CHARS]
+        summary = _clean_text(diary.get("summary"))[:_LIFE_DETAIL_DIARY_MAX_CHARS]
+        if summary:
+            clean_diary["summary"] = summary
+        mood = _clean_text(diary.get("mood"))
+        if mood:
+            clean_diary["mood"] = mood[:_LIFE_DETAIL_FIELD_MAX_CHARS]
+        if clean_diary:
+            detail["diary"] = clean_diary
+
+    return detail
 
 
 def sanitize_companion_context(raw) -> Dict:
@@ -299,6 +389,10 @@ def sanitize_companion_context(raw) -> Dict:
         if clean_memory:
             ctx["memory"] = clean_memory
 
+    life_detail = _sanitize_life_detail(raw.get("life_detail"))
+    if life_detail:
+        ctx["life_detail"] = life_detail
+
     return ctx
 
 
@@ -454,6 +548,8 @@ class CompanionContextAdapter:
             ctx.pop("open_thread_details", None)
         if not caps.get("memory_bridge"):
             ctx.pop("memory", None)
+        if not caps.get("life_line"):
+            ctx.pop("life_detail", None)
         return ctx
 
     async def record_open_thread(
@@ -643,6 +739,83 @@ class CompanionContextUnitsMixin:
         if isinstance(energy, (int, float)) and not isinstance(energy, bool):
             parts.append(f"精力 {float(energy):.2f}")
         return "，".join(parts)
+
+    @staticmethod
+    def _companion_life_detail_lines(life_detail) -> list:
+        """Flatten ``ctx['life_detail']`` into short, prompt-ready lines.
+
+        Pure formatting, zero LLM: weather/meal/sleep/diary are rendered as
+        one-line summaries; an empty/absent payload yields ``[]``.
+        """
+        if not isinstance(life_detail, dict):
+            return []
+        lines = []
+
+        weather = life_detail.get("weather")
+        if isinstance(weather, dict):
+            parts = []
+            text = _clean_text(weather.get("text"))
+            if text:
+                parts.append(text)
+            temp = weather.get("temp")
+            if isinstance(temp, (int, float)) and not isinstance(temp, bool):
+                parts.append(f"{float(temp):.1f}℃")
+            if parts:
+                lines.append("今天天气：" + "，".join(parts))
+
+        meal = life_detail.get("meal")
+        if isinstance(meal, dict):
+            label = _clean_text(meal.get("label"))
+            at = _clean_text(meal.get("at"))
+            if label and meal.get("in_window"):
+                lines.append(f"对方正在{label}时间")
+            elif label and at:
+                lines.append(f"对方下一顿是{label}（{at}）")
+
+        sleep = life_detail.get("sleep")
+        if isinstance(sleep, dict):
+            window = _clean_text(sleep.get("window"))
+            if window:
+                lines.append(f"对方作息约 {window}")
+
+        diary = life_detail.get("diary")
+        if isinstance(diary, dict):
+            summary = _clean_text(diary.get("summary"))
+            if summary:
+                lines.append(f"对方前一天小结：{summary}")
+
+        return lines
+
+    def _companion_life_detail_text(
+        self, ctx, session_key: str, recalled_memory: str = ""
+    ) -> str:
+        """Render ``life_detail`` for the ``{life_detail}`` placeholder.
+
+        Private-only (group scopes return ``""``), gated by the user-facing
+        inject switch, and deduped against the injected memory lines with the
+        same whitespace/casefold rule used by ``_merge_memory_snippets`` (2-E).
+        """
+        if str(session_key or "").startswith("group:"):
+            return ""
+        if not self._companion_inject_enabled("companion_inject_life_detail"):
+            return ""
+        if not isinstance(ctx, dict):
+            return ""
+        lines = self._companion_life_detail_lines(ctx.get("life_detail"))
+        if not lines:
+            return ""
+        memory_lines = []
+        for raw in str(recalled_memory or "").splitlines():
+            text = raw.strip()
+            if not text or text == "无":
+                continue
+            memory_lines.append(text.lstrip("-").strip())
+        merged = self._merge_memory_snippets(
+            lines, [], _LIFE_DETAIL_MAX_LINES, blocked=memory_lines
+        )
+        if not merged:
+            return ""
+        return "；".join(merged)
 
     @staticmethod
     def _companion_relationship_text(rel) -> str:

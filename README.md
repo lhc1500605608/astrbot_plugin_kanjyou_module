@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="情绪价值提供者" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.9.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.10.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -28,7 +28,7 @@
 - **主动消息分段**：主动问候按语义拆成 1-3 条发送，分片间插入随机打字延迟。
 - **情绪状态调制**：根据会话情绪切换语气、目标字数与主动程度，状态内容可在 WebUI 配置，换人格无需改源码。
 - **长期记忆**：生成主动消息前从 tmemory 召回相关记忆并自然融入。
-- **陪伴上下文**：可选对接 companion-core，使用其生活/关系/动机上下文与其提供的记忆片段（与自有记忆去重后一起注入）。
+- **陪伴上下文**：可选对接 companion-core，使用其生活/关系/动机上下文、生活细节（天气/用餐/作息/当日小结）与其提供的记忆片段（与自有记忆去重后一起注入）。
 - **情绪事件**：识别感谢、误解、突然亲近等互动，动态调整表达方式。
 - **未完话题**：记住对方提过、还没继续的事，在合适的主动消息里自然提起一次。
 - **兼容性**：图片回复按 URL/本地路径分流；支持 AstrBot 4.23 及以上版本。
@@ -44,6 +44,7 @@
 - 记忆召回**默认仅私聊生效**：`memory_recall_private_only=true` 且 `memory_recall_group_enabled=false`，群聊一律不注入记忆。
 - 如需群聊召回，必须同时关闭 `memory_recall_private_only` 并开启 `memory_recall_group_enabled`；此时仅允许 tmemory 返回的非私有（公共）记忆，私聊私有记忆不会进入群聊。
 - companion-core 提供的记忆同样受上述开关约束，群聊默认不注入任何私聊记忆。
+- companion-core 的生活细节（天气/用餐/作息/当日小结）仅在私聊注入，群聊一律不注入。
 - 默认预设中的「撒娇」态仅在私聊且久未互动时触发，群聊自动抑制。
 - 主动消息生成受 `security_blocked_words`、`security_max_text_length` 等安全项约束，不会原样复述记忆原文。
 
@@ -194,7 +195,7 @@
 - `companion_enabled`：是否启用 companion-core 上下文消费（默认关闭）
 - `companion_plugin_name`：companion-core 插件注册名（默认 `astrbot_plugin_tcompanion_core`）
 - `companion_timeout_sec`：拉取/回执超时秒数（默认 1.5，超时按不注入继续发送）
-- `companion_inject_life_state` / `companion_inject_relationship` / `companion_inject_motivation`：分域注入开关（默认开启）
+- `companion_inject_life_state` / `companion_inject_life_detail` / `companion_inject_relationship` / `companion_inject_motivation`：分域注入开关（默认开启；生活细节仅在私聊注入，且与记忆去重）
 - 上游插件缺失、超时或返回异常时自动降级，不影响正常发送。
 
 ## 打包规范

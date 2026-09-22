@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.10.0] - 2026-09-23
+
+### Added
+- 主动消息现在也会参考 companion-core 提供的生活细节：当天天气、当前/下一顿用餐、
+  作息时段与前一天小结，作为独立字段注入 prompt（模板含 `{life_detail}` 时填入，
+  否则安全追加到陪伴块）。
+- 生活细节仅在私聊注入；与记忆片段按同一规整（空白/大小写归一后精确去重）合并，
+  重复内容只出现一次。需启用「陪伴」且 companion-core 提供对应能力，否则行为不变。
+
+### Changed
+- 版本收敛到 `2.10.0`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.9.0] - 2026-09-22
 
 ### Added

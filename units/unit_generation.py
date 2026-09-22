@@ -121,6 +121,10 @@ class PolicyGenerationUnitsMixin:
                 style_hint,
                 companion_ctx.get("memory"),
             )
+            # v2.10.0: life detail is deduped against the injected memory lines.
+            companion_fields["life_detail"] = self._companion_life_detail_text(
+                companion_ctx, session_key, recalled_memory
+            )
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
                 or DEFAULT_CONFIG_FLAT["proactive_prompt_template"]
@@ -139,6 +143,7 @@ class PolicyGenerationUnitsMixin:
                 recalled_memory=recalled_memory,
                 recent_history=recent_history,
                 life_state=companion_fields["life_state"],
+                life_detail=companion_fields["life_detail"],
                 relationship=companion_fields["relationship"],
                 motivation=companion_fields["motivation"],
                 emotion_state=emotion_state_text,

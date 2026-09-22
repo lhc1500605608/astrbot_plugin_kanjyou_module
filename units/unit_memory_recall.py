@@ -190,15 +190,20 @@ class MemoryRecallUnitsMixin:
 
     @staticmethod
     def _merge_memory_snippets(
-        own: List[str], extra: List[str], limit: int
+        own: List[str], extra: List[str], limit: int, blocked: List[str] = ()
     ) -> List[str]:
         """Merge two memory lists, dedupe on whitespace/case-normalized text.
 
         Own recall keeps priority; the companion payload fills the remainder.
-        Zero LLM: pure string normalization + exact match.
+        Zero LLM: pure string normalization + exact match. ``blocked`` items are
+        never emitted (used to keep life details from repeating memory content).
         """
         cap = max(1, int(limit))
         seen = set()
+        for item in blocked or ():
+            key = " ".join(str(item or "").split()).casefold()
+            if key:
+                seen.add(key)
         merged: List[str] = []
         for item in list(own) + list(extra):
             text = " ".join(str(item or "").split())

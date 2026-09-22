@@ -662,6 +662,12 @@
         "description": "是否注入主动动机 {motivation}",
         "hint": "关闭后该字段不注入 prompt。",
         "default": true
+      },
+      "companion_inject_life_detail": {
+        "type": "bool",
+        "description": "是否注入生活细节 {life_detail}",
+        "hint": "关闭后该字段不注入 prompt。",
+        "default": true
       }
     }
   },

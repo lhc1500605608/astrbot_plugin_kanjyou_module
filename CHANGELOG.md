@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.0] - 2026-09-22
+
+### Added
+- 主动消息现在也会采用 companion-core 提供的记忆片段：与插件自身的记忆召回合并，
+  去重后一起注入（重复内容只出现一次，总条数上限不变）。若画像摘要可用，会作为
+  一条偏好提示一并参考。需启用「陪伴」且 companion-core 提供对应能力，否则行为不变。
+- 群聊仍不注入任何私聊记忆；companion-core 未提供该能力时不读取、不注入。
+
+### Changed
+- 版本收敛到 `2.9.0`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.8.1] - 2026-09-21
 
 ### Fixed

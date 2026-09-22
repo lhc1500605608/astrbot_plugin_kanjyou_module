@@ -7,6 +7,16 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+
+from astrbot_plugin_kanjyou_module.units.unit_memory_recall import (  # noqa: E402
+    MemoryRecallUnitsMixin,
+)
 
 
 class FakeRecallAdapter:
@@ -96,6 +106,70 @@ def test_group_session_uses_group_mode_when_enabled(plugin):
     )
     assert adapter.calls and adapter.calls[0]["session_type"] == "group"
     assert result == "- 公开的群记忆"
+
+
+def test_merge_dedupes_whitespace_and_case():
+    merged = MemoryRecallUnitsMixin._merge_memory_snippets(
+        [" 她喜欢美式 ", "最近在改论文"],
+        ["她喜欢美式", "She Likes Coffee", "she likes coffee"],
+        5,
+    )
+    assert merged == ["她喜欢美式", "最近在改论文", "She Likes Coffee"]
+
+
+def test_merge_respects_total_cap_own_first():
+    merged = MemoryRecallUnitsMixin._merge_memory_snippets(
+        ["自己一", "自己二"], ["桥一", "桥二"], 3
+    )
+    assert merged == ["自己一", "自己二", "桥一"]
+
+
+def test_companion_memory_merged_and_deduped(plugin):
+    adapter = FakeRecallAdapter(memories=["她喜欢美式咖啡"])
+    plugin._memory_recall_adapter_override = adapter
+    companion_memory = {
+        "snippets": ["她喜欢美式咖啡", "最近在改论文"],
+        "profile": {"summary": "安静、爱喝咖啡"},
+    }
+    result = asyncio.run(
+        plugin._recall_memory_for_prompt(
+            "umo", "private:1", 3600, {}, "", "", companion_memory
+        )
+    )
+    assert adapter.calls, "own recall should still run"
+    assert result == "- 她喜欢美式咖啡\n- 最近在改论文\n- 对方画像摘要：安静、爱喝咖啡"
+
+
+def test_companion_memory_only_when_own_recall_available(plugin):
+    # 自身召回为空但 companion 有数据时仍注入；禁用时不注入。
+    plugin._memory_recall_adapter_override = FakeRecallAdapter(memories=[])
+    companion_memory = {"snippets": ["桥接记忆"]}
+    result = asyncio.run(
+        plugin._recall_memory_for_prompt(
+            "umo", "private:1", 3600, {}, "", "", companion_memory
+        )
+    )
+    assert result == "- 桥接记忆"
+    plugin.config["memory_recall_enabled"] = False
+    disabled = asyncio.run(
+        plugin._recall_memory_for_prompt(
+            "umo", "private:1", 3600, {}, "", "", companion_memory
+        )
+    )
+    assert disabled == "无"
+
+
+def test_group_never_injects_companion_private_memory_by_default(plugin):
+    adapter = FakeRecallAdapter(memories=[])
+    plugin._memory_recall_adapter_override = adapter
+    companion_memory = {"snippets": ["私聊里提过的事"]}
+    result = asyncio.run(
+        plugin._recall_memory_for_prompt(
+            "umo", "group:9", 3600, {}, "", "", companion_memory
+        )
+    )
+    assert result == "无"
+    assert adapter.calls == []
 
 
 def test_private_recall_injected_into_prompt(plugin):

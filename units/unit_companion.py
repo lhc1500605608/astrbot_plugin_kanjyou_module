@@ -28,6 +28,14 @@ _FIELD_LABELS = (
 
 _LIFE_STATE_TEXT_KEYS = ("activity", "scene", "summary", "as_of", "mood_hint", "source")
 
+# Defensive bounds for the optional ``memory`` bridge payload (v2.9.0). The
+# upstream already clips; these only guard against malformed/oversized input.
+_MEMORY_MAX_SNIPPETS = 8
+_MEMORY_SNIPPET_MAX_CHARS = 200
+_MEMORY_MAX_HIGHLIGHTS = 5
+_MEMORY_HIGHLIGHT_MAX_CHARS = 120
+_MEMORY_SUMMARY_MAX_CHARS = 200
+
 
 def _clean_text(value) -> str:
     if value is None:
@@ -36,6 +44,20 @@ def _clean_text(value) -> str:
         return str(value).strip()
     except Exception:
         return ""
+
+
+def _clean_str_list(value, max_items: int, max_chars: int) -> list:
+    if not isinstance(value, (list, tuple)):
+        return []
+    out = []
+    for item in value:
+        text = _clean_text(item)
+        if not text:
+            continue
+        out.append(text[:max_chars])
+        if len(out) >= max_items:
+            break
+    return out
 
 
 def _open_thread_labels(ctx) -> list:
@@ -238,6 +260,45 @@ def sanitize_companion_context(raw) -> Dict:
         if clean_expr:
             ctx["expression"] = clean_expr
 
+    memory = raw.get("memory")
+    if isinstance(memory, dict):
+        clean_memory: Dict = {}
+        snippets = _clean_str_list(
+            memory.get("snippets"), _MEMORY_MAX_SNIPPETS, _MEMORY_SNIPPET_MAX_CHARS
+        )
+        if snippets:
+            clean_memory["snippets"] = snippets
+        profile = memory.get("profile")
+        if isinstance(profile, dict):
+            clean_profile: Dict = {}
+            facets: Dict = {}
+            raw_facets = profile.get("facets")
+            if isinstance(raw_facets, dict):
+                for facet, count in raw_facets.items():
+                    name = _clean_text(facet)
+                    number = _clean_int(count)
+                    if name and number is not None:
+                        facets[name] = number
+            if facets:
+                clean_profile["facets"] = facets
+            summary = _clean_text(profile.get("summary"))[:_MEMORY_SUMMARY_MAX_CHARS]
+            if summary:
+                clean_profile["summary"] = summary
+            highlights = _clean_str_list(
+                profile.get("highlights"),
+                _MEMORY_MAX_HIGHLIGHTS,
+                _MEMORY_HIGHLIGHT_MAX_CHARS,
+            )
+            if highlights:
+                clean_profile["highlights"] = highlights
+            if clean_profile:
+                clean_memory["profile"] = clean_profile
+        as_of = _clean_text(memory.get("as_of"))
+        if as_of:
+            clean_memory["as_of"] = as_of
+        if clean_memory:
+            ctx["memory"] = clean_memory
+
     return ctx
 
 
@@ -391,6 +452,8 @@ class CompanionContextAdapter:
             ctx.pop("expression", None)
         if not caps.get("open_threads_followup"):
             ctx.pop("open_thread_details", None)
+        if not caps.get("memory_bridge"):
+            ctx.pop("memory", None)
         return ctx
 
     async def record_open_thread(

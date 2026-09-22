@@ -164,6 +164,55 @@ class MemoryRecallUnitsMixin:
         query = " ".join(p for p in parts if p)
         return query[:100]
 
+    @staticmethod
+    def _companion_memory_snippets(companion_memory) -> List[str]:
+        """Flatten ``ctx['memory']`` into prompt lines; ``[]`` when absent.
+
+        ``snippets`` come first, then a single preference/portrait line derived
+        from ``profile.summary`` (private scopes only — the upstream never sends
+        a profile for groups).
+        """
+        if not isinstance(companion_memory, dict):
+            return []
+        lines: List[str] = []
+        snippets = companion_memory.get("snippets")
+        if isinstance(snippets, (list, tuple)):
+            for item in snippets:
+                text = " ".join(str(item or "").split())
+                if text:
+                    lines.append(text)
+        profile = companion_memory.get("profile")
+        if isinstance(profile, dict):
+            summary = " ".join(str(profile.get("summary") or "").split())
+            if summary:
+                lines.append(f"对方画像摘要：{summary}")
+        return lines
+
+    @staticmethod
+    def _merge_memory_snippets(
+        own: List[str], extra: List[str], limit: int
+    ) -> List[str]:
+        """Merge two memory lists, dedupe on whitespace/case-normalized text.
+
+        Own recall keeps priority; the companion payload fills the remainder.
+        Zero LLM: pure string normalization + exact match.
+        """
+        cap = max(1, int(limit))
+        seen = set()
+        merged: List[str] = []
+        for item in list(own) + list(extra):
+            text = " ".join(str(item or "").split())
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(text)
+            if len(merged) >= cap:
+                break
+        return merged
+
     async def _recall_memory_for_prompt(
         self,
         unified_msg_origin: str,
@@ -172,8 +221,13 @@ class MemoryRecallUnitsMixin:
         session: Optional[Dict] = None,
         env_perception: str = "",
         style_hint: str = "",
+        companion_memory=None,
     ) -> str:
-        """召回记忆并格式化为 prompt 片段；无记忆 / 不可用时返回 ``"无"``。"""
+        """召回记忆并格式化为 prompt 片段；无记忆 / 不可用时返回 ``"无"``。
+
+        When companion-core supplies a ``memory`` payload (v2.9.0), its snippets
+        are merged with the plugin's own recall and deduped before injection.
+        """
         if not self._memory_recall_enabled():
             return "无"
 
@@ -185,35 +239,38 @@ class MemoryRecallUnitsMixin:
         query = self._build_memory_recall_query(
             session_key, idle_sec, env_perception, style_hint
         )
-        if not query:
-            return "无"
 
-        try:
-            adapter = self._memory_recall_adapter()
-        except Exception as exc:
-            self._debug(f"memory recall adapter init failed: {exc}")
-            return "无"
+        memories: List[str] = []
+        if query:
+            try:
+                adapter = self._memory_recall_adapter()
+            except Exception as exc:
+                self._debug(f"memory recall adapter init failed: {exc}")
+                adapter = None
+            if adapter is not None:
+                try:
+                    memories = await asyncio.wait_for(
+                        adapter.recall(
+                            unified_msg_origin,
+                            query,
+                            session_type=session_type,
+                            limit=self._memory_recall_limit(),
+                        ),
+                        timeout=self._memory_recall_timeout_sec(),
+                    )
+                except asyncio.TimeoutError:
+                    self._debug(
+                        f"memory recall timeout session={session_key} "
+                        f"timeout={self._memory_recall_timeout_sec()}s"
+                    )
+                except Exception as exc:
+                    self._debug(f"memory recall failed session={session_key} err={exc}")
 
-        try:
-            memories = await asyncio.wait_for(
-                adapter.recall(
-                    unified_msg_origin,
-                    query,
-                    session_type=session_type,
-                    limit=self._memory_recall_limit(),
-                ),
-                timeout=self._memory_recall_timeout_sec(),
-            )
-        except asyncio.TimeoutError:
-            self._debug(
-                f"memory recall timeout session={session_key} "
-                f"timeout={self._memory_recall_timeout_sec()}s"
-            )
+        merged = self._merge_memory_snippets(
+            memories,
+            self._companion_memory_snippets(companion_memory),
+            self._memory_recall_limit(),
+        )
+        if not merged:
             return "无"
-        except Exception as exc:
-            self._debug(f"memory recall failed session={session_key} err={exc}")
-            return "无"
-
-        if not memories:
-            return "无"
-        return "\n".join(f"- {text}" for text in memories)
+        return "\n".join(f"- {text}" for text in merged)

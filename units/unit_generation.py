@@ -119,6 +119,7 @@ class PolicyGenerationUnitsMixin:
                 session,
                 env_perception,
                 style_hint,
+                companion_ctx.get("memory"),
             )
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")

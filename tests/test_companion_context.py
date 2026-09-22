@@ -72,12 +72,21 @@ class FakeCompanionAdapter:
 
 
 class _ContractStar:
-    def __init__(self, raw, version=1, exc=None, delay=0.0, outcome_exc=None):
+    def __init__(
+        self,
+        raw,
+        version=1,
+        exc=None,
+        delay=0.0,
+        outcome_exc=None,
+        memory_bridge=False,
+    ):
         self._raw = raw
         self._version = version
         self._exc = exc
         self._delay = delay
         self._outcome_exc = outcome_exc
+        self._memory_bridge = memory_bridge
         self.outcomes = []
 
     async def get_contract_info(self):
@@ -87,6 +96,7 @@ class _ContractStar:
                 "life_state": True,
                 "emotion": True,
                 "expression": True,
+                "memory_bridge": self._memory_bridge,
             },
         }
 
@@ -108,6 +118,16 @@ class _ContractStar:
 class _Completion:
     def __init__(self, text: str):
         self.completion_text = text
+
+
+class _FakeRecall:
+    def __init__(self, memories=None):
+        self.memories = list(memories or [])
+        self.calls = []
+
+    async def recall(self, umo, query, session_type="private", limit=3):
+        self.calls.append(session_type)
+        return list(self.memories)
 
 
 def _install_star(plugin, star, name="astrbot_plugin_tcompanion_core", activated=True):
@@ -168,6 +188,66 @@ def test_sanitize_non_dict_returns_empty():
     assert sanitize_companion_context(None) == {}
     assert sanitize_companion_context("nope") == {}
     assert sanitize_companion_context([]) == {}
+
+
+def test_sanitize_keeps_memory_payload_and_drops_malformed():
+    ctx = sanitize_companion_context(
+        {
+            "api_version": 1,
+            "memory": {
+                "snippets": [" 她喜欢美式 ", "  ", None, "最近在改论文"],
+                "profile": {
+                    "facets": {"preference": 2, "bad": "x", "": 4},
+                    "summary": "  安静、爱喝咖啡  ",
+                    "highlights": ["爱喝美式", None, ""],
+                },
+                "as_of": "2026-09-22T00:00:00Z",
+                "future_key": "ignored",
+            },
+        }
+    )
+    memory = ctx["memory"]
+    assert memory["snippets"] == ["她喜欢美式", "最近在改论文"]
+    assert memory["profile"]["facets"] == {"preference": 2}
+    assert memory["profile"]["summary"] == "安静、爱喝咖啡"
+    assert memory["profile"]["highlights"] == ["爱喝美式"]
+    assert memory["as_of"] == "2026-09-22T00:00:00Z"
+    assert "future_key" not in memory
+
+
+def test_sanitize_expression_without_style_hints():
+    ctx = sanitize_companion_context(
+        {"api_version": 1, "expression": {"mode": "回避", "reason": "有点累"}}
+    )
+    assert ctx["expression"]["mode"] == "回避"
+    assert ctx["expression"]["reason"] == "有点累"
+
+
+def test_sanitize_empty_memory_is_dropped():
+    assert "memory" not in sanitize_companion_context(
+        {"api_version": 1, "memory": {"snippets": ["  ", None]}}
+    )
+    assert "memory" not in sanitize_companion_context(
+        {"api_version": 1, "memory": "nope"}
+    )
+
+
+def test_adapter_strips_memory_without_capability(plugin):
+    raw = dict(FULL_CONTEXT, memory={"snippets": ["桥接记忆"]})
+    _install_star(plugin, _ContractStar(raw, memory_bridge=False))
+    ctx = asyncio.run(
+        CompanionContextAdapter(plugin, timeout_sec=0.5).fetch_context("umo")
+    )
+    assert "memory" not in ctx
+
+
+def test_adapter_keeps_memory_with_capability(plugin):
+    raw = dict(FULL_CONTEXT, memory={"snippets": ["桥接记忆"]})
+    _install_star(plugin, _ContractStar(raw, memory_bridge=True))
+    ctx = asyncio.run(
+        CompanionContextAdapter(plugin, timeout_sec=0.5).fetch_context("umo")
+    )
+    assert ctx["memory"]["snippets"] == ["桥接记忆"]
 
 
 def test_missing_companion_core_degrades(plugin):
@@ -279,6 +359,23 @@ def test_disabled_companion_is_zero_regression(plugin):
     asyncio.run(plugin._generate_proactive_text("umo", "private:1", 3600, {}))
     assert adapter.fetch_calls == []
     assert "【陪伴上下文】" not in captured["prompt"]
+
+
+def test_generation_merges_companion_memory_and_dedupes(plugin):
+    plugin._companion_adapter_override = FakeCompanionAdapter(
+        ctx=dict(
+            FULL_CONTEXT,
+            memory={"snippets": ["她喜欢美式咖啡", "最近在改论文"]},
+        )
+    )
+    plugin._memory_recall_adapter_override = _FakeRecall(memories=["她喜欢美式咖啡"])
+    _enable(plugin)
+    captured = {}
+    _mock_llm(plugin, captured)
+    asyncio.run(plugin._generate_proactive_text("umo", "private:1", 3600, {}))
+    prompt = captured["prompt"]
+    assert prompt.count("她喜欢美式咖啡") == 1
+    assert "最近在改论文" in prompt
 
 
 def test_generation_stashes_quota_for_soft_gate(plugin):

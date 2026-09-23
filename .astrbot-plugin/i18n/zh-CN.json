@@ -1,7 +1,7 @@
 {
-  "plugin_name": "情绪价值提供者",
+  "plugin_name": "WarmWhisper · 暖语",
   "status": {
-    "title": "kanjyou - 状态",
+    "title": "WarmWhisper · 状态",
     "heading": "状态",
     "sse": {
       "connecting": "连接中",
@@ -34,7 +34,7 @@
     "loading": "加载中..."
   },
   "control": {
-    "title": "kanjyou - 控制",
+    "title": "WarmWhisper · 控制",
     "heading": "控制",
     "reload": "重载",
     "master_switch": {
@@ -74,7 +74,7 @@
     }
   },
   "logs": {
-    "title": "kanjyou - 日志",
+    "title": "WarmWhisper · 日志",
     "heading": "决策日志",
     "entries": "{count} 条",
     "controls": {

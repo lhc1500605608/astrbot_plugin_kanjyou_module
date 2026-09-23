@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.10.2] - 2026-09-23
+
+### Changed
+- 插件外显名统一为 **WarmWhisper · 暖语**（插件标识名 `astrbot_plugin_kanjyou_module`、
+  行为与配置键均不变）；README 标题、插件库/面板显示名与三个页面标题同步更新。
+
 ## [2.10.1] - 2026-09-23
 
 ### Fixed

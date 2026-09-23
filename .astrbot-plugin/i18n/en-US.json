@@ -1,7 +1,7 @@
 {
-  "plugin_name": "Idle Proactive Chat",
+  "plugin_name": "WarmWhisper · 暖语",
   "status": {
-    "title": "kanjyou - Status",
+    "title": "WarmWhisper Status",
     "heading": "Status",
     "sse": {
       "connecting": "connecting",
@@ -34,7 +34,7 @@
     "loading": "Loading..."
   },
   "control": {
-    "title": "kanjyou - Control",
+    "title": "WarmWhisper Control",
     "heading": "Control",
     "reload": "Reload",
     "master_switch": {
@@ -74,7 +74,7 @@
     }
   },
   "logs": {
-    "title": "kanjyou - Logs",
+    "title": "WarmWhisper Logs",
     "heading": "Decision Logs",
     "entries": "{count} entries",
     "controls": {

@@ -406,10 +406,10 @@ tr:hover td { background: rgba(255,255,255,.02); }
           <button class="btn btn-sm" onclick="clearLogs()" data-i18n="logs.controls.clear">Clear</button>
           <select class="input" id="filter-outcome" onchange="applyFilter()" style="font-size:12px">
             <option value="" data-i18n="logs.controls.all_outcomes">All Outcomes</option>
-            <option value="allow">allow</option>
-            <option value="skip">skip</option>
-            <option value="triggered">triggered</option>
-            <option value="failed">failed</option>
+            <option value="allow" data-i18n="logs.controls.outcome_allow">allow（放行）</option>
+            <option value="skip" data-i18n="logs.controls.outcome_skip">skip（跳过）</option>
+            <option value="triggered" data-i18n="logs.controls.outcome_triggered">triggered（已触发）</option>
+            <option value="failed" data-i18n="logs.controls.outcome_failed">failed（失败）</option>
           </select>
           <select class="input" id="filter-session" onchange="applyFilter()" style="font-size:12px">
             <option value="" data-i18n="logs.controls.all_sessions">All Sessions</option>

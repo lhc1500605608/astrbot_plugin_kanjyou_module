@@ -83,7 +83,11 @@
       "resume": "继续",
       "clear": "清空",
       "all_outcomes": "所有结果",
-      "all_sessions": "所有会话"
+      "all_sessions": "所有会话",
+      "outcome_allow": "allow（放行）",
+      "outcome_skip": "skip（跳过）",
+      "outcome_triggered": "triggered（已触发）",
+      "outcome_failed": "failed（失败）"
     },
     "empty_waiting": "等待事件...",
     "empty_filtered": "无匹配日志"

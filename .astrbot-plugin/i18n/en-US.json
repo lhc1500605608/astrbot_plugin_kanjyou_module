@@ -83,7 +83,11 @@
       "resume": "Resume",
       "clear": "Clear",
       "all_outcomes": "All Outcomes",
-      "all_sessions": "All Sessions"
+      "all_sessions": "All Sessions",
+      "outcome_allow": "Allow",
+      "outcome_skip": "Skip",
+      "outcome_triggered": "Triggered",
+      "outcome_failed": "Failed"
     },
     "empty_waiting": "Waiting for events...",
     "empty_filtered": "No matching logs"

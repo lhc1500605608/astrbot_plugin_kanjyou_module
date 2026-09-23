@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.10.1] - 2026-09-23
+
+### Fixed
+- 日志页「结果」筛选下拉原先直接显示内部英文值（`allow`/`skip`/`triggered`/`failed`），
+  现按界面语言显示「英文值（中文说明）」（如 `allow（放行）`），选项取值与筛选行为不变。
+
 ## [2.10.0] - 2026-09-23
 
 ### Added

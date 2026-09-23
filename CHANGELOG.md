@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.11.0] - 2026-09-23
+
+### Added
+- 群聊参与：对接 companion-core 时，群内主动发言前先按该群的参与节奏（最短间隔、
+  每小时上限、群繁忙）决定是否接话，命中时不发言并把原因写入日志；群消息会驱动
+  companion 的群活跃计数（只上报计数与短标签，不含消息原文）。
+- 群氛围：群内主动消息改为参考该群的活跃度与话题氛围生成，群聊不再注入任何私聊
+  关系/情绪/生活线/画像。
+
+### Changed
+- 版本收敛到 `2.11.0`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
+### Notes
+- 需启用「陪伴」且 companion-core 提供群聊能力；未安装/异常/超时一律回落旧行为，
+  私聊行为不变。
+
 ## [2.10.2] - 2026-09-23
 
 ### Changed

@@ -44,6 +44,25 @@ _MEMORY_MAX_HIGHLIGHTS = 5
 _MEMORY_HIGHLIGHT_MAX_CHARS = 120
 _MEMORY_SUMMARY_MAX_CHARS = 200
 
+# Defensive bounds for the optional v1.6 group payload. Group blocks are always
+# bounded aggregates (counts + one short topic label), never message bodies.
+GROUP_BLOCK_HEADER = "【群氛围】"
+_GROUP_ACTIVITY_LEVELS = ("low", "medium", "high")
+_GROUP_TOPIC_MAX_CHARS = 40
+#: Only a genuinely short, label-like inbound line may become the group topic;
+#: longer messages contribute counts only (never a clipped body as "text").
+GROUP_TOPIC_SOURCE_MAX = 24
+GROUP_TOPIC_MAX = 16
+_GROUP_TOPIC_STRIP = "，。！？!?,.;；、:：\"'“”‘’()（）[]【】<>《》 "
+_GROUP_PARTICIPATION_REASONS = (
+    "ok",
+    "cooldown",
+    "hourly_limit",
+    "group_busy",
+    "disabled",
+)
+_ACTIVITY_LEVEL_TEXT = {"low": "冷清", "medium": "一般", "high": "热闹"}
+
 
 def _clean_text(value) -> str:
     if value is None:
@@ -208,6 +227,67 @@ def _sanitize_life_detail(raw) -> Dict:
             detail["diary"] = clean_diary
 
     return detail
+
+
+def _short_group_topic(text) -> str:
+    """Reduce an inbound line to a bounded short label, or ``""``.
+
+    Only a short, single-line message becomes a topic (counts-only otherwise);
+    punctuation is stripped and the result is clipped so a caller can never
+    smuggle a message body into the group topic field.
+    """
+    cleaned = " ".join(str(text or "").split())
+    if not cleaned or len(cleaned) > GROUP_TOPIC_SOURCE_MAX:
+        return ""
+    cleaned = cleaned.strip(_GROUP_TOPIC_STRIP)
+    if not cleaned:
+        return ""
+    if len(cleaned) > GROUP_TOPIC_MAX:
+        cleaned = cleaned[: GROUP_TOPIC_MAX - 1].rstrip() + "…"
+    return cleaned
+
+
+def _sanitize_group_block(raw) -> Dict:
+    """Whitelist + bound the v1.6 ``group`` aggregate block."""
+    if not isinstance(raw, dict):
+        return {}
+    group: Dict = {}
+    member_count = _clean_int(raw.get("member_count"))
+    if member_count is not None and member_count >= 0:
+        group["member_count"] = member_count
+    level = _clean_text(raw.get("activity_level")).lower()
+    if level in _GROUP_ACTIVITY_LEVELS:
+        group["activity_level"] = level
+    topic = _clean_text(raw.get("topic"))[:_GROUP_TOPIC_MAX_CHARS]
+    if topic:
+        group["topic"] = topic
+    age = _clean_float(raw.get("topic_age_min"))
+    if age is not None and age >= 0:
+        group["topic_age_min"] = age
+    last_activity = _clean_text(raw.get("last_activity"))
+    if last_activity:
+        group["last_activity"] = last_activity
+    return group
+
+
+def _sanitize_participation(raw) -> Dict:
+    """Whitelist + bound the v1.6 advisory ``participation`` gate block."""
+    if not isinstance(raw, dict):
+        return {}
+    part: Dict = {}
+    allow = raw.get("allow")
+    if isinstance(allow, bool):
+        part["allow"] = allow
+    reason = _clean_text(raw.get("reason")).lower()
+    if reason in _GROUP_PARTICIPATION_REASONS:
+        part["reason"] = reason
+    cooldown = _clean_int(raw.get("cooldown_remaining_sec"))
+    if cooldown is not None and cooldown >= 0:
+        part["cooldown_remaining_sec"] = cooldown
+    hourly = _clean_int(raw.get("hourly_remaining"))
+    if hourly is not None and hourly >= 0:
+        part["hourly_remaining"] = hourly
+    return part
 
 
 def sanitize_companion_context(raw) -> Dict:
@@ -393,6 +473,13 @@ def sanitize_companion_context(raw) -> Dict:
     if life_detail:
         ctx["life_detail"] = life_detail
 
+    group = _sanitize_group_block(raw.get("group"))
+    if group:
+        ctx["group"] = group
+    participation = _sanitize_participation(raw.get("participation"))
+    if participation:
+        ctx["participation"] = participation
+
     return ctx
 
 
@@ -550,6 +637,9 @@ class CompanionContextAdapter:
             ctx.pop("memory", None)
         if not caps.get("life_line"):
             ctx.pop("life_detail", None)
+        if not caps.get("group_aware"):
+            ctx.pop("group", None)
+            ctx.pop("participation", None)
         return ctx
 
     async def record_open_thread(
@@ -628,6 +718,76 @@ class CompanionContextAdapter:
         except Exception:
             return None
         return result if isinstance(result, dict) else None
+
+    async def record_group_activity(
+        self,
+        umo: str,
+        *,
+        member_id: Optional[str] = None,
+        topic: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """Report one inbound group message (bounded counters + short topic).
+
+        Only a group-local ``member_id`` and an already-sanitized short ``topic``
+        are forwarded — never message text. ``None`` when unavailable/degraded,
+        so a legacy companion-core (no ``group_aware``) is never called.
+        """
+        fn = self._resolve_method("record_group_activity")
+        if fn is None:
+            return None
+        if not await self.has_capability("group_aware"):
+            return None
+        try:
+            result = await self._call(
+                fn, umo, member_id=member_id, topic=topic
+            )
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
+
+    async def group_context(
+        self, umo: str, *, member_id: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Read the advisory group gate (v1.6); ``None`` when unavailable.
+
+        This is the **decision endpoint**: a granted ``allow`` consumes one
+        advisory slot upstream. Returns the sanitized ``{group, participation,
+        member, isolated}`` view; a legacy/missing companion-core degrades to
+        ``None`` so the caller falls back to v2.10.2 behaviour.
+        """
+        fn = self._resolve_method("get_group_context")
+        if fn is None:
+            return None
+        if not await self.has_capability("group_aware"):
+            return None
+        try:
+            raw = await self._call(fn, umo, member_id=member_id)
+        except Exception:
+            return None
+        if not isinstance(raw, dict):
+            return None
+        view: Dict = {}
+        group = _sanitize_group_block(raw.get("group"))
+        if group:
+            view["group"] = group
+        participation = _sanitize_participation(raw.get("participation"))
+        if participation:
+            view["participation"] = participation
+        member = raw.get("member")
+        if isinstance(member, dict):
+            member_key = _clean_text(member.get("member_key"))
+            familiarity = _clean_int(member.get("familiarity"))
+            if member_key or familiarity is not None or isinstance(
+                member.get("is_known"), bool
+            ):
+                view["member"] = {
+                    "member_key": member_key,
+                    "familiarity": familiarity if familiarity is not None else 0,
+                    "is_known": member.get("is_known") is True,
+                }
+        if raw.get("isolated") is True:
+            view["isolated"] = True
+        return view
 
     async def report_outcome(
         self,
@@ -852,10 +1012,20 @@ class CompanionContextUnitsMixin:
             return ""
         return f"此刻想主动联系的理由：{reason}"
 
-    def _companion_prompt_fields(self, ctx) -> Dict[str, str]:
-        """返回注入用的三个字段文本；关闭注入 / 缺失字段为空串。"""
+    def _companion_prompt_fields(
+        self, ctx, session_key: str = ""
+    ) -> Dict[str, str]:
+        """返回注入用的三个字段文本；关闭注入 / 缺失字段为空串。
+
+        Group scopes never inject the private/persona companion fields
+        (life_state / relationship / motivation): they ride the dedicated group
+        atmosphere block instead, so no private relationship leaks into a group
+        prompt (Phase 3-C2).
+        """
         fields = {"life_state": "", "relationship": "", "motivation": ""}
         if not isinstance(ctx, dict) or not ctx:
+            return fields
+        if str(session_key or "").startswith("group:"):
             return fields
         if self._companion_inject_enabled("companion_inject_life_state"):
             fields["life_state"] = self._companion_life_state_text(ctx.get("life_state"))
@@ -866,6 +1036,107 @@ class CompanionContextUnitsMixin:
         if self._companion_inject_enabled("companion_inject_motivation"):
             fields["motivation"] = self._companion_motivation_text(ctx)
         return fields
+
+    @staticmethod
+    def _companion_group_atmosphere_text(ctx) -> str:
+        """Render the group atmosphere from ``ctx['group']``; ``""`` when absent.
+
+        Only bounded group aggregates are used (activity level / member count /
+        short topic) — no private companion data ever enters a group prompt.
+        """
+        if not isinstance(ctx, dict):
+            return ""
+        group = ctx.get("group")
+        if not isinstance(group, dict):
+            return ""
+        parts = []
+        level = _clean_text(group.get("activity_level")).lower()
+        if level in _ACTIVITY_LEVEL_TEXT:
+            parts.append(f"活跃度{_ACTIVITY_LEVEL_TEXT[level]}")
+        member_count = group.get("member_count")
+        if (
+            isinstance(member_count, int)
+            and not isinstance(member_count, bool)
+            and member_count > 0
+        ):
+            parts.append(f"群成员约 {member_count} 人")
+        topic = _clean_text(group.get("topic"))
+        if topic:
+            age = group.get("topic_age_min")
+            if isinstance(age, (int, float)) and not isinstance(age, bool):
+                parts.append(f"最近在聊「{topic}」（约 {int(age)} 分钟前）")
+            else:
+                parts.append(f"最近在聊「{topic}」")
+        if not parts:
+            return ""
+        return "；".join(parts)
+
+    @staticmethod
+    def _append_group_atmosphere_block(prompt: str, prompt_tpl: str, text: str) -> str:
+        """Append the group atmosphere block when the template lacks its slot."""
+        if not text or "{group_atmosphere}" in prompt_tpl:
+            return prompt
+        return prompt + f"\n{GROUP_BLOCK_HEADER}\n{text}\n"
+
+    async def _record_companion_group_activity(
+        self, umo: str, member_id: str = "", text: str = ""
+    ) -> bool:
+        """Report one inbound group message; silent degrade on any failure."""
+        if not self._companion_enabled() or not umo:
+            return False
+        try:
+            adapter = self._companion_adapter()
+        except Exception as exc:
+            self._debug(f"group activity adapter init failed: {exc}")
+            return False
+        topic = _short_group_topic(text)
+        try:
+            result = await asyncio.wait_for(
+                adapter.record_group_activity(
+                    umo,
+                    member_id=(member_id or None),
+                    topic=(topic or None),
+                ),
+                timeout=self._companion_timeout_sec(),
+            )
+        except asyncio.TimeoutError:
+            self._debug(f"group activity record timeout umo={umo}")
+            return False
+        except Exception as exc:
+            self._debug(f"group activity record failed umo={umo} err={exc}")
+            return False
+        return isinstance(result, dict)
+
+    async def _companion_group_participation(self, umo: str):
+        """Read the group participation gate; returns ``(allow, view)``.
+
+        Fail-open: when companion is disabled, missing, timed out, errored or
+        the gate is unavailable, ``(True, {})`` is returned so behaviour falls
+        back to v2.10.2. Only an explicit ``participation.allow=false`` blocks.
+        """
+        if not self._companion_enabled() or not umo:
+            return True, {}
+        try:
+            adapter = self._companion_adapter()
+        except Exception as exc:
+            self._debug(f"group gate adapter init failed: {exc}")
+            return True, {}
+        try:
+            view = await asyncio.wait_for(
+                adapter.group_context(umo), timeout=self._companion_timeout_sec()
+            )
+        except asyncio.TimeoutError:
+            self._debug(f"group gate timeout umo={umo}")
+            return True, {}
+        except Exception as exc:
+            self._debug(f"group gate failed umo={umo} err={exc}")
+            return True, {}
+        if not isinstance(view, dict):
+            return True, {}
+        participation = view.get("participation")
+        if not isinstance(participation, dict) or "allow" not in participation:
+            return True, view
+        return bool(participation.get("allow") is True), view
 
     @staticmethod
     def _append_companion_block(

@@ -391,6 +391,52 @@ class RuntimeUnitsMixin:
                 suggested_tone,
             )
 
+        # Phase 3-C2：群聊参与闸门（companion advisory）。作为最后一跳闸门，
+        # 只有前面所有闸门都放行时才读取；allow=false 时不接话并落日志。
+        # 契约缺失/异常/超时一律 fail-open，回落 v2.10.2 行为。
+        if session_key.startswith("group:"):
+            group_allow, group_view = await self._companion_group_participation(umo)
+            if not group_allow:
+                group_reason = "blocked"
+                participation = (
+                    group_view.get("participation")
+                    if isinstance(group_view, dict)
+                    else None
+                )
+                if isinstance(participation, dict):
+                    group_reason = str(participation.get("reason") or group_reason)
+                code = f"companion_group_{group_reason}"
+                self._debug(
+                    f"group gate blocked session={session_key} reason={group_reason}"
+                )
+                self._unit_defer_session(
+                    session_key,
+                    s,
+                    now_ts,
+                    code,
+                    (
+                        f"session skip({code}) session={session_key} "
+                        f"reason={group_reason}"
+                    ),
+                )
+                state_changed = True
+                reason_codes.append(code)
+                return self._decision_result(
+                    False,
+                    max(confidence, 0.9),
+                    reason_codes,
+                    session_key,
+                    s,
+                    now,
+                    now_ts,
+                    period,
+                    idle_sec,
+                    decay,
+                    mode,
+                    state_changed,
+                    suggested_tone,
+                )
+
         s["decision_suggested_tone"] = suggested_tone
         return self._decision_result(
             True,

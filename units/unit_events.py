@@ -87,6 +87,13 @@ class EventUnitsMixin:
             )
         if open_thread_decision:
             await self._apply_inbound_open_thread(umo, open_thread_decision)
+        # Phase 3-C2：群消息驱动 companion 群活跃计数（只传计数/短标签，无原文）。
+        if session_key.startswith("group:") and umo:
+            await self._record_companion_group_activity(
+                umo,
+                member_id=self._event_sender_id(event),
+                text=text,
+            )
 
     async def _evt_after_message_sent(self, event: AstrMessageEvent):
         session_key = self._session_key(event)

@@ -84,7 +84,13 @@ class PolicyGenerationUnitsMixin:
             companion_ctx = await self._fetch_companion_context(
                 unified_msg_origin, self._companion_persona_id()
             )
-            companion_fields = self._companion_prompt_fields(companion_ctx)
+            companion_fields = self._companion_prompt_fields(companion_ctx, session_key)
+            # Phase 3-C2：群聊只注入群氛围，不注入任何私聊陪伴字段。
+            group_atmosphere = (
+                self._companion_group_atmosphere_text(companion_ctx)
+                if session_key.startswith("group:")
+                else ""
+            )
             # Phase 2-C：expression 为档位权威约束，persona_state 降为风格细节。
             expression = self._companion_expression(companion_ctx, session_key)
             merged_style = self._expression_style_merge(
@@ -149,6 +155,7 @@ class PolicyGenerationUnitsMixin:
                 emotion_state=emotion_state_text,
                 expression_mode=expression_mode,
                 open_thread_followup=open_thread_text,
+                group_atmosphere=group_atmosphere,
             )
             if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
                 if "{persona_state}" not in prompt_tpl:
@@ -168,6 +175,9 @@ class PolicyGenerationUnitsMixin:
             )
             prompt = self._append_open_thread_block(
                 prompt, prompt_tpl, open_thread_text
+            )
+            prompt = self._append_group_atmosphere_block(
+                prompt, prompt_tpl, group_atmosphere
             )
             if isinstance(session, dict):
                 quota_allow = self._companion_quota_allow(companion_ctx)
@@ -2011,6 +2021,17 @@ class PolicyGenerationUnitsMixin:
         if group_id:
             return f"group:{group_id}"
         return f"private:{sender_id}"
+
+    def _event_sender_id(self, event: AstrMessageEvent) -> str:
+        """群内成员局部 id（用于 companion 局部成员键，绝不外发原文）。"""
+        msg_obj = getattr(event, "message_obj", None)
+        sender_id = str(getattr(getattr(msg_obj, "sender", None), "user_id", "") or "")
+        if sender_id:
+            return sender_id
+        try:
+            return str(event.get_sender_id() or "")
+        except Exception:
+            return ""
 
     async def _resolve_persona_prompt(self) -> str:
         persona_id = str(self.config.get("persona_id") or "").strip()

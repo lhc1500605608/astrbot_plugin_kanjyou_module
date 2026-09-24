@@ -131,6 +131,14 @@ class PolicyGenerationUnitsMixin:
             companion_fields["life_detail"] = self._companion_life_detail_text(
                 companion_ctx, session_key, recalled_memory
             )
+            # v2.12.0: life content (见闻) is a private-only topic candidate,
+            # deduped against memory and the rendered life detail.
+            companion_fields["life_content"] = self._companion_life_content_text(
+                companion_ctx,
+                session_key,
+                recalled_memory,
+                companion_fields["life_detail"],
+            )
             prompt_tpl = str(
                 self.config.get("proactive_prompt_template")
                 or DEFAULT_CONFIG_FLAT["proactive_prompt_template"]
@@ -150,6 +158,7 @@ class PolicyGenerationUnitsMixin:
                 recent_history=recent_history,
                 life_state=companion_fields["life_state"],
                 life_detail=companion_fields["life_detail"],
+                life_content=companion_fields["life_content"],
                 relationship=companion_fields["relationship"],
                 motivation=companion_fields["motivation"],
                 emotion_state=emotion_state_text,

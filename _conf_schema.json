@@ -668,6 +668,12 @@
         "description": "是否注入生活细节 {life_detail}",
         "hint": "关闭后该字段不注入 prompt。",
         "default": true
+      },
+      "companion_inject_life_content": {
+        "type": "bool",
+        "description": "是否注入见闻话题 {life_content}",
+        "hint": "仅在私聊注入她读到的生活见闻作为话题候选；关闭后不注入。",
+        "default": true
       }
     }
   },

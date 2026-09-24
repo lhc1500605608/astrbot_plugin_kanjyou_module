@@ -23,6 +23,7 @@ COMPANION_BLOCK_HEADER = "【陪伴上下文】"
 _FIELD_LABELS = (
     ("life_state", "生活"),
     ("life_detail", "生活细节"),
+    ("life_content", "见闻"),
     ("relationship", "关系"),
     ("motivation", "动机"),
 )
@@ -35,6 +36,18 @@ _LIFE_DETAIL_MAX_LINES = 5
 _LIFE_DETAIL_TEXT_MAX_CHARS = 120
 _LIFE_DETAIL_FIELD_MAX_CHARS = 40
 _LIFE_DETAIL_DIARY_MAX_CHARS = 200
+
+# Defensive bounds for the optional ``life_content`` payload (v2.12.0). Only
+# de-identified, truncated summaries ever reach the prompt as topic candidates.
+LIFE_CONTENT_MAX_ITEMS = 3
+_LIFE_CONTENT_SUMMARY_MAX_CHARS = 120
+_LIFE_CONTENT_FIELD_MAX_CHARS = 40
+_LIFE_CONTENT_MAX_TAGS = 4
+_LIFE_CONTENT_TAG_MAX_CHARS = 24
+#: Independent, more generous timeout for the low-frequency refresh call. The
+#: core bounds its own generation (source/total/summarize timeouts), so this is
+#: the outer safety net only.
+LIFE_CONTENT_REFRESH_TIMEOUT_SEC = 20.0
 
 # Defensive bounds for the optional ``memory`` bridge payload (v2.9.0). The
 # upstream already clips; these only guard against malformed/oversized input.
@@ -227,6 +240,43 @@ def _sanitize_life_detail(raw) -> Dict:
             detail["diary"] = clean_diary
 
     return detail
+
+
+def _sanitize_life_content(raw) -> list:
+    """Whitelist + bounds for the optional v1.7 ``life_content`` payload.
+
+    Accepts the ``get_life_content`` result dict (``{items: [...]}``) or a bare
+    item list. Keeps only the de-identified, prompt-safe fields
+    (``summary``/``tags``/``ts``/``source_ref``); unknown keys are dropped and
+    the list is clipped to :data:`LIFE_CONTENT_MAX_ITEMS`.
+    """
+    if isinstance(raw, dict):
+        items = raw.get("items")
+    else:
+        items = raw
+    if not isinstance(items, (list, tuple)):
+        return []
+    out: list = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        summary = _clean_text(item.get("summary"))[:_LIFE_CONTENT_SUMMARY_MAX_CHARS]
+        if not summary:
+            continue
+        clean: Dict = {"summary": summary}
+        tags = _clean_str_list(
+            item.get("tags"), _LIFE_CONTENT_MAX_TAGS, _LIFE_CONTENT_TAG_MAX_CHARS
+        )
+        if tags:
+            clean["tags"] = tags
+        for key in ("ts", "source_ref"):
+            value = _clean_text(item.get(key))
+            if value:
+                clean[key] = value[:_LIFE_CONTENT_FIELD_MAX_CHARS]
+        out.append(clean)
+        if len(out) >= LIFE_CONTENT_MAX_ITEMS:
+            break
+    return out
 
 
 def _short_group_topic(text) -> str:
@@ -473,6 +523,10 @@ def sanitize_companion_context(raw) -> Dict:
     if life_detail:
         ctx["life_detail"] = life_detail
 
+    life_content = _sanitize_life_content(raw.get("life_content"))
+    if life_content:
+        ctx["life_content"] = life_content
+
     group = _sanitize_group_block(raw.get("group"))
     if group:
         ctx["group"] = group
@@ -521,9 +575,10 @@ class CompanionContextAdapter:
         method = getattr(star, name, None)
         return method if callable(method) else None
 
-    async def _call(self, method, *args, **kwargs):
+    async def _call(self, method, *args, timeout: Optional[float] = None, **kwargs):
         return await asyncio.wait_for(
-            method(*args, **kwargs), timeout=self._timeout_sec
+            method(*args, **kwargs),
+            timeout=timeout if timeout is not None else self._timeout_sec,
         )
 
     @staticmethod
@@ -640,7 +695,51 @@ class CompanionContextAdapter:
         if not caps.get("group_aware"):
             ctx.pop("group", None)
             ctx.pop("participation", None)
+        # v1.7 life content is a separate, capability-gated read; a legacy core
+        # or an empty result keeps behaviour identical to v2.11.0 (fail-closed).
+        if caps.get("life_content"):
+            items = await self.life_content(persona_id)
+            if items:
+                ctx["life_content"] = items
+        else:
+            ctx.pop("life_content", None)
         return ctx
+
+    async def life_content(self, persona_id: Optional[str] = None) -> list:
+        """Read bounded ``get_life_content`` items; ``[]`` when unavailable.
+
+        Probes ``capabilities.life_content`` first, so a legacy companion-core
+        (no such capability/method) is never called. Never raises.
+        """
+        fn = self._resolve_method("get_life_content")
+        if fn is None:
+            return []
+        if not await self.has_capability("life_content"):
+            return []
+        try:
+            raw = await self._call(fn, persona_id)
+        except Exception:
+            return []
+        return _sanitize_life_content(raw)
+
+    async def refresh_life_content(self, persona_id: Optional[str] = None) -> Optional[Dict]:
+        """Trigger one bounded ``refresh_life_content``; ``None`` when degraded.
+
+        Uses its own generous timeout (:data:`LIFE_CONTENT_REFRESH_TIMEOUT_SEC`)
+        because the core bounds its own generation internally. Never raises.
+        """
+        fn = self._resolve_method("refresh_life_content")
+        if fn is None:
+            return None
+        if not await self.has_capability("life_content"):
+            return None
+        try:
+            result = await self._call(
+                fn, persona_id, timeout=LIFE_CONTENT_REFRESH_TIMEOUT_SEC
+            )
+        except Exception:
+            return None
+        return result if isinstance(result, dict) else None
 
     async def record_open_thread(
         self,
@@ -881,6 +980,43 @@ class CompanionContextUnitsMixin:
             return {}
         return ctx if isinstance(ctx, dict) else {}
 
+    async def _companion_maybe_refresh_life_content(self) -> bool:
+        """Low-frequency, fail-silent life-content refresh (v2.12.0).
+
+        Runs in the plugin's own scheduling loop (never the passive reply
+        path), gated by ``companion_enabled`` + the core ``life_content``
+        capability + the user-facing inject switch. The core applies its own
+        min-interval / daily-cap gate, so an extra call is a cheap no-op; any
+        failure (missing core, timeout, error) is swallowed.
+        """
+        if not self._companion_enabled():
+            return False
+        if not self._companion_inject_enabled("companion_inject_life_content"):
+            return False
+        try:
+            adapter = self._companion_adapter()
+        except Exception as exc:
+            self._debug(f"life content refresh adapter init failed: {exc}")
+            return False
+        persona_id = self._companion_persona_id()
+        try:
+            result = await asyncio.wait_for(
+                adapter.refresh_life_content(persona_id),
+                timeout=LIFE_CONTENT_REFRESH_TIMEOUT_SEC + 1.0,
+            )
+        except asyncio.TimeoutError:
+            self._debug("life content refresh timeout")
+            return False
+        except Exception as exc:
+            self._debug(f"life content refresh failed: {exc}")
+            return False
+        if isinstance(result, dict) and result.get("applied"):
+            self._debug(
+                f"life content refreshed generated={result.get('generated')}"
+            )
+            return True
+        return False
+
     @staticmethod
     def _companion_life_state_text(life) -> str:
         if not isinstance(life, dict):
@@ -976,6 +1112,68 @@ class CompanionContextUnitsMixin:
         if not merged:
             return ""
         return "；".join(merged)
+
+    def _companion_life_content_text(
+        self,
+        ctx,
+        session_key: str,
+        recalled_memory: str = "",
+        life_detail_text: str = "",
+    ) -> str:
+        """Render ``life_content`` for the ``{life_content}`` placeholder.
+
+        Private-only (group scopes return ``""``), gated by the user-facing
+        inject switch, and deduped on the de-identified ``summary`` against both
+        the injected memory lines and the rendered ``life_detail`` lines (same
+        whitespace/casefold rule as ``_merge_memory_snippets``). Short tags are
+        appended only after a summary survives dedupe.
+        """
+        if str(session_key or "").startswith("group:"):
+            return ""
+        if not self._companion_inject_enabled("companion_inject_life_content"):
+            return ""
+        if not isinstance(ctx, dict):
+            return ""
+        items = ctx.get("life_content")
+        if not isinstance(items, (list, tuple)):
+            return ""
+        summaries: list = []
+        tags_by_summary: Dict[str, list] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            summary = _clean_text(item.get("summary"))
+            if not summary:
+                continue
+            summaries.append(summary)
+            tags = _clean_str_list(
+                item.get("tags"), _LIFE_CONTENT_MAX_TAGS, _LIFE_CONTENT_TAG_MAX_CHARS
+            )
+            if tags:
+                tags_by_summary[summary] = tags
+        if not summaries:
+            return ""
+        blocked = []
+        for raw in str(recalled_memory or "").splitlines():
+            text = raw.strip()
+            if not text or text == "无":
+                continue
+            blocked.append(text.lstrip("-").strip())
+        blocked.extend(self._companion_life_detail_lines(ctx.get("life_detail")))
+        for raw in str(life_detail_text or "").split("；"):
+            text = raw.strip()
+            if text:
+                blocked.append(text)
+        merged = self._merge_memory_snippets(
+            summaries, [], LIFE_CONTENT_MAX_ITEMS, blocked=blocked
+        )
+        if not merged:
+            return ""
+        lines = []
+        for summary in merged:
+            tags = tags_by_summary.get(summary)
+            lines.append(f"{summary}（{'、'.join(tags)}）" if tags else summary)
+        return "；".join(lines)
 
     @staticmethod
     def _companion_relationship_text(rel) -> str:

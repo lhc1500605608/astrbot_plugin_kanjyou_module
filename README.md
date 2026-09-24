@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="WarmWhisper · 暖语" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.11.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.12.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 一个面向 AstrBot 的闲时主动聊天插件。  
@@ -199,6 +199,7 @@
 - `companion_plugin_name`：companion-core 插件注册名（默认 `astrbot_plugin_tcompanion_core`）
 - `companion_timeout_sec`：拉取/回执超时秒数（默认 1.5，超时按不注入继续发送）
 - `companion_inject_life_state` / `companion_inject_life_detail` / `companion_inject_relationship` / `companion_inject_motivation`：分域注入开关（默认开启；生活细节仅在私聊注入，且与记忆去重）
+- `companion_inject_life_content`：是否注入她读到的见闻话题（默认开启；仅私聊作为话题候选，与记忆/生活细节去重）
 - 上游插件缺失、超时或返回异常时自动降级，不影响正常发送。
 
 ## 打包规范

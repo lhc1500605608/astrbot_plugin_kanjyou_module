@@ -23,6 +23,11 @@ class RuntimeUnitsMixin:
             self._debug_throttled("loop_plugin_disabled", "loop skip: plugin disabled")
             return
 
+        # v2.12.0 Phase 3-B: low-frequency, fail-silent life-content refresh.
+        # Runs in the plugin's own loop (never the passive reply path); the core
+        # gates by min-interval / daily cap, so an extra call is a cheap no-op.
+        await self._companion_maybe_refresh_life_content()
+
         now = self._now()
         if self._in_sleep_window(now):
             self._debug_throttled(

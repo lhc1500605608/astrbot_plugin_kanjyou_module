@@ -60,6 +60,7 @@ try:
     from .units.unit_generation import PolicyGenerationUnitsMixin
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
     from .units.unit_open_threads import OpenThreadUnitsMixin
+    from .units.unit_reply_context import ReplyContextUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
     from .units.unit_segmentation import SegmentationUnitsMixin
     from .units.unit_session import SessionConfigUnitsMixin
@@ -84,6 +85,7 @@ except ImportError:
     from units.unit_generation import PolicyGenerationUnitsMixin
     from units.unit_memory_recall import MemoryRecallUnitsMixin
     from units.unit_open_threads import OpenThreadUnitsMixin
+    from units.unit_reply_context import ReplyContextUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
     from units.unit_segmentation import SegmentationUnitsMixin
     from units.unit_session import SessionConfigUnitsMixin
@@ -101,6 +103,7 @@ class KanjyouIdleProactivePlugin(
     CompanionContextUnitsMixin,
     EmotionEventUnitsMixin,
     OpenThreadUnitsMixin,
+    ReplyContextUnitsMixin,
     RuntimeUnitsMixin,
     WebUIUnitsMixin,
     Star,
@@ -170,6 +173,10 @@ class KanjyouIdleProactivePlugin(
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         await self._evt_on_decorating_result(event)
+
+    @filter.on_llm_request()
+    async def inject_proactive_reply_context(self, event: AstrMessageEvent, req):
+        await self._reply_context_on_llm_request(event, req)
 
     @filter.after_message_sent()
     async def after_message_sent(self, event: AstrMessageEvent):

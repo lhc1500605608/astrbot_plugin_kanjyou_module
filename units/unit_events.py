@@ -11,6 +11,7 @@ class EventUnitsMixin:
             s = self._get_or_create_session(event)
             self._ensure_session_shape(s)
             # Command counts as user interaction, but doesn't consume extra dialogue mood.
+            self._clear_reply_context(s)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts
             s["pending_human_reply"] = False
@@ -69,6 +70,11 @@ class EventUnitsMixin:
             except Exception as exc:
                 self._debug(f"open thread detect failed session={session_key} err={exc}")
                 open_thread_decision = None
+            # TMEAAA-580: 在清理待回应状态前，捕获"用户这条是否在回应刚发的主动消息"。
+            try:
+                self._arm_reply_context(session_key, s, now_ts)
+            except Exception as exc:
+                self._debug(f"arm reply context failed session={session_key} err={exc}")
             self._consume_session_mood_by_dialogue(s, now_ts)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts

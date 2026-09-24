@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.1] - 2026-09-24
+
+### Fixed
+- 被动回复接不上主动话题：用户回复刚发出的主动消息时，被动生成请求现在会带上
+  「你刚才说过什么」的上下文——在主动消息发出后的待回应时间窗内，用户的下一条
+  消息会触发一次性提示（只在本轮请求生效、不写入会话历史），随后自动清除；超出
+  时间窗、无待回应主动消息、或已有其它交流时行为保持不变。
+
+### Changed
+- 版本收敛到 `2.12.1`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
+## [2.12.0] - 2026-09-23
+
+### Added
+- 主动消息可参考 companion-core 的见闻/生活线话题候选来生成，减少重复与空泛。
+
 ## [2.11.0] - 2026-09-23
 
 ### Added

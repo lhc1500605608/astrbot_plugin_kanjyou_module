@@ -142,6 +142,7 @@ class _StubFilter:
     event_message_type = _decorator_factory
     after_message_sent = _decorator_factory
     on_decorating_result = _decorator_factory
+    on_llm_request = _decorator_factory
     command = _decorator_factory
     permission_type = _decorator_factory
     regex = _decorator_factory
@@ -238,6 +239,25 @@ def _install_astrbot_stubs() -> None:
     web_mod.error_response = _stub_error_response
     web_mod.stream_response = _stub_stream_response
 
+    core_mod = types.ModuleType("astrbot.core")
+    core_mod.__path__ = []
+    agent_mod = types.ModuleType("astrbot.core.agent")
+    agent_mod.__path__ = []
+    agent_message_mod = types.ModuleType("astrbot.core.agent.message")
+
+    class _StubTextPart:
+        def __init__(self, text: str = ""):
+            self.text = text
+            self.temp = False
+
+        def mark_as_temp(self):
+            self.temp = True
+            return self
+
+    agent_message_mod.TextPart = _StubTextPart
+    core_mod.agent = agent_mod
+    agent_mod.message = agent_message_mod
+
     astrbot_mod.api = api_mod
     astrbot_mod.logger = logging.getLogger("astrbot")
 
@@ -247,6 +267,9 @@ def _install_astrbot_stubs() -> None:
     sys.modules["astrbot.api.message_components"] = message_components_mod
     sys.modules["astrbot.api.star"] = star_mod
     sys.modules["astrbot.api.web"] = web_mod
+    sys.modules["astrbot.core"] = core_mod
+    sys.modules["astrbot.core.agent"] = agent_mod
+    sys.modules["astrbot.core.agent.message"] = agent_message_mod
 
 
 def _load_package_module(module_name: str, file_name: str):

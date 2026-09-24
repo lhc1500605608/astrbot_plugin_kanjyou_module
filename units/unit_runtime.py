@@ -782,6 +782,7 @@ class RuntimeUnitsMixin:
         try:
             await self._dispatch_reply_segments(_send_segment, topic, proactive=True)
             self._debug(f"send proactive ok session={session_key} topic={topic}")
+            self._remember_proactive_text(session_key, topic, session)
             return True, topic
         except Exception:
             try:
@@ -790,6 +791,7 @@ class RuntimeUnitsMixin:
                 self._debug(
                     f"send proactive ok(fallback) session={session_key} topic={topic}"
                 )
+                self._remember_proactive_text(session_key, topic, session)
                 return True, topic
             except Exception as exc:
                 self._log_error("send_failed", f"send failed: {exc}")

@@ -23,6 +23,9 @@ class EventUnitsMixin:
             )
 
     async def _evt_on_all_message(self, event: AstrMessageEvent):
+        # 连续消息合并（防抖）：已消费则直接返回，不跑会话/情绪/线程逻辑。
+        if await self._evt_merge_gate(event):
+            return
         # Command path has highest priority for this plugin only:
         # skip plugin pipelines, but do not hijack AstrBot/global command abilities.
         text = self._extract_event_text(event)

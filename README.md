@@ -4,7 +4,7 @@
   <img src="./logo.png" alt="WarmWhisper · 暖语" width="180">
 </div>
 
-[![Version](https://img.shields.io/badge/version-v2.12.1-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
+[![Version](https://img.shields.io/badge/version-v2.13.0-blue.svg)](https://github.com/lhc1500605608/astrbot_plugin_kanjyou_module)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.23%2C%3C5-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 
 [**AstrBot**](https://github.com/AstrBotDevs/AstrBot) 的闲时主动聊天插件：只在合适时机主动开场，减少打扰，让对话更像真人。

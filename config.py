@@ -46,6 +46,12 @@ DEFAULT_CONFIG_FLAT = {
     "dialogue_wait_enabled": False,
     "dialogue_wait_timeout_sec": 4,
     "dialogue_wait_max_merge": 2,
+    "merge_enabled": True,
+    "merge_window_sec": 5,
+    "merge_group_window_sec": 5,
+    "merge_typing_extend_sec": 10,
+    "merge_max_wait_sec": 30,
+    "merge_max_chars": 300,
     "output_segment_enabled": True,
     "output_segment_mode": "semantic",
     "output_segment_max_parts": 3,
@@ -260,6 +266,14 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "lite_llm_timeout_sec",
         "lite_provider_id",
         "enable_platform_perception",
+    ],
+    "merge": [
+        "merge_enabled",
+        "merge_window_sec",
+        "merge_group_window_sec",
+        "merge_typing_extend_sec",
+        "merge_max_wait_sec",
+        "merge_max_chars",
     ],
     "emotion": [
         "mood_enabled",
@@ -608,4 +622,4 @@ CONFIG_EXECUTION_ORDER = (
     "config_debug_layer",
 )
 
-PLUGIN_VERSION = "2.12.1"
+PLUGIN_VERSION = "2.13.0"

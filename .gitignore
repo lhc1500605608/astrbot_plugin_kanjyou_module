@@ -220,3 +220,6 @@ idle_state.json
 
 # AstrBot runtime data persisted next to the plugin
 data/
+
+# QA 验收产物（本地运行生成）
+qa-artifacts/

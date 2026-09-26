@@ -30,6 +30,37 @@ class _StubImage:
         self.type = "image"
 
 
+class _StubAt:
+    def __init__(self, qq: str = ""):
+        self.qq = qq
+        self.type = "at"
+
+
+class _StubFile:
+    def __init__(self, file: str = "", name: str = ""):
+        self.file = file
+        self.name = name
+        self.type = "file"
+
+
+class _StubRecord:
+    def __init__(self, file: str = ""):
+        self.file = file
+        self.type = "record"
+
+
+class _StubVideo:
+    def __init__(self, file: str = ""):
+        self.file = file
+        self.type = "video"
+
+
+class _StubReply:
+    def __init__(self, id: str = ""):
+        self.id = id
+        self.type = "reply"
+
+
 class _StubMessageChain:
     """Mirrors the AstrBot 4.23.2 MessageChain contract used by the plugin."""
 
@@ -193,6 +224,12 @@ def _install_astrbot_stubs() -> None:
     event_mod.MessageChain = _StubMessageChain
     event_mod.filter = _StubFilter()
     message_components_mod.Plain = _StubPlain
+    message_components_mod.At = _StubAt
+    message_components_mod.Image = _StubImage
+    message_components_mod.File = _StubFile
+    message_components_mod.Record = _StubRecord
+    message_components_mod.Video = _StubVideo
+    message_components_mod.Reply = _StubReply
     star_mod.Context = _StubContext
     star_mod.Star = _StubStar
     star_mod.register = _register

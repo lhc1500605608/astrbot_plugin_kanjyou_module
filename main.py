@@ -59,6 +59,7 @@ try:
     from .units.unit_events import EventUnitsMixin
     from .units.unit_generation import PolicyGenerationUnitsMixin
     from .units.unit_memory_recall import MemoryRecallUnitsMixin
+    from .units.unit_merge import MergeUnitsMixin
     from .units.unit_open_threads import OpenThreadUnitsMixin
     from .units.unit_reply_context import ReplyContextUnitsMixin
     from .units.unit_runtime import RuntimeUnitsMixin
@@ -84,6 +85,7 @@ except ImportError:
     from units.unit_events import EventUnitsMixin
     from units.unit_generation import PolicyGenerationUnitsMixin
     from units.unit_memory_recall import MemoryRecallUnitsMixin
+    from units.unit_merge import MergeUnitsMixin
     from units.unit_open_threads import OpenThreadUnitsMixin
     from units.unit_reply_context import ReplyContextUnitsMixin
     from units.unit_runtime import RuntimeUnitsMixin
@@ -100,6 +102,7 @@ class KanjyouIdleProactivePlugin(
     PolicyGenerationUnitsMixin,
     SegmentationUnitsMixin,
     MemoryRecallUnitsMixin,
+    MergeUnitsMixin,
     CompanionContextUnitsMixin,
     EmotionEventUnitsMixin,
     OpenThreadUnitsMixin,
@@ -157,6 +160,7 @@ class KanjyouIdleProactivePlugin(
                 await self._loop_task
             except asyncio.CancelledError:
                 pass
+        self._merge_shutdown()
         self._save_state()
         if self.config.get("lifecycle_log", True):
             logger.info("[idle-proactive] terminated")

@@ -353,6 +353,49 @@
       }
     }
   },
+  "merge": {
+    "type": "object",
+    "description": "连续消息合并",
+    "hint": "把短时间内连发的多条消息合并成一次请求，只回一条。",
+    "items": {
+      "merge_enabled": {
+        "type": "bool",
+        "description": "是否合并连续消息",
+        "hint": "开启后短时间内连发会合并成一次请求，只回一条。",
+        "default": true
+      },
+      "merge_window_sec": {
+        "type": "int",
+        "description": "私聊合并等待（秒）",
+        "hint": "最后一条后静默该时长才发送；建议 3-8。",
+        "default": 5
+      },
+      "merge_group_window_sec": {
+        "type": "int",
+        "description": "群聊合并等待（秒）",
+        "hint": "群聊单独计时；建议 3-8。",
+        "default": 5
+      },
+      "merge_typing_extend_sec": {
+        "type": "int",
+        "description": "正在输入时的延长（秒）",
+        "hint": "若平台能上报输入状态则延长等待；不支持则忽略。",
+        "default": 10
+      },
+      "merge_max_wait_sec": {
+        "type": "int",
+        "description": "最长合并等待（秒）",
+        "hint": "从第一条起最多等待该时长，到点必发。",
+        "default": 30
+      },
+      "merge_max_chars": {
+        "type": "int",
+        "description": "参与合并的单条上限（字符）",
+        "hint": "超过该长度不合并、直接发送。",
+        "default": 300
+      }
+    }
+  },
   "emotion": {
     "type": "object",
     "description": "高级·情绪",

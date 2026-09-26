@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.0] - 2026-09-26
+
+### Added
+- 连续消息合并：短时间内连发的多条消息会合并成一次请求，只回一条，不再逐条应答。
+  私聊/群聊分别设置合并等待时长，正在输入时可自动延长，超过单条字数上限的消息不
+  参与合并、直接发送；在配置里可整体开关，关闭后维持原有逐条回复行为。
+
+### Changed
+- 版本收敛到 `2.13.0`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.12.1] - 2026-09-24
 
 ### Fixed

@@ -36,6 +36,7 @@ class _FakeEvent:
         sender_id: str = "u1",
         components=None,
         wake: bool = True,
+        platform_id: str = "webchat",
     ):
         self.message_str = text
         self.message_obj = _MessageObj(components, group_id, sender_id)
@@ -45,6 +46,7 @@ class _FakeEvent:
         self._extra: dict = {}
         self._stopped = False
         self._result = None
+        self._platform_id = platform_id
         # 平台层「已发送」标记：AstrBot 对 stopped 事件补发空帧后会置 True。
         self._has_send_oper = False
 
@@ -53,6 +55,9 @@ class _FakeEvent:
 
     def get_sender_id(self):
         return self.message_obj.sender.user_id
+
+    def get_platform_id(self):
+        return self._platform_id
 
     def get_extra(self, key=None, default=None):
         if key is None:
@@ -74,6 +79,9 @@ class _FakeEvent:
     def stop_event(self):
         self._stopped = True
         self._result = "stopped"
+
+    def should_call_llm(self, value: bool):
+        self.call_llm = value
 
     def continue_event(self):
         self._stopped = False
@@ -107,6 +115,15 @@ def _key(event):
     return f"private:{event.message_obj.sender.user_id}"
 
 
+def _would_call_default_llm(event) -> bool:
+    """计数桩：镜像 AstrBot ``process_stage/stage.py`` 的默认 LLM 触发条件。"""
+    return (
+        (not event.call_llm)
+        and (not event._has_send_oper)
+        and (not event.is_stopped())
+    )
+
+
 def test_merge_three_messages_into_one_request(plugin):
     instance = _make_plugin(plugin)
 
@@ -128,6 +145,50 @@ def test_merge_three_messages_into_one_request(plugin):
         assert released.message_obj.message[0].text == "你好\n在吗\n想聊聊"
         assert released.get_extra("_merge_release") is True
         assert not released.is_stopped()
+
+    asyncio.run(scenario())
+
+
+def test_absorbed_messages_suppress_default_llm(plugin):
+    """TMEAAA-605：合并挂起须显式抑制默认 LLM；释放后恢复；只触发 1 次。"""
+    instance = _make_plugin(plugin)
+
+    async def scenario():
+        events = [_FakeEvent("你好"), _FakeEvent("在吗"), _FakeEvent("想聊聊")]
+        for event in events:
+            assert await instance._evt_merge_gate(event) is True
+            # 被吸收的每条都显式抑制默认 LLM 且已挂起。
+            assert event.call_llm is True
+            assert event.is_stopped()
+
+        instance._release_merge_leader(_key(events[0]), "test")
+        released = instance._merge_queue.items[0]
+        assert released is events[0]
+        # 释放后恢复默认 LLM 资格、事件未挂起。
+        assert released.call_llm is False
+        assert not released.is_stopped()
+        # 合并结果只让默认 LLM 触发一次（吸收的 follower 不触发）。
+        assert sum(1 for e in events if _would_call_default_llm(e)) == 1
+
+    asyncio.run(scenario())
+
+
+def test_at_component_still_merged(plugin):
+    """TMEAAA-605：群聊 @bot 每条的 At 段不再阻断合并。"""
+    instance = _make_plugin(plugin)
+
+    async def scenario():
+        from astrbot.api.message_components import At, Plain
+
+        event = _FakeEvent(
+            "你好",
+            umo=GROUP_UMO,
+            group_id="g1",
+            components=[At(qq="bot"), Plain("你好")],
+        )
+        assert await instance._evt_merge_gate(event) is True
+        assert event.is_stopped()
+        assert event.call_llm is True
 
     asyncio.run(scenario())
 
@@ -325,9 +386,11 @@ def test_requeue_failure_leaves_event_resumed(plugin):
     async def scenario():
         event = _FakeEvent("释放失败")
         await instance._evt_merge_gate(event)
+        assert event.call_llm is True  # 挂起时已显式抑制
         instance._release_merge_leader(_key(event), "test")
-        # 释放失败时尽力恢复事件，不静默丢弃。
+        # 释放失败时尽力恢复事件，不静默丢弃：call_llm 必须复位为 False 且未挂起。
         assert not event.is_stopped()
+        assert event.call_llm is False
         assert instance._merge_queue.items == []
 
     asyncio.run(scenario())
@@ -501,5 +564,110 @@ def test_note_typing_disabled_returns_false(plugin):
         await instance._evt_merge_gate(event)
         plugin.config["merge_enabled"] = False
         assert instance._merge_note_typing(session_key=_key(event)) is False
+
+    asyncio.run(scenario())
+
+
+# ----------------------------------------------------------------------
+# 补偿投递：重入队后 webchat respond 阶段丢帧（TMEAAA-608）
+# ----------------------------------------------------------------------
+class _LlmResult:
+    """最小 MessageEventResult 替身：chain + is_llm_result()。"""
+
+    def __init__(self, text: str = "QA608OK"):
+        from astrbot.api.message_components import Plain
+
+        self.chain = [Plain(text)]
+
+    def is_llm_result(self) -> bool:
+        return True
+
+
+def _attach_send_message(instance, result=True, recorder=None):
+    async def _send(umo, chain):
+        if recorder is not None:
+            recorder.append((umo, list(getattr(chain, "chain", []))))
+        return result
+
+    instance.context.send_message = _send
+
+
+def test_requeue_disables_webchat_streaming(plugin):
+    instance = _make_plugin(plugin)
+
+    async def scenario():
+        event = _FakeEvent("连发合并")
+        await instance._evt_merge_gate(event)
+        instance._release_merge_leader(_key(event), "test")
+        released = instance._merge_queue.items[0]
+        assert released.get_extra("enable_streaming") is False
+
+    asyncio.run(scenario())
+
+
+def test_deliver_proactive_on_webchat_clears_result(plugin):
+    instance = _make_plugin(plugin)
+    sent = []
+    _attach_send_message(instance, result=True, recorder=sent)
+
+    async def scenario():
+        event = _FakeEvent("合并回复")
+        event.set_extra("_merge_release", True)
+        result = _LlmResult("QA608OK")
+        event.set_result(result)
+        assert await instance._merge_deliver_decorated_result(event) is True
+        assert event.get_result() is None  # 已抑制 respond 阶段的原投递
+        assert event.get_extra("_merge_proactive_delivered") is True
+        assert len(sent) == 1
+        assert sent[0][0] == event.unified_msg_origin
+        assert sent[0][1][0].text == "QA608OK"
+
+    asyncio.run(scenario())
+
+
+def test_deliver_skips_non_webchat(plugin):
+    instance = _make_plugin(plugin)
+    sent = []
+    _attach_send_message(instance, result=True, recorder=sent)
+
+    async def scenario():
+        event = _FakeEvent("合并回复", platform_id="aiocqhttp")
+        event.set_extra("_merge_release", True)
+        event.set_result(_LlmResult())
+        # 非目标平台：保持原路径（respond event.send），不主动投递、不清结果。
+        assert await instance._merge_deliver_decorated_result(event) is False
+        assert event.get_result() is not None
+        assert sent == []
+
+    asyncio.run(scenario())
+
+
+def test_deliver_skips_without_release_marker(plugin):
+    instance = _make_plugin(plugin)
+    sent = []
+    _attach_send_message(instance, result=True, recorder=sent)
+
+    async def scenario():
+        event = _FakeEvent("普通回复")
+        event.set_result(_LlmResult())
+        assert await instance._merge_deliver_decorated_result(event) is False
+        assert event.get_result() is not None
+        assert sent == []
+
+    asyncio.run(scenario())
+
+
+def test_deliver_keeps_result_when_send_fails(plugin):
+    instance = _make_plugin(plugin)
+    _attach_send_message(instance, result=False)
+
+    async def scenario():
+        event = _FakeEvent("合并回复")
+        event.set_extra("_merge_release", True)
+        event.set_result(_LlmResult())
+        # 主动投递失败 → 不吞结果，回退原路径（fail-safe）。
+        assert await instance._merge_deliver_decorated_result(event) is False
+        assert event.get_result() is not None
+        assert event.get_extra("_merge_proactive_delivered") is None
 
     asyncio.run(scenario())

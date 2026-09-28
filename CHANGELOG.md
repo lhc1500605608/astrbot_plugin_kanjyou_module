@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.1] - 2026-09-28
+
+### Fixed
+- 合并期间不再多答：多条消息合并等待时，被吸收的消息不会再各自触发一次回复，
+  合并结束后只回一条。
+- 群聊 @ 后连发消息也能正常合并，@ 不再打断合并流程。
+- 网页版（WebUI 聊天）合并回复不再丢失：合并后的回复现在能正常送达页面。
+
+### Changed
+- 版本收敛到 `2.13.1`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.13.0] - 2026-09-26
 
 ### Added

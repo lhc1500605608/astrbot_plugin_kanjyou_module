@@ -107,7 +107,13 @@ class _StubResult:
 
 
 class _StubAstrMessageEvent:
-    def __init__(self, message_str: str = "", message_obj=None, umo: str = ""):
+    def __init__(
+        self,
+        message_str: str = "",
+        message_obj=None,
+        umo: str = "",
+        platform_id: str = "webchat",
+    ):
         self.message_str = message_str
         self.message_obj = message_obj
         self.unified_msg_origin = umo
@@ -116,6 +122,10 @@ class _StubAstrMessageEvent:
         self._result = None
         self._extra: dict = {}
         self.sent: list = []
+        self.platform_id = platform_id
+
+    def get_platform_id(self) -> str:
+        return self.platform_id
 
     def get_sender_id(self) -> str:
         sender = getattr(self.message_obj, "sender", None)

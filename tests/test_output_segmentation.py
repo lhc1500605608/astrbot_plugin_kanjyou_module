@@ -98,6 +98,27 @@ def test_hook_sends_explicit_multiline_segments(plugin, plugin_module):
     event = _llm_event(plugin_module, text)
     _run(plugin, plugin._evt_on_decorating_result(event))
     assert [c.chain[0].text for c in event.sent] == ["哦，逗我玩", "那我白担心了", "好耶"]
+
+
+def test_merge_event_segments_deliver_proactively(plugin, plugin_module):
+    """TMEAAA-608：合并重入队事件在 webchat 上分段逐条走主动路径，不走 event.send。"""
+    plugin.config["output_segment_delay_min_ms"] = 0
+    plugin.config["output_segment_delay_max_ms"] = 0
+    sent = []
+
+    async def _send(umo, chain):
+        sent.append((umo, [c.text for c in chain.chain]))
+        return True
+
+    plugin.context.send_message = _send
+    event = _llm_event(plugin_module, MULTI)
+    event.set_extra("_merge_release", True)
+    _run(plugin, plugin._evt_on_decorating_result(event))
+    assert event.sent == []
+    assert [text for _umo, parts in sent for text in parts] == plugin._build_output_segments(
+        MULTI
+    )
+    assert all(umo == event.unified_msg_origin for umo, _parts in sent)
     assert event.get_result() is None
 
 

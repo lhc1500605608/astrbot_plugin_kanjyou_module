@@ -101,32 +101,35 @@ class SegmentationUnitsMixin:
             self._debug(f"segment prepare failed: {exc}")
 
     async def _evt_on_decorating_result(self, event: AstrMessageEvent):
-        """发送前钩子：仅接管纯文本 LLM 结果，逐条自发送并抑制原结果。"""
+        """发送前钩子：仅接管纯文本 LLM 结果，逐条自发送并抑制原结果。
+
+        分段未接管时，交由合并补偿投递处理（重入队的合并事件在 webchat 上
+        respond 阶段会丢帧，须改走主动路径，TMEAAA-608）。
+        """
         await self._maybe_record_assistant_open_topic(event)
+        took_over = False
         original = None
         try:
-            if not self._output_segment_active():
-                return
-            if not self._output_segment_in_scope(event):
-                return
-            if event.get_extra("_kanjyou_output_seg_done"):
-                return
             result = event.get_result()
-            if result is None or not getattr(result, "chain", None):
-                return
-            is_llm = getattr(result, "is_llm_result", None)
-            if not callable(is_llm) or not is_llm():
-                return
-            text = self._plain_chain_text(result.chain)
-            if not text or not text.strip():
-                return
-            parts = self._build_output_segments(text)
-            if len(parts) < 2:
-                return
-            event.set_extra("_kanjyou_output_seg_done", True)
-            original = result
-            event.clear_result()
-            await self._send_output_segments(event, parts, original)
+            if (
+                self._output_segment_active()
+                and self._output_segment_in_scope(event)
+                and not event.get_extra("_kanjyou_output_seg_done")
+                and result is not None
+                and getattr(result, "chain", None)
+            ):
+                is_llm = getattr(result, "is_llm_result", None)
+                if callable(is_llm) and is_llm():
+                    text = self._plain_chain_text(result.chain)
+                    if text and text.strip():
+                        parts = self._build_output_segments(text)
+                        if len(parts) >= 2:
+                            event.set_extra("_kanjyou_output_seg_done", True)
+                            original = result
+                            event.clear_result()
+                            await self._send_output_segments(event, parts, original)
+                            # 分段全部发送失败时会还原结果 → 交回合併投递兜底。
+                            took_over = event.get_result() is None
         except Exception as exc:
             self._debug(f"output segment failed: {exc}")
             if original is not None and event.get_result() is None:
@@ -134,6 +137,9 @@ class SegmentationUnitsMixin:
                     event.set_result(original)
                 except Exception:
                     pass
+            took_over = False
+        if not took_over:
+            await self._merge_deliver_decorated_result(event)
 
     def _plain_chain_text(self, chain) -> str:
         parts: List[str] = []
@@ -222,7 +228,9 @@ class SegmentationUnitsMixin:
         sent = 0
         for index, part in enumerate(parts):
             try:
-                await event.send(event.plain_result(part))
+                result = event.plain_result(part)
+                if not await self._merge_deliver_chain(event, result):
+                    await event.send(result)
                 sent += 1
             except Exception as exc:
                 self._debug(f"send output segment {index} failed: {exc}")
@@ -232,6 +240,12 @@ class SegmentationUnitsMixin:
                 if delay_ms > 0:
                     await asyncio.sleep(delay_ms / 1000.0)
         if sent == 0:
+            # 全部分段都没送出：撤销「已接管」标记并把结果还原，
+            # 让合并补偿投递有机会走主动路径（TMEAAA-608）。
+            try:
+                event.set_extra("_kanjyou_output_seg_done", False)
+            except Exception:
+                pass
             try:
                 event.set_result(original)
             except Exception:

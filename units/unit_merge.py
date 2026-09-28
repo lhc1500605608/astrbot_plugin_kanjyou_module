@@ -14,19 +14,27 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict
 
-from astrbot.api.event import AstrMessageEvent
-from astrbot.api.message_components import At, File, Image, Plain, Record, Reply, Video
+from astrbot.api.event import AstrMessageEvent, MessageChain
+from astrbot.api.message_components import File, Image, Plain, Record, Reply, Video
 
 try:
     from ..config import DEFAULT_CONFIG_FLAT
 except ImportError:
     from config import DEFAULT_CONFIG_FLAT
 
-# 含这些消息段的消息不参与合并（各自单独走）。
-_NON_MERGE_COMPONENT_TYPES = (At, Image, File, Record, Video, Reply)
+# 含这些消息段的消息不参与合并（各自单独走）。文本段（含 @ 本身在 message_str
+# 里的占位）可安全合并；仅非文本段因重入队改写为纯 Plain 会丢内容而排除。
+_NON_MERGE_COMPONENT_TYPES = (Image, File, Record, Video, Reply)
 
 # 释放标记：重入队的事件带此 extra，合并门必须跳过（避免二次吸收）。
 _MERGE_RELEASE_EXTRA = "_merge_release"
+
+# 主动投递标记：重入队结果已由 context.send_message 送出，避免重复投递。
+_MERGE_DELIVERED_EXTRA = "_merge_proactive_delivered"
+
+# 需要补偿投递的平台：这些平台的请求结束后 back queue 会被移除，respond 阶段
+# 的 event.send/send_streaming 会静默丢帧（TMEAAA-608）。
+_MERGE_DELIVER_PLATFORMS = ("webchat",)
 
 # 打字信号 extra 约定（优先复用）；AstrBot 4.28.1 无入站打字事件，无信号即降级。
 _MERGE_TYPING_EXTRA = "user_typing"
@@ -193,6 +201,130 @@ class MergeUnitsMixin:
         return ""
 
     # ------------------------------------------------------------------
+    # 默认 LLM 抑制开关
+    # ------------------------------------------------------------------
+    def _merge_set_call_llm(self, event: AstrMessageEvent, value: bool) -> None:
+        """显式设置事件是否触发默认 LLM（兼容 property/method 两种 API）。
+
+        AstrBot 4.28.1 ``process_stage/stage.py`` 判定 ``not event.call_llm`` 才走
+        默认 LLM，故 ``True`` = 跳过默认 LLM（挂起/吸收），``False`` = 恢复。显式
+        设置而非依赖「stopped result」副作用。任何异常一律忽略（fail-safe）。
+        """
+        set_call = getattr(event, "should_call_llm", None)
+        if callable(set_call):
+            try:
+                set_call(value)
+            except Exception:
+                pass
+        try:
+            if hasattr(event, "call_llm"):
+                event.call_llm = value
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # 补偿投递：重入队后 respond 阶段在 webchat 上会丢帧
+    # ------------------------------------------------------------------
+    def _merge_platform_id(self, event: AstrMessageEvent) -> str:
+        """取平台 id（兼容 get_platform_id / get_platform_name / 缺失）。"""
+        for name in ("get_platform_id", "get_platform_name"):
+            getter = getattr(event, name, None)
+            if not callable(getter):
+                continue
+            try:
+                value = getter()
+            except Exception:
+                continue
+            if value:
+                return str(value)
+        return ""
+
+    def _merge_needs_proactive_delivery(self, event: AstrMessageEvent) -> bool:
+        """重入队的合并事件在该平台上必须改走主动路径（否则静默丢帧）。"""
+        if not self._merge_is_release(event):
+            return False
+        return self._merge_platform_id(event) in _MERGE_DELIVER_PLATFORMS
+
+    def _merge_is_release(self, event: AstrMessageEvent) -> bool:
+        try:
+            return bool(event.get_extra(_MERGE_RELEASE_EXTRA))
+        except Exception:
+            return False
+
+    def _merge_build_chain(self, source: Any) -> MessageChain:
+        """由结果/链对象构造 MessageChain（兼容不同构造签名）。"""
+        components = list(getattr(source, "chain", None) or [])
+        try:
+            return MessageChain(chain=components)
+        except Exception:
+            chain = MessageChain()
+            try:
+                chain.chain = components
+            except Exception:
+                pass
+            return chain
+
+    async def _merge_deliver_chain(
+        self, event: AstrMessageEvent, source: Any
+    ) -> bool:
+        """重入队事件在 webchat 上改用 ``context.send_message`` 主动投递。
+
+        webchat 请求结束后其 back queue 已被 Live Chat 服务移除，respond 阶段的
+        ``event.send``/``send_streaming`` 会静默丢帧；主动路径会广播会话订阅并落库。
+        返回 True 表示已由主动路径处理（调用方不应再 event.send）；非合并 / 非目标
+        平台 / 无 umo / 投递失败 → False，调用方回退原路径（fail-safe，绝不吞消息）。
+        """
+        if not self._merge_needs_proactive_delivery(event):
+            return False
+        umo = str(getattr(event, "unified_msg_origin", "") or "").strip()
+        if not umo:
+            return False
+        sender = getattr(self.context, "send_message", None)
+        if not callable(sender):
+            return False
+        try:
+            delivered = await sender(umo, self._merge_build_chain(source))
+        except Exception as exc:
+            self._debug(f"merge proactive deliver failed: {exc}")
+            return False
+        return bool(delivered)
+
+    async def _merge_deliver_decorated_result(self, event: AstrMessageEvent) -> bool:
+        """发送前钩子：重入队合并结果在 webchat 上改走主动路径并抑制原结果。
+
+        仅在结果仍未被分段逻辑接管时调用；成功投递后清空结果，避免 respond 阶段
+        再走一次注定丢失的 ``event.send``。失败一律返回 False（保留结果，走原路径）。
+        """
+        try:
+            if event.get_extra(_MERGE_DELIVERED_EXTRA):
+                return False
+            if event.get_extra("_kanjyou_output_seg_done"):
+                # 分段逻辑已接管并投递过本事件，避免重复投递。
+                return False
+            result = event.get_result()
+            if result is None or not getattr(result, "chain", None):
+                return False
+            is_llm = getattr(result, "is_llm_result", None)
+            if callable(is_llm) and not is_llm():
+                return False
+            if not await self._merge_deliver_chain(event, result):
+                return False
+            event.set_extra(_MERGE_DELIVERED_EXTRA, True)
+            event.clear_result()
+            try:
+                await self._evt_after_message_sent(event)
+            except Exception:
+                pass
+            self._debug(
+                f"merge proactive deliver session={self._session_key(event) or '-'} "
+                f"comps={len(result.chain)}"
+            )
+            return True
+        except Exception as exc:
+            self._debug(f"merge proactive deliver hook failed: {exc}")
+            return False
+
+    # ------------------------------------------------------------------
     # 合并门：返回 True 表示本条消息已被消费（调用方应直接 return）
     # ------------------------------------------------------------------
     async def _evt_merge_gate(self, event: AstrMessageEvent) -> bool:
@@ -249,6 +381,7 @@ class MergeUnitsMixin:
                 self._merge_note_typing(session_key=session_key)
             else:
                 self._schedule_merge_flush(session_key)
+            self._merge_set_call_llm(event, True)
             event.stop_event()
             self._debug(
                 f"merge absorb session={session_key} parts={len(parts)} "
@@ -270,6 +403,7 @@ class MergeUnitsMixin:
             self._merge_note_typing(session_key=session_key)
         else:
             self._schedule_merge_flush(session_key)
+        self._merge_set_call_llm(event, True)
         event.stop_event()
         self._debug(f"merge leader session={session_key} text={text}")
         return True
@@ -360,6 +494,8 @@ class MergeUnitsMixin:
             try:
                 event.continue_event()
                 event.clear_result()
+                self._merge_reset_send_flags(event)
+                self._merge_set_call_llm(event, False)
             except Exception:
                 pass
             return False
@@ -384,6 +520,15 @@ class MergeUnitsMixin:
         event.continue_event()
         event.clear_result()
         self._merge_reset_send_flags(event)
+        # 恢复默认 LLM 资格：挂起时显式置 True，重入队必须复位否则消息被吞。
+        self._merge_set_call_llm(event, False)
+        if self._merge_platform_id(event) in _MERGE_DELIVER_PLATFORMS:
+            # 延迟合并回复不再流式：webchat 重入队后流式帧同样会丢，且流式结果
+            # 不触发 on_decorating_result，无法改走主动路径（TMEAAA-608）。
+            try:
+                event.set_extra("enable_streaming", False)
+            except Exception:
+                pass
         try:
             event.message_str = merged
         except Exception:

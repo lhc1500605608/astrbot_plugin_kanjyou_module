@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.2] - 2026-09-30
+
+### Fixed
+- QQ 引用回复后连发消息也能正常合并：在 QQ 里「引用机器人再补一句」时，两条会
+  合并成一次请求、只回一条，不再逐条应答。
+- 开启调试日志后可以看到消息为什么没有参与合并（没有文字 / 指令消息 / 文字太长 /
+  没有唤醒机器人 / 含图片或文件），同一原因做了限流避免刷屏。
+
+### Changed
+- 版本收敛到 `2.13.2`（`metadata.yaml` / `config.py` / `tests/test_version_convergence.py` / `README.md`）。
+
 ## [2.13.1] - 2026-09-28
 
 ### Fixed

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "2.13.1"
+EXPECTED_VERSION = "2.13.2"
 
 
 def _load_config():

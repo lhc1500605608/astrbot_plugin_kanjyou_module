@@ -671,3 +671,146 @@ def test_deliver_keeps_result_when_send_fails(plugin):
         assert event.get_extra("_merge_proactive_delivered") is None
 
     asyncio.run(scenario())
+
+
+# ----------------------------------------------------------------------
+# 引用回复不再阻断合并（TMEAAA-614）
+# ----------------------------------------------------------------------
+QQ_PRIVATE_UMO = "aiocqhttp:FriendMessage:10001"
+
+
+def test_reply_component_still_merged(plugin):
+    """QQ 私聊里「引用机器人再说话」的两条连续消息应合并成一条回复。"""
+    instance = _make_plugin(plugin)
+
+    async def scenario():
+        from astrbot.api.message_components import Plain, Reply
+
+        first = _FakeEvent(
+            "你刚说的那个",
+            umo=QQ_PRIVATE_UMO,
+            platform_id="aiocqhttp",
+            components=[Reply(id="1234"), Plain("你刚说的那个")],
+        )
+        second = _FakeEvent(
+            "我不太明白",
+            umo=QQ_PRIVATE_UMO,
+            platform_id="aiocqhttp",
+            components=[Reply(id="1234"), Plain("我不太明白")],
+        )
+        assert await instance._evt_merge_gate(first) is True
+        assert await instance._evt_merge_gate(second) is True
+        assert first.is_stopped() and second.is_stopped()
+
+        instance._release_merge_leader(_key(first), "test")
+        assert len(instance._merge_queue.items) == 1
+        released = instance._merge_queue.items[0]
+        assert released is first
+        assert released.message_str == "你刚说的那个\n我不太明白"
+        # 合并后重写为纯文本，合并结果只触发一次默认 LLM。
+        assert len(released.message_obj.message) == 1
+        assert sum(1 for e in (first, second) if _would_call_default_llm(e)) == 1
+
+    asyncio.run(scenario())
+
+
+def test_reply_component_never_blocks_merge(plugin):
+    """带引用段的消息本身可合并（``_merge_has_blocking_component`` 不认它）。"""
+    instance = _make_plugin(plugin)
+
+    from astrbot.api.message_components import Plain, Reply
+
+    event = _FakeEvent("引用一下", components=[Reply(id="9"), Plain("引用一下")])
+    assert instance._merge_has_blocking_component(event) is False
+    assert instance._merge_skip_reason(event, "引用一下") == ""
+
+
+def test_media_components_still_block_merge(plugin):
+    """图片/文件/语音/视频改写为纯文本会真丢内容，必须继续各自单独走。"""
+    instance = _make_plugin(plugin)
+
+    from astrbot.api import message_components as mc
+
+    factories = {
+        "Image": lambda: mc.Image(file="a.png"),
+        "File": lambda: mc.File(file="a.pdf", name="a.pdf"),
+        "Record": lambda: mc.Record(file="a.wav"),
+        "Video": lambda: mc.Video(file="a.mp4"),
+    }
+    for name, factory in factories.items():
+        event = _FakeEvent("带附件", components=[factory()])
+        assert instance._merge_has_blocking_component(event) is True, name
+        assert instance._merge_skip_reason(event, "带附件") == "has_media", name
+
+
+def test_media_message_not_held_by_gate(plugin):
+    """端到端：含媒体段的消息不挂起、不进合并队列。"""
+    instance = _make_plugin(plugin)
+
+    async def scenario():
+        from astrbot.api.message_components import Image, Plain
+
+        event = _FakeEvent(
+            "看这张图", components=[Image(file="a.png"), Plain("看这张图")]
+        )
+        assert await instance._evt_merge_gate(event) is False
+        assert not event.is_stopped()
+        assert instance._merge_queue.items == []
+
+    asyncio.run(scenario())
+
+
+def test_skip_reason_codes(plugin):
+    """每条不合并路径都有可观测的原因码；正常消息返回空串。"""
+    instance = _make_plugin(plugin)
+    plugin.config["merge_max_chars"] = 5
+
+    cases = {
+        "empty": _FakeEvent("   "),
+        "command": _FakeEvent("/idle_status"),
+        "too_long": _FakeEvent("这是一条很长很长的消息"),
+        "not_wake": _FakeEvent("群内闲聊", umo=GROUP_UMO, group_id="g1", wake=False),
+    }
+    for expected, event in cases.items():
+        assert instance._merge_skip_reason(event, event.message_str) == expected
+
+    from astrbot.api.message_components import Image
+
+    media = _FakeEvent("带图", components=[Image(file="a.png")])
+    assert instance._merge_skip_reason(media, media.message_str) == "has_media"
+
+    plain = _FakeEvent("普通消息")
+    assert instance._merge_skip_reason(plain, "普通消息") == ""
+    assert instance._merge_is_mergeable(plain, "普通消息") is True
+
+
+def test_skip_reason_logged_in_plain_chinese(plugin):
+    """跳过原因以用户可读中文写进调试日志，且按原因限流。"""
+    instance = _make_plugin(plugin)
+    logged: list[tuple[str, str]] = []
+    instance._debug_throttled = lambda key, msg: logged.append((key, msg))
+
+    async def scenario():
+        assert await instance._evt_merge_gate(_FakeEvent("/idle_status")) is False
+
+    asyncio.run(scenario())
+
+    assert len(logged) == 1
+    key, msg = logged[0]
+    assert key == "merge_skip:command"
+    # 面向用户可见的日志：不得出现内部术语。
+    for term in ("Phase", "TMEAAA", "_merge", "unit_merge", "leader", "schema"):
+        assert term not in msg, term
+    assert "指令消息" in msg
+
+
+def test_skip_reason_check_failure_is_fail_closed(plugin):
+    """原因判定自身异常 → 视为可合并，绝不吞消息。"""
+    instance = _make_plugin(plugin)
+
+    def _boom(_text):
+        raise RuntimeError("boom")
+
+    instance._merge_max_chars = _boom
+    assert instance._merge_skip_reason(_FakeEvent("普通消息"), "普通消息") == ""
+    assert instance._merge_is_mergeable(_FakeEvent("普通消息"), "普通消息") is True

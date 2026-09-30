@@ -15,7 +15,7 @@ import asyncio
 from typing import Any, Dict
 
 from astrbot.api.event import AstrMessageEvent, MessageChain
-from astrbot.api.message_components import File, Image, Plain, Record, Reply, Video
+from astrbot.api.message_components import File, Image, Plain, Record, Video
 
 try:
     from ..config import DEFAULT_CONFIG_FLAT
@@ -23,8 +23,18 @@ except ImportError:
     from config import DEFAULT_CONFIG_FLAT
 
 # 含这些消息段的消息不参与合并（各自单独走）。文本段（含 @ 本身在 message_str
-# 里的占位）可安全合并；仅非文本段因重入队改写为纯 Plain 会丢内容而排除。
-_NON_MERGE_COMPONENT_TYPES = (Image, File, Record, Video, Reply)
+# 里的占位）以及「引用回复」标记可安全合并：重入队改写为纯 Plain 只会丢掉引用
+# 指向，不会丢用户实际说的话。仅图片/文件/语音/视频因改写后会真丢内容而排除。
+_NON_MERGE_COMPONENT_TYPES = (Image, File, Record, Video)
+
+# 不参与合并的原因 → 用户可读的说明（仅出现在调试日志里，不进配置页）。
+_MERGE_SKIP_REASONS = {
+    "empty": "没有文字内容",
+    "command": "指令消息",
+    "too_long": "文字太长",
+    "not_wake": "没有唤醒机器人",
+    "has_media": "含图片或文件",
+}
 
 # 释放标记：重入队的事件带此 extra，合并门必须跳过（避免二次吸收）。
 _MERGE_RELEASE_EXTRA = "_merge_release"
@@ -350,7 +360,14 @@ class MergeUnitsMixin:
         state = self._merge_state()
 
         text = self._extract_event_text(event)
-        if not self._merge_is_mergeable(event, text):
+        skip_reason = self._merge_skip_reason(event, text)
+        if skip_reason:
+            # 限流：群里每条闲聊都会走这里，按原因去重避免刷屏。
+            self._debug_throttled(
+                f"merge_skip:{skip_reason}",
+                f"merge skip session={session_key} "
+                f"reason={_MERGE_SKIP_REASONS.get(skip_reason, skip_reason)}",
+            )
             # 不合并：若当前有挂起 leader，先立即释放，再让本条正常走（保序）。
             if session_key in state:
                 self._release_merge_leader(session_key, "exempt")
@@ -409,17 +426,32 @@ class MergeUnitsMixin:
         return True
 
     def _merge_is_mergeable(self, event: AstrMessageEvent, text: str) -> bool:
-        t = (text or "").strip()
-        if not t:
-            return False
-        if self._is_command_like_text(t) or self._is_plugin_command_text(t):
-            return False
-        if len(t) > self._merge_max_chars():
-            return False
-        if not getattr(event, "is_at_or_wake_command", False):
-            # 群内未 @/未唤醒：本就不回，绝不挂起。
-            return False
-        return not self._merge_has_blocking_component(event)
+        return not self._merge_skip_reason(event, text)
+
+    def _merge_skip_reason(self, event: AstrMessageEvent, text: str) -> str:
+        """返回本条消息不参与合并的原因码；可合并时返回空串。
+
+        原因码仅用于调试日志定位（映射为中文说明），不参与任何门控逻辑以外
+        的判断，fail-safe：任何异常一律按「可合并」处理，由调用方的 fail-closed
+        兜底保证不吞消息。
+        """
+        try:
+            t = (text or "").strip()
+            if not t:
+                return "empty"
+            if self._is_command_like_text(t) or self._is_plugin_command_text(t):
+                return "command"
+            if len(t) > self._merge_max_chars():
+                return "too_long"
+            if not getattr(event, "is_at_or_wake_command", False):
+                # 群内未 @/未唤醒：本就不回，绝不挂起。
+                return "not_wake"
+            if self._merge_has_blocking_component(event):
+                return "has_media"
+            return ""
+        except Exception as exc:
+            self._debug(f"merge skip check failed err={exc}")
+            return ""
 
     def _merge_has_blocking_component(self, event: AstrMessageEvent) -> bool:
         messages = None

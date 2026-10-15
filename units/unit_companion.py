@@ -1031,7 +1031,10 @@ class CompanionContextUnitsMixin:
         return _clean_text(self.config.get("persona_id")) or None
 
     async def _fetch_companion_context(
-        self, umo: str, persona_id: Optional[str] = None
+        self,
+        umo: str,
+        persona_id: Optional[str] = None,
+        timeout_sec: Optional[float] = None,
     ) -> Dict:
         """可用则返回清洗后的上下文，否则 ``{}``（不注入）。"""
         if not self._companion_enabled():
@@ -1042,9 +1045,14 @@ class CompanionContextUnitsMixin:
             self._debug("companion adapter init failed")
             return {}
         try:
+            timeout = self._companion_timeout_sec()
+            if timeout_sec is not None:
+                timeout = min(timeout, max(0.0, float(timeout_sec)))
+            if timeout <= 0:
+                return {}
             ctx = await asyncio.wait_for(
                 adapter.fetch_context(umo, persona_id=persona_id),
-                timeout=self._companion_timeout_sec(),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             self._debug(f"companion context timeout umo={umo}")
@@ -1682,6 +1690,11 @@ class CompanionContextUnitsMixin:
                 attempts = session.get("proactive_attempt_pending")
                 if isinstance(attempts, dict):
                     attempts.pop(event_id, None)
+                self._refresh_last_attempt_receipt_status(
+                    session, event_id, "acknowledged"
+                )
+            elif result.get("retryable") is False:
+                self._refresh_last_attempt_receipt_status(session, event_id, "rejected")
         if not pending:
             session.pop("companion_attempt_receipt_pending", None)
         self._save_state()

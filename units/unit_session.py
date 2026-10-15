@@ -27,6 +27,21 @@ try:
 except ImportError:
     from persona_presets import resolve_preset
 
+try:
+    from .state_storage import (
+        load_json_state,
+        read_json,
+        save_json_state,
+        write_json_atomic,
+    )
+except ImportError:
+    from state_storage import (
+        load_json_state,
+        read_json,
+        save_json_state,
+        write_json_atomic,
+    )
+
 _GLOBAL_DEBUG_THROTTLE: dict[str, float] = {}
 _DEFAULT_DEBUG_WINDOWS = {
     "decision": 600,
@@ -1268,12 +1283,25 @@ class SessionConfigUnitsMixin:
                 )
 
     def _load_state(self) -> Dict[str, Dict]:
+        backup_path = self._state_path.with_name(self._state_path.name + ".bak")
+        # Set before a successful read.  This prevents a later save from
+        # replacing a malformed primary with an invented empty state.
+        self._state_storage_blocked = True
         try:
-            data = self._read_json(self._state_path) if self._state_path.exists() else {}
-            migrated, quarantined = self._migrate_session_state(data if isinstance(data, dict) else {})
+            data, retained = load_json_state(self._state_path, backup_path)
+            if retained is not None:
+                self._log_error(
+                    "state_recovered_from_backup",
+                    f"primary retained={retained.name}",
+                )
+            migrated, quarantined = self._migrate_session_state(data)
             self._migrate_legacy_whitelists(migrated)
             if quarantined:
                 self._log_error("state_quarantined", f"unresolved sessions retained={quarantined}")
+            # A successfully parsed file is not safe to overwrite until every
+            # migration step has completed. On any failure the empty fallback
+            # below must remain read-only.
+            self._state_storage_blocked = False
             return migrated
         except Exception as exc:
             self._log_error("state_load_failed", f"load state failed err_type={type(exc).__name__}")
@@ -1377,15 +1405,21 @@ class SessionConfigUnitsMixin:
             self._log_error("whitelist_unresolved", f"unbound entries require explicit platform={unresolved}")
 
     def _save_state(self):
-        self._write_json(self._state_path, self._sessions)
+        # A malformed state must remain on disk for manual recovery.  Do not
+        # replace it with the in-memory empty state after a failed load.
+        if getattr(self, "_state_storage_blocked", False):
+            self._log_error(
+                "state_save_blocked",
+                "state file remains malformed; refusing to overwrite it",
+            )
+            return
+        save_json_state(self._state_path, self._sessions)
 
     def _read_json(self, path: Path):
-        with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+        return read_json(path)
 
     def _write_json(self, path: Path, data):
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        write_json_atomic(path, data)
 
     def _debug_enabled(self) -> bool:
         return self._to_bool(

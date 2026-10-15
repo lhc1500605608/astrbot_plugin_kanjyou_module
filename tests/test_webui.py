@@ -219,7 +219,10 @@ def test_test_route_rejects_unknown_and_hides_text(plugin, webui, monkeypatch):
     monkeypatch.setattr(webui, "request", _Req({}))
     resp = asyncio.run(plugin._web_api_test())
     assert resp["status"] == "ok"
-    assert resp["data"] == {"triggered": True, "session_id": "private:webchat:FriendMessage:10001"}
+    assert resp["data"]["triggered"] is True
+    assert resp["data"]["session_id"] == "private:webchat:FriendMessage:10001"
+    assert resp["data"]["attempt"]["generation_status"] == "unknown"
+    assert "SECRET_OUTPUT" not in str(resp)
     assert "SECRET_OUTPUT" not in json.dumps(resp, ensure_ascii=False)
 
 

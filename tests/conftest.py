@@ -11,7 +11,9 @@ import importlib.util
 import logging
 import sys
 import types
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -352,4 +354,7 @@ def plugin(plugin_module, tmp_path):
         context=plugin_module.Context(), config={}
     )
     instance._state_path = tmp_path / "idle_state.json"
+    # Delivery tests must not depend on the machine entering night quiet hours.
+    # Tests for time gates override this clock explicitly.
+    instance._now = lambda: datetime(2026, 10, 15, 12, 0, tzinfo=ZoneInfo(instance.config["timezone"]))
     return instance

@@ -1,0 +1,14 @@
+'use strict';
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../pages/common/panel.html'), 'utf8');
+const scope = { L: (zh) => zh };
+vm.createContext(scope);
+vm.runInContext(source.slice(source.indexOf('const attemptSummary ='), source.indexOf('const doTest =')) + 'this.summary = attemptSummary;', scope);
+assert.match(scope.summary({generation_status:'fallback',generation_reason:'provider_missing',delivery_status:'sent',receipt_status:'pending',reason_code:'ok'}), /备用文案.*平台发送调用成功.*等待核心补报/);
+assert.match(scope.summary({generation_status:'not_started',delivery_status:'not_attempted',reason_code:'busy'}), /未生成.*未执行.*busy/);
+assert.match(scope.summary(undefined), /未提供诊断/);
+assert.doesNotMatch(scope.summary({generation_status:'PRIVATE_BODY',body:'PRIVATE_BODY'}), /PRIVATE_BODY/);
+assert.doesNotMatch(source.match(/if \(e === "test"\)[^\n]+/)[0], /today_count\+\+/);
+console.log('Diagnostic panel regressions passed (5 cases)');

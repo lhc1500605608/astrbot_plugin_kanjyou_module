@@ -180,7 +180,7 @@ dialog::backdrop{background:rgba(24,22,20,.4)}
       <div><b>WarmWhisper</b><small>暖语 · 主动陪伴</small></div>
     </div>
     <nav class="nav" id="ww-nav"></nav>
-    <div class="side-foot"><span class="ver">v2.13.3</span><button class="iconbtn" id="ww-collapse" aria-label="折叠侧栏" title="折叠侧栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
+    <div class="side-foot"><span class="ver">v2.13.5</span><button class="iconbtn" id="ww-collapse" aria-label="折叠侧栏" title="折叠侧栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
   </aside>
   <main class="main" id="ww-main">
     <header class="top">
@@ -794,7 +794,7 @@ function demoApi() {
       await wait(450);
       if (e === "toggle") { if (typeof b.enabled !== "boolean") return er("enabled must be boolean"); db.global.enabled = b.enabled; return ok({ enabled: b.enabled }); }
       if (e === "mood") { const s = db.sessions.find((x) => x.session_id === b.session_id); if (!s) return er("session not found"); if (!(b.value >= 0 && b.value <= 100)) return er("value out of range"); s.mood = b.value; return ok({ session_id: s.session_id, mood: s.mood }); }
-      if (e === "test") { const s = db.sessions.find((x) => x.session_id === b.session_id); if (!s) return er("session not found"); s.today_count++; db.recent.unshift({ ...mk(0, now()), session_id: s.session_id, reason_codes: ["manual"], outcome: "triggered" }); return ok({ triggered: true, session_id: s.session_id }); }
+      if (e === "test") { const s = db.sessions.find((x) => x.session_id === b.session_id); if (!s) return er("session not found"); db.recent.unshift({ ...mk(0, now()), session_id: s.session_id, reason_codes: ["manual"], outcome: "triggered" }); return ok({ triggered: true, session_id: s.session_id, attempt: { generation_status: "generated", generation_reason: "ok", delivery_status: "sent", receipt_status: "disabled", reason_code: "ok" } }); }
       if (e === "sleep") { if (!hhmm.test(b.start || "") || !hhmm.test(b.end || "")) return er("invalid HH:MM"); db.settings.sleep_start = b.start; db.settings.sleep_end = b.end; return ok({ start: b.start, end: b.end }); }
       if (e === "reload") return ok({ reloaded: true });
       if (e === "whitelist") {
@@ -824,7 +824,7 @@ const S = {
   section: SECTIONS.includes(qs.get("section")) ? qs.get("section") : PAGE_MAP[document.documentElement.dataset.page] || "overview",
   data: null, loading: true, loadError: null, conn: "connecting",
   q: "", type: "all", wlKind: "all", logQ: "", logOutcome: "all", drawer: null, busy: {}, sleepSaved: null, sleepDirty: false, sleepTimezone: "",
-  wlForm: { kind: "private", platform: "", id: "" }, wlErr: {}, sleepForm: { start: "", end: "" }, sleepErr: {}, testSid: "",
+  wlForm: { kind: "private", platform: "", id: "" }, wlErr: {}, sleepForm: { start: "", end: "" }, sleepErr: {}, testSid: "", lastTest: null,
 };
 let sse = null;
 const timers = new Set();
@@ -971,7 +971,7 @@ const viewSettings = () => {
   </form></div>
   <div class="card"><div class="card-h"><h2>${L("手动测试", "Manual test")}</h2><span class="badge bad">${L("发送真实消息", "Sends a real message")}</span></div>
   <div class="card-b"><div class="field"><label for="ww-testsid">${L("选择已有会话", "Choose an existing session")}</label><select class="input" id="ww-testsid"><option value="">${L("— 请选择 —", "— Select —")}</option>${ss.map((s) => `<option value="${esc(s.session_id)}" ${S.testSid === s.session_id ? "selected" : ""}>${esc(parseSid(s.session_id).name)} · ${esc(parseSid(s.session_id).platform)}</option>`).join("")}</select></div>
-  <div class="row" style="margin-top:12px"><button class="btn primary" id="ww-testbtn" ${dis(!S.testSid || S.busy.test)}>${S.busy.test ? L("发送中…", "Sending…") : t("test_send")}</button><span class="note">${L("会弹出二次确认，不会自动执行。", "Requires confirmation; never runs automatically.")}</span></div></div></div>
+  <div class="row" style="margin-top:12px"><button class="btn primary" id="ww-testbtn" ${dis(!S.testSid || S.busy.test)}>${S.busy.test ? L("发送中…", "Sending…") : t("test_send")}</button><span class="note">${L("会弹出二次确认，不会自动执行。", "Requires confirmation; never runs automatically.")}</span></div>${S.lastTest ? `<p class="note" role="status">${esc(S.lastTest.sid)}<br>${esc(attemptSummary(S.lastTest.attempt))}</p>` : ""}</div></div>
   <div class="card"><div class="card-h"><h2>${L("启用范围", "Enable scope")}</h2></div><div class="card-b help">${L("主动消息仅会发往<b>白名单</b>中同时匹配平台实例与原生 ID 的会话。主动轮询开关位于概览页；关闭只停止主动轮询，消息合并与被动处理照常运行。", "Proactive messages only go to sessions on the <b>whitelist</b> matching both platform instance and native ID. The proactive polling switch is on Overview; turning it off only stops polling — merging and passive handling continue.")}</div></div>
   <div class="card"><div class="card-h"><h2>${L("消息合并", "Message merging")}</h2></div><div class="card-b help">${L("此页面不提供合并开关。如需启用或关闭，请在 AstrBot → 插件 → WarmWhisper 配置中修改 <code>merge_enabled</code>，然后在下方执行重载。", "No merge switch here. Change <code>merge_enabled</code> in AstrBot → Plugins → WarmWhisper config, then reload below.")}</div></div>
   <div class="card" style="grid-column:1/-1"><div class="toggle-row"><div><div class="name">${L("重载配置与状态", "Reload config & state")}</div><div class="note">${L("将从磁盘重新读取已持久化的配置与运行状态，未持久化的内存变更可能被覆盖。", "Re-reads persisted config and state from disk; unpersisted in-memory changes may be overwritten.")}</div></div><button class="btn" id="ww-reload" ${dis(S.busy.reload)}>${S.busy.reload ? L("重载中…", "Reloading…") : L("重载", "Reload")}</button></div></div>
@@ -1005,6 +1005,7 @@ const renderDrawer = () => {
       <div class="row"><input type="range" id="ww-mood-r" min="0" max="100" step="1" value="${esc(m)}" style="flex:1" aria-describedby="ww-mood-e"><input class="input num" id="ww-mood-n" type="number" min="0" max="100" step="1" value="${esc(m)}" style="width:76px" aria-label="${t("mood_edit")}" aria-invalid="${!!S.drawer.err}"></div>
       <span class="err-t" id="ww-mood-e">${esc(S.drawer.err || "")}</span></div>
       <button class="btn primary" type="submit" ${dis(S.busy.mood)}>${S.busy.mood ? t("saving") : t("save")}</button></form>
+    <div class="card" style="padding:16px;box-shadow:none"><div class="name">${L("最近一次主动尝试", "Latest proactive attempt")}</div><p class="note">${esc(attemptSummary(S.lastTest?.sid === s.session_id ? S.lastTest.attempt : s.last_attempt))}</p></div>
     <div class="card" style="padding:16px;box-shadow:none"><div class="name">${t("test_send")}</div><p class="note">${L("立即向该会话发送一条真实的主动消息。", "Immediately sends a real proactive message to this session.")}</p><button class="btn" id="ww-dtest" ${dis(S.busy.test)}>${S.busy.test ? L("发送中…", "Sending…") : t("test_send")}</button></div>
   </div>`;
   if (!dr.classList.contains("on")) { dr.classList.add("on"); sc.classList.add("on"); dr.setAttribute("aria-hidden", "false"); setTimeout(() => { const c = $("#ww-dclose"); c && c.focus(); }, 50); }
@@ -1090,13 +1091,24 @@ const doToggle = async () => {
   if (r.ok && r.data && typeof r.data.enabled === "boolean") { S.data.global.enabled = r.data.enabled; announce(next ? L("主动消息已开启", "Proactive enabled") : L("主动消息已关闭", "Proactive disabled")); } else announce(L("切换失败：", "Toggle failed: ") + (r.message || L("响应格式无效", "Invalid response")), true);
   render();
 };
+const attemptSummary = (a) => {
+  if (!a || typeof a !== "object") return L("旧版后端未提供诊断", "Diagnostics unavailable on this backend");
+  const labels = { generated: L("正常生成", "Generated"), fallback: L("备用文案", "Fallback"), sent: L("平台发送调用成功", "Platform send succeeded"), failed: L("失败", "Failed"), unknown: L("结果未知", "Unknown"), not_started: L("未生成", "Not generated"), not_attempted: L("未执行", "Not attempted"), timeout: L("超时", "Timeout"), cancelled: L("已取消", "Cancelled"), acknowledged: L("核心已确认", "Core acknowledged"), pending: L("等待核心补报", "Receipt pending"), disabled: L("核心未启用", "Core disabled"), rejected: L("核心拒绝", "Core rejected") };
+  const label = (value) => labels[value] || L("未知", "Unknown");
+  return `${label(a.generation_status)} · ${label(a.delivery_status)} · ${label(a.receipt_status)} (${String(a.generation_reason || "unknown")} / ${String(a.reason_code || "unknown")})`;
+};
 const doTest = async (sid) => {
   if (S.busy.test) return;
+  S.lastTest = null;
   const p = parseSid(sid);
   if (!(await confirmDlg(L("发送测试消息？", "Send test message?"), `${esc(t("test_warn"))}<br><span class="mini">${esc(sid)}</span>`, L("确认发送", "Send"), true))) return;
   setBusy("test", true); const r = await request("post", "test", { session_id: sid }); S.busy.test = false;
-  if (r.ok && r.data && r.data.triggered === true) announce(L(`已向 ${p.name} 发送测试消息`, `Test sent to ${p.name}`));
-  else if (r.ok) announce(L("服务端未触发发送（triggered=false）", "Server did not trigger (triggered=false)"), true);
+  if (r.ok && r.data) {
+    S.lastTest = { sid, attempt: r.data.attempt };
+    const detail = attemptSummary(r.data.attempt);
+    if (r.data.triggered === true) announce(L(`已向 ${p.name} 发起发送：`, `Send to ${p.name}: `) + detail, r.data.attempt?.generation_status === "fallback");
+    else announce(L("未完成发送：", "Send not completed: ") + detail, true);
+  }
   else announce(L("测试失败：", "Test failed: ") + r.message, true);
   render();
 };

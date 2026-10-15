@@ -11,6 +11,8 @@ from typing import Awaitable, Callable, Dict, Optional, Tuple
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
+from .proactive_diagnostics import GeneratedText
+
 try:
     from ..config import DEFAULT_CONFIG_FLAT
 except ImportError:
@@ -20,6 +22,11 @@ try:
     import chinese_calendar as _cc
 except Exception:
     _cc = None
+
+
+# One proactive turn shares a single wall-clock budget across Hearthlight's
+# memory/profile context read and the optional topic-directed tmemory recall.
+_PROACTIVE_RECALL_BUDGET_SEC = 4.0
 
 
 class PolicyGenerationUnitsMixin:
@@ -80,10 +87,26 @@ class PolicyGenerationUnitsMixin:
             state_note = self._persona_state_prompt_note(persona_state)
             length_range = self._persona_state_length_range(persona_state)
             state_block = self._persona_state_prompt_block(persona_state)
+            # companion-core context and optional direct recall share one
+            # deadline so sequential integrations cannot double the wait.
+            recall_deadline = (
+                asyncio.get_running_loop().time() + _PROACTIVE_RECALL_BUDGET_SEC
+            )
+            configured_persona = self._companion_persona_id()
             # companion-core 上下文：仅在生成前拉取一次；不可用则空串不注入。
             companion_ctx = await self._fetch_companion_context(
-                unified_msg_origin, self._companion_persona_id()
+                unified_msg_origin,
+                configured_persona,
+                timeout_sec=max(
+                    0.0, recall_deadline - asyncio.get_running_loop().time()
+                ),
             )
+            # tmemory's public prompt recall resolves persona from UMO and its
+            # bridge payload does not identify that resolved persona. When a
+            # fixed persona is explicitly configured, fail closed on memory
+            # injection rather than combine data from an unverifiable scope.
+            if configured_persona:
+                companion_ctx.pop("memory", None)
             companion_fields = self._companion_prompt_fields(companion_ctx, session_key)
             # Phase 3-C2：群聊只注入群氛围，不注入任何私聊陪伴字段。
             group_atmosphere = (
@@ -118,15 +141,48 @@ class PolicyGenerationUnitsMixin:
                         "proactive_bias"
                     ]
             recent_history = self._recent_history_text(session)
-            recalled_memory = await self._recall_memory_for_prompt(
-                unified_msg_origin,
-                session_key,
-                idle_sec,
-                session,
-                env_perception,
-                style_hint,
-                companion_ctx.get("memory"),
-            )
+            companion_memory = companion_ctx.get("memory")
+            reused_memory = self._companion_memory_snippets(companion_memory)
+            if not self._memory_recall_enabled():
+                recalled_memory = "无"
+            elif reused_memory:
+                # This turn already has memory/profile material. Reuse it and
+                # avoid a second query whose different ranking could add
+                # redundant or scope-ambiguous snippets.
+                recalled_memory = "\n".join(
+                    f"- {item}"
+                    for item in self._merge_memory_snippets(
+                        [], reused_memory, self._memory_recall_limit()
+                    )
+                ) or "无"
+            elif not configured_persona:
+                remaining = (
+                    recall_deadline - asyncio.get_running_loop().time()
+                )
+                if remaining <= 0:
+                    recalled_memory = "无"
+                else:
+                    try:
+                        recalled_memory = await asyncio.wait_for(
+                            self._recall_memory_for_prompt(
+                                unified_msg_origin,
+                                session_key,
+                                idle_sec,
+                                session,
+                                env_perception,
+                                style_hint,
+                                companion_memory,
+                            ),
+                            timeout=remaining,
+                        )
+                    except asyncio.TimeoutError:
+                        self._debug("memory recall budget exhausted")
+                        recalled_memory = "无"
+            else:
+                # See the persona-scope note above: recall_for_prompt has no
+                # persona override argument, so it cannot safely follow this
+                # explicitly configured persona.
+                recalled_memory = "无"
             # v2.10.0: life detail is deduped against the injected memory lines.
             companion_fields["life_detail"] = self._companion_life_detail_text(
                 companion_ctx, session_key, recalled_memory
@@ -204,7 +260,7 @@ class PolicyGenerationUnitsMixin:
 
             if not provider_id:
                 self._debug("generate skip: provider_id unavailable, use fallback")
-                return fallback
+                return GeneratedText(fallback, "fallback", "provider_missing")
 
             completion = await self.context.llm_generate(
                 chat_provider_id=provider_id, prompt=prompt
@@ -212,14 +268,14 @@ class PolicyGenerationUnitsMixin:
             text = self._completion_to_text(completion)
             if not text:
                 self._debug("generate empty completion, use fallback")
-                return fallback
+                return GeneratedText(fallback, "fallback", "empty_completion")
             cleaned = self._clean_generated_text(text)
             if not self._is_safe_proactive_text(cleaned):
                 self._debug("generate unsafe text blocked, use fallback")
-                return fallback
+                return GeneratedText(fallback, "fallback", "unsafe_content")
             if self._is_repetitive(cleaned, session):
                 self._debug("generate repetitive text, use fallback")
-                return fallback
+                return GeneratedText(fallback, "fallback", "repetitive_content")
             self._debug(
                 f"generate ok provider={provider_id} session={session_key} "
                 f"chars={len(cleaned)}"
@@ -230,7 +286,7 @@ class PolicyGenerationUnitsMixin:
                     "thread_id": selected_thread["thread_id"],
                     "umo": unified_msg_origin,
                 }
-            return cleaned
+            return GeneratedText(cleaned)
         except Exception as exc:
             self._log_error(
                 "generate_proactive_failed",
@@ -239,7 +295,13 @@ class PolicyGenerationUnitsMixin:
             self._debug(
                 f"generate failed session={session_key} err_type={type(exc).__name__}"
             )
-            return fallback
+            return GeneratedText(
+                fallback,
+                "fallback",
+                "provider_timeout"
+                if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+                else "provider_error",
+            )
 
     def _lite_llm_enabled(self) -> bool:
         # v2.3.0: 旧 lite_llm_enabled 已废弃，升级时归一化到 proactive_lite_refine_enabled。
@@ -2015,13 +2077,22 @@ class PolicyGenerationUnitsMixin:
         identity = self._event_identity(event)
         if not identity:
             return False
-        entry = self._whitelist_entry(identity["native_id"], identity["platform"], identity["kind"])
+        entry = self._whitelist_entry(
+            identity["native_id"], identity["platform"], identity["kind"]
+        )
         return entry in self.config.get(identity["kind"] + "_whitelist", [])
 
-    def _whitelist_entry(self, native_id: str, platform: str, kind: str = "private") -> str:
+    def _whitelist_entry(
+        self, native_id: str, platform: str, kind: str = "private"
+    ) -> str:
         if kind not in ("private", "group") or not platform or not native_id:
             return ""
-        return json.dumps({"kind": kind, "platform": platform, "id": native_id}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return json.dumps(
+            {"kind": kind, "platform": platform, "id": native_id},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
     def _whitelist_entry_from_string(self, value: object) -> Optional[str]:
         try:
@@ -2041,7 +2112,12 @@ class PolicyGenerationUnitsMixin:
         parts = value.split(":", 2)
         if len(parts) != 3 or not all(parts):
             return None
-        kinds = {"FriendMessage": "private", "GroupMessage": "group", "private": "private", "group": "group"}
+        kinds = {
+            "FriendMessage": "private",
+            "GroupMessage": "group",
+            "private": "private",
+            "group": "group",
+        }
         kind = kinds.get(parts[1])
         if not kind:
             return None
@@ -2069,7 +2145,9 @@ class PolicyGenerationUnitsMixin:
         parsed = self._parse_umo(umo)
         return parsed["platform"] if parsed else ""
 
-    def _parse_canonical_session_key(self, session_key: str) -> Optional[Dict[str, str]]:
+    def _parse_canonical_session_key(
+        self, session_key: str
+    ) -> Optional[Dict[str, str]]:
         if not isinstance(session_key, str):
             return None
         kind, sep, umo = session_key.partition(":")
@@ -2079,12 +2157,15 @@ class PolicyGenerationUnitsMixin:
     def _session_identity(self, key: str, session: Dict) -> Optional[Dict[str, str]]:
         parsed = self._parse_canonical_session_key(key)
         metadata = session.get("identity")
-        if (not parsed or session.get("session_key") != key
-                or session.get("unified_msg_origin") != parsed["umo"]
-                or not isinstance(metadata, dict)
-                or metadata.get("platform") != parsed["platform"]
-                or not isinstance(metadata.get("native_id"), str)
-                or not metadata["native_id"]):
+        if (
+            not parsed
+            or session.get("session_key") != key
+            or session.get("unified_msg_origin") != parsed["umo"]
+            or not isinstance(metadata, dict)
+            or metadata.get("platform") != parsed["platform"]
+            or not isinstance(metadata.get("native_id"), str)
+            or not metadata["native_id"]
+        ):
             return None
         return {**parsed, "native_id": metadata["native_id"]}
 
@@ -2092,12 +2173,16 @@ class PolicyGenerationUnitsMixin:
         identity = self._session_identity(session_key, session)
         if not identity:
             return False
-        entry = self._whitelist_entry(identity["native_id"], identity["platform"], identity["kind"])
+        entry = self._whitelist_entry(
+            identity["native_id"], identity["platform"], identity["kind"]
+        )
         return entry in self.config.get(identity["kind"] + "_whitelist", [])
 
     def _is_session_whitelisted(self, session_key: str) -> bool:
         session = self._sessions.get(session_key)
-        return isinstance(session, dict) and self._session_state_whitelisted(session_key, session)
+        return isinstance(session, dict) and self._session_state_whitelisted(
+            session_key, session
+        )
 
     def _session_key(self, event: AstrMessageEvent) -> str:
         identity = self._event_identity(event)

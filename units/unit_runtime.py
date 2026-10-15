@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, Optional
@@ -7,9 +8,15 @@ from typing import Dict, Optional
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
+from .proactive_diagnostics import ProactiveSendResult, safe_attempt
+
 
 class _ProactiveDeliveryFailure(Exception):
     """Internal marker for an explicit send_message(False) delivery failure."""
+
+
+class _ProactiveGenerationQueueFull(Exception):
+    """Internal typed marker for the bounded proactive generation queue."""
 
 
 class RuntimeUnitsMixin:
@@ -260,7 +267,7 @@ class RuntimeUnitsMixin:
     ) -> str:
         """Owned, bounded generation task; cancellation propagates safely."""
         if len(self._proactive_generation_tasks) >= 8:
-            raise RuntimeError("generation_queue_full")
+            raise _ProactiveGenerationQueueFull
 
         async def bounded_generate():
             async with self._proactive_generation_semaphore:
@@ -355,6 +362,19 @@ class RuntimeUnitsMixin:
             )
         except Exception:
             result = False
+        diagnostic = metadata.get("diagnostic")
+        if isinstance(diagnostic, dict):
+            pending = session.get("companion_attempt_receipt_pending") or {}
+            receipt = pending.get(metadata["attempt_id"]) or {}
+            diagnostic["receipt_status"] = (
+                "disabled"
+                if not self._companion_enabled()
+                else "acknowledged"
+                if result
+                else "rejected"
+                if receipt.get("retryable") is False
+                else "pending"
+            )
         if result or not self._companion_enabled():
             pending = session.get("proactive_attempt_pending")
             if isinstance(pending, dict):
@@ -367,6 +387,35 @@ class RuntimeUnitsMixin:
         }
         self._save_state()
         return bool(result)
+
+    def _refresh_last_attempt_receipt_status(
+        self, session: Dict, attempt_id: str, status: str
+    ) -> None:
+        """Refresh the matching attempt diagnostic after a queued receipt retry.
+
+        The attempt ID is the freshness boundary: an older queued receipt must
+        never overwrite diagnostics belonging to a newer proactive attempt.
+        """
+        if not isinstance(session, dict):
+            return
+        changed = False
+        last = session.get("last_proactive_attempt")
+        if isinstance(last, dict) and last.get("attempt_id") == attempt_id:
+            if last.get("receipt_status") != status:
+                last["receipt_status"] = status
+                changed = True
+        pending = session.get("proactive_attempt_pending")
+        if isinstance(pending, dict):
+            item = pending.get(attempt_id)
+            if isinstance(item, dict):
+                diagnostic = item.get("diagnostic")
+                if isinstance(diagnostic, dict) and (
+                    diagnostic.get("receipt_status") != status
+                ):
+                    diagnostic["receipt_status"] = status
+                    changed = True
+        if changed:
+            self._save_state()
 
     def _cleanup_expired_attempt_metadata(self, session: Dict, now_ts: float) -> None:
         pending = (
@@ -1038,6 +1087,30 @@ class RuntimeUnitsMixin:
         session: Optional[Dict] = None,
         source: str = "scheduled",
     ) -> tuple[bool, str]:
+        started = time.monotonic()
+        metadata = None
+        attempt = {
+            "source": source,
+            "status": "blocked",
+            "generation_status": "not_started",
+            "generation_reason": "unknown",
+            "delivery_status": "not_attempted",
+            "receipt_status": "not_attempted",
+            "reason_code": "unknown",
+        }
+
+        def done(sent=False, text="", reason="unknown", status="blocked"):
+            attempt.update(
+                reason_code=reason,
+                status=status,
+                elapsed_ms=(time.monotonic() - started) * 1000,
+            )
+            if metadata is not None and isinstance(session, dict):
+                attempt["attempt_id"] = metadata["attempt_id"]
+                session["last_proactive_attempt"] = safe_attempt(attempt)
+                self._save_state()
+            return ProactiveSendResult(sent, text, attempt)
+
         if source not in ("manual", "scheduled"):
             source = "scheduled"
         if not session_key:
@@ -1049,23 +1122,23 @@ class RuntimeUnitsMixin:
             self._debug(
                 f"send proactive blocked session={session_key} reason=session_missing"
             )
-            return False, ""
+            return done(reason="session_missing", status="blocked")
         if unified_msg_origin != str(session.get("unified_msg_origin") or ""):
             self._debug(
                 f"send proactive blocked session={session_key} reason=origin_mismatch"
             )
-            return False, ""
+            return done(reason="origin_mismatch", status="blocked")
 
         # Complete-UMO per-session lock. A second concurrent manual request is
         # busy; two sequential requests both revalidate under fresh state.
         lock = self._proactive_session_locks.setdefault(session_key, asyncio.Lock())
         if len(session.get("companion_attempt_receipt_pending") or {}) >= 16:
             self._debug("send proactive blocked reason=receipt_backlog_full")
-            return False, ""
+            return done(reason="receipt_backlog_full", status="blocked")
         owner = object()
         if session_key in self._proactive_session_inflight:
             self._debug(f"send proactive busy session={session_key} source={source}")
-            return False, ""
+            return done(reason="busy", status="busy")
         self._proactive_session_inflight.add(session_key)
         self._proactive_session_lock_owners[session_key] = owner
         send_task = asyncio.current_task()
@@ -1076,7 +1149,7 @@ class RuntimeUnitsMixin:
                 self._debug(
                     f"send proactive busy session={session_key} source={source}"
                 )
-                return False, ""
+                return done(reason="busy", status="busy")
             async with lock:
                 now_ts = self._now().timestamp()
                 async with self._lock:
@@ -1102,11 +1175,15 @@ class RuntimeUnitsMixin:
                     session["proactive_attempt_inflight"]
                 ]
 
+                metadata["diagnostic"] = attempt
+                attempt["attempt_id"] = metadata["attempt_id"]
+
                 try:
                     topic = await self._run_proactive_generation(
                         unified_msg_origin, session_key, idle_sec, session
                     )
                 except asyncio.CancelledError:
+                    attempt["generation_status"] = "cancelled"
                     await self._record_attempt_result(
                         session,
                         unified_msg_origin,
@@ -1114,8 +1191,9 @@ class RuntimeUnitsMixin:
                         False,
                         "generation_cancelled",
                     )
-                    return False, ""
+                    return done(reason="generation_cancelled", status="cancelled")
                 except asyncio.TimeoutError:
+                    attempt["generation_status"] = "timeout"
                     await self._record_attempt_result(
                         session,
                         unified_msg_origin,
@@ -1123,8 +1201,19 @@ class RuntimeUnitsMixin:
                         False,
                         "generation_timeout",
                     )
-                    return False, ""
+                    return done(reason="generation_timeout", status="failed")
+                except _ProactiveGenerationQueueFull:
+                    attempt["generation_status"] = "not_started"
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        "generation_queue_full",
+                    )
+                    return done(reason="generation_queue_full", status="blocked")
                 except Exception:
+                    attempt["generation_status"] = "failed"
                     await self._record_attempt_result(
                         session,
                         unified_msg_origin,
@@ -1132,7 +1221,14 @@ class RuntimeUnitsMixin:
                         False,
                         "generation_failed",
                     )
-                    return False, ""
+                    return done(reason="generation_failed", status="failed")
+
+                attempt["generation_status"] = getattr(
+                    topic, "generation_status", "unknown"
+                )
+                attempt["generation_reason"] = getattr(
+                    topic, "generation_reason", "unknown"
+                )
 
                 delivery_now_ts = self._now().timestamp()
                 gate_reason = self._proactive_delivery_gate(
@@ -1154,7 +1250,7 @@ class RuntimeUnitsMixin:
                         f"send proactive blocked session={session_key} "
                         f"reason={gate_reason} source={source}"
                     )
-                    return False, ""
+                    return done(reason=gate_reason)
 
                 if source == "scheduled":
                     self._global_send_inflight += 1
@@ -1179,13 +1275,31 @@ class RuntimeUnitsMixin:
 
                 sent = False
                 failure_reason = "send_failed"
+
+                async def _delivery_cancelled():
+                    attempt["delivery_status"] = "unknown"
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        "delivery_cancelled",
+                    )
+                    return done(reason="delivery_cancelled", status="cancelled")
+
                 try:
                     await self._dispatch_reply_segments(
                         _send_segment, topic, proactive=True
                     )
                     sent = True
+                except asyncio.CancelledError:
+                    return await _delivery_cancelled()
                 except _ProactiveDeliveryFailure:
-                    failure_reason = "send_message_false"
+                    failure_reason = (
+                        "partial_delivery"
+                        if delivered_segments
+                        else "send_message_false"
+                    )
                 except Exception as initial_error:
                     try:
                         # Only a first-call payload type mismatch can safely use
@@ -1201,9 +1315,14 @@ class RuntimeUnitsMixin:
                         if delivered is False:
                             raise _ProactiveDeliveryFailure()
                         sent = True
+                    except asyncio.CancelledError:
+                        return await _delivery_cancelled()
                     except _ProactiveDeliveryFailure:
                         failure_reason = "send_message_false"
                     except Exception as exc:
+                        failure_reason = (
+                            "partial_delivery" if delivered_segments else "send_unknown"
+                        )
                         self._log_error(
                             "send_failed",
                             f"send failed err_type={type(exc).__name__}",
@@ -1216,6 +1335,11 @@ class RuntimeUnitsMixin:
                             )
 
                 if not sent:
+                    attempt["delivery_status"] = (
+                        "failed"
+                        if failure_reason == "send_message_false"
+                        else "unknown"
+                    )
                     if source == "scheduled":
                         async with self._lock:
                             self._unit_finalize_result(
@@ -1236,7 +1360,7 @@ class RuntimeUnitsMixin:
                         False,
                         failure_reason,
                     )
-                    return False, ""
+                    return done(reason=failure_reason, status="failed")
 
                 async with self._lock:
                     if source == "scheduled":
@@ -1268,6 +1392,7 @@ class RuntimeUnitsMixin:
                         session, unified_msg_origin, delivery_now_ts
                     )
 
+                attempt["delivery_status"] = "sent"
                 # Adapter receipt is immediately after the actual send. Do not
                 # expose or persist generated message text in attempt metadata.
                 await self._record_attempt_result(
@@ -1282,7 +1407,7 @@ class RuntimeUnitsMixin:
                     f"source={source}"
                 )
                 self._remember_proactive_text(session_key, topic, session)
-                return True, topic
+                return done(True, topic, reason="ok", status="completed")
         finally:
             self._proactive_send_tasks.discard(send_task)
             if reserved:

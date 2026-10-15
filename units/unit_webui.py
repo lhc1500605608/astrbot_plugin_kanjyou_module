@@ -20,6 +20,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .proactive_diagnostics import safe_attempt
+
 try:
     from ..config import migrate_flat_to_nested
 except ImportError:  # pragma: no cover - script-style loading
@@ -152,9 +154,10 @@ class WebUIUnitsMixin:
         now_ts = self._now().timestamp()
         idle_sec = max(0.0, now_ts - float(session.get("last_interaction_at", now_ts)))
         try:
-            success, _text = await self._send_proactive(
+            outcome = await self._send_proactive(
                 umo, None, session_id, idle_sec, session, source="manual"
             )
+            success, _text = outcome
         except Exception as exc:
             self._log_error(
                 "web_api_test_failed",
@@ -164,7 +167,21 @@ class WebUIUnitsMixin:
         return json_response(
             {
                 "status": "ok",
-                "data": {"triggered": bool(success), "session_id": session_id},
+                "data": {
+                    "triggered": bool(success),
+                    "session_id": session_id,
+                    "attempt": safe_attempt(
+                        getattr(
+                            outcome,
+                            "attempt",
+                            {
+                                "source": "manual",
+                                "status": "unknown",
+                                "delivery_status": "sent" if success else "unknown",
+                            },
+                        )
+                    ),
+                },
             }
         )
 
@@ -347,6 +364,7 @@ class WebUIUnitsMixin:
             "persona_state": persona_state,
             "next_trigger_sec": self._webui_next_trigger_sec(session, now, now_ts),
             "today_count": int(session.get("today_proactive_count", 0) or 0),
+            "last_attempt": safe_attempt(session.get("last_proactive_attempt")),
             "last_proactive_at": int(last_proactive) if has_proactive else None,
         }
 

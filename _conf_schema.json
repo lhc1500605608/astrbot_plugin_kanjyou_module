@@ -1011,14 +1011,14 @@
       },
       "private_whitelist": {
         "type": "list",
-        "description": "私聊白名单 user_id 列表",
-        "hint": "仅这些私聊会话允许主动。",
+        "description": "私聊白名单（平台实例 + user_id）",
+        "hint": "每项是 JSON 字符串：{\"kind\":\"private\",\"platform\":\"平台实例ID\",\"id\":\"原生 user_id\"}。平台实例不能为空；未能唯一归属的旧 ID 保留但不授权。",
         "default": []
       },
       "group_whitelist": {
         "type": "list",
-        "description": "群聊白名单 group_id 列表",
-        "hint": "仅这些群聊会话允许主动。",
+        "description": "群聊白名单（平台实例 + group_id）",
+        "hint": "每项是 JSON 字符串：{\"kind\":\"group\",\"platform\":\"平台实例ID\",\"id\":\"原生 group_id\"}。平台实例不能为空；未能唯一归属的旧 ID 保留但不授权。",
         "default": []
       }
     }

@@ -134,8 +134,8 @@ def _install_star(plugin, star, name="astrbot_plugin_tcompanion_core", activated
 
 def _enable(plugin, **overrides):
     plugin.config["companion_enabled"] = True
-    plugin.config["private_whitelist"] = ["u1"]
-    plugin.config["group_whitelist"] = ["g1"]
+    plugin.config["private_whitelist"] = [plugin._whitelist_entry("u1", "aiocqhttp")]
+    plugin.config["group_whitelist"] = [plugin._whitelist_entry("g1", "aiocqhttp", kind="group")]
     for key, value in overrides.items():
         plugin.config[key] = value
 
@@ -167,8 +167,9 @@ def _event(umo=GROUP_UMO, user_id="u1", group_id="g1", text="今晚开黑"):
 
 def _group_session(now_ts=2_000_000_000.0):
     return {
-        "session_key": "group:g1",
+        "session_key": "group:aiocqhttp:group:g1",
         "unified_msg_origin": GROUP_UMO,
+        "identity": {"platform": "aiocqhttp", "native_id": "g1", "sender_id": "u1"},
         "last_interaction_at": 0.0,
         "next_check_at": 0.0,
         "cooldown_until": 0.0,
@@ -421,10 +422,10 @@ def test_group_prompt_fields_are_suppressed(plugin):
         "relationship": {"stage": "熟悉", "affinity": 0.42},
         "motivation": {"reason": "乐队出新歌"},
     }
-    fields = plugin._companion_prompt_fields(ctx, "group:g1")
+    fields = plugin._companion_prompt_fields(ctx, "group:aiocqhttp:group:g1")
     assert fields == {"life_state": "", "relationship": "", "motivation": ""}
     # 私聊行为不变。
-    private = plugin._companion_prompt_fields(ctx, "private:u1")
+    private = plugin._companion_prompt_fields(ctx, "private:aiocqhttp:private:u1")
     assert private["life_state"] == "她刚下课，在食堂"
     assert private["relationship"]
 
@@ -442,7 +443,9 @@ def test_generation_group_injects_atmosphere_not_private(plugin):
     _enable(plugin)
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(GROUP_UMO, "group:g1", 3600, {}))
+    asyncio.run(
+        plugin._generate_proactive_text(GROUP_UMO, "group:aiocqhttp:group:g1", 3600, {})
+    )
     prompt = captured["prompt"]
     assert "【群氛围】" in prompt
     assert "活跃度热闹" in prompt
@@ -459,7 +462,9 @@ def test_generation_group_without_group_block_is_plain(plugin):
     _enable(plugin)
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(GROUP_UMO, "group:g1", 3600, {}))
+    asyncio.run(
+        plugin._generate_proactive_text(GROUP_UMO, "group:aiocqhttp:group:g1", 3600, {})
+    )
     prompt = captured["prompt"]
     assert "【群氛围】" not in prompt
     assert "【陪伴上下文】" not in prompt
@@ -470,7 +475,11 @@ def test_generation_private_keeps_companion_block(plugin):
     _enable(plugin)
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(PRIVATE_UMO, "private:u1", 3600, {}))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            PRIVATE_UMO, "private:aiocqhttp:private:u1", 3600, {}
+        )
+    )
     prompt = captured["prompt"]
     assert "【陪伴上下文】" in prompt
     assert "她刚下课，在食堂" in prompt
@@ -483,7 +492,9 @@ def test_generation_group_uses_atmosphere_placeholder(plugin):
     plugin.config["proactive_prompt_template"] = "人格：{persona}\n群：{group_atmosphere}\n"
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(GROUP_UMO, "group:g1", 3600, {}))
+    asyncio.run(
+        plugin._generate_proactive_text(GROUP_UMO, "group:aiocqhttp:group:g1", 3600, {})
+    )
     prompt = captured["prompt"]
     assert "群：活跃度热闹" in prompt
     assert "【群氛围】" not in prompt
@@ -504,7 +515,7 @@ def _drive_decision(plugin, allow, view, patch_gate=True):
         plugin._companion_group_participation = _async_result((allow, view))
     session = _group_session(now_ts)
     return asyncio.run(
-        plugin._decision_engine("group:g1", session, now, now_ts)
+        plugin._decision_engine("group:aiocqhttp:group:g1", session, now, now_ts)
     ), session
 
 
@@ -540,6 +551,6 @@ def test_decision_gate_allows_group_proactive(plugin):
 
 def test_decision_gate_absent_companion_is_fail_open(plugin):
     # companion 未启用：真实闸门直接放行，按 v2.10.2 行为发送。
-    plugin.config["group_whitelist"] = ["g1"]
+    plugin.config["group_whitelist"] = [plugin._whitelist_entry("g1", "aiocqhttp", kind="group")]
     decision, _ = _drive_decision(plugin, allow=True, view={}, patch_gate=False)
     assert decision["allow"] is True

@@ -148,24 +148,64 @@
       if (!sdk) return { close() {} };
       var ep = path.charAt(0) === '/' ? path.slice(1) : path;
       var closed = false;
+      var subscriptionId = null;
+      var subscriptionReady = false;
       var handlers = {
         onMessage: function(info) {
           if (!closed) onEvent(info);
         },
         onOpen: function() {
-          if (onStatus) onStatus('connected');
+          if (!closed && onStatus) onStatus('connected');
         },
         onError: function() {
-          if (onStatus) onStatus('disconnected');
+          if (!closed && onStatus) onStatus('disconnected');
         }
       };
+
+      function unsubscribe(id) {
+        if (id == null) return;
+        try {
+          var result = sdk.unsubscribeSSE(id);
+          if (result && typeof result.then === 'function') {
+            result.catch(function (e) {
+              console.error('[kanjyou] unsubscribeSSE error:', ep, e);
+            });
+          }
+        } catch (e) {
+          console.error('[kanjyou] unsubscribeSSE error:', ep, e);
+        }
+      }
+
       try {
-        sdk.subscribeSSE(ep, handlers);
+        var subscription = sdk.subscribeSSE(ep, handlers);
+        var pending = subscription && typeof subscription.then === 'function'
+          ? subscription
+          : Promise.resolve(subscription);
+        pending.then(function (id) {
+          if (closed) {
+            unsubscribe(id);
+            return;
+          }
+          subscriptionId = id;
+          subscriptionReady = true;
+        }).catch(function (e) {
+          console.error('[kanjyou] subscribeSSE error:', ep, e);
+          if (!closed && onStatus) onStatus('disconnected');
+        });
       } catch (e) {
         console.error('[kanjyou] subscribeSSE error:', ep, e);
+        if (onStatus) onStatus('disconnected');
       }
+
       return {
-        close() { closed = true; },
+        close() {
+          closed = true;
+          if (!subscriptionReady) return;
+          var id = subscriptionId;
+          subscriptionId = null;
+          subscriptionReady = false;
+          unsubscribe(id);
+        },
       };
     },
 

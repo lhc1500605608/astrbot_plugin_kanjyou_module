@@ -1,0 +1,37 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const source = fs.readFileSync(path.join(__dirname,'../pages/common/panel.html'),'utf8');
+const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
+let count=0;
+async function check(name,fn){await fn();count++;console.log('ok - '+name);}
+(async()=>{
+ const S={sleepForm:{start:'',end:''},sleepDirty:false,busy:{}};
+ const context={S,HHMM:/^([01]\d|2[0-3]):[0-5]\d$/};vm.createContext(context);
+ vm.runInContext(block('const applySettings =','const applyStatus =')+'this.apply=applySettings;',context);
+ await check('saved settings initialize form',()=>{context.apply({sleep_start:'23:30',sleep_end:'08:00',timezone:'Europe/Paris'});assert.equal(S.sleepForm.start,'23:30');assert.equal(S.sleepTimezone,'Europe/Paris');});
+ await check('SSE preserves unsaved draft but tracks latest server value',()=>{S.sleepDirty=true;S.sleepForm.start='22:10';context.apply({sleep_start:'00:30',sleep_end:'07:00',timezone:'UTC'});assert.equal(S.sleepForm.start,'22:10');assert.equal(S.sleepSaved.start,'00:30');});
+ await check('pending save is not overwritten by SSE',()=>{S.sleepDirty=false;S.busy.sleep=true;context.apply({sleep_start:'01:30',sleep_end:'09:00'});assert.equal(S.sleepForm.start,'22:10');});
+ await check('old host or malformed settings leave draft intact',()=>{context.apply(undefined);context.apply({sleep_start:'25:00',sleep_end:'09:00'});assert.equal(S.sleepForm.start,'22:10');});
+ let handler,posts=0,resolve;
+ const state={busy:{},drawer:{sid:'A',mood:50,err:''},sleepForm:{start:'23:00',end:'08:00'}};
+ const rows=[{session_id:'A',mood:50},{session_id:'B',mood:80}];
+ const scope={document:{},window:{addEventListener(){}},on:(_e,_n,fn)=>{handler=fn;},S:state,L:a=>a,HHMM:context.HHMM,render(){},renderDrawer(){},announce(){},sessionsOf:()=>rows,setBusy:(k,v)=>{state.busy[k]=v;},request:()=>{posts++;return new Promise(r=>resolve=r);}};
+ vm.createContext(scope);vm.runInContext(block('on(document, "submit",','on(window, "pagehide",'),scope);
+ const event=id=>({target:{getAttribute:()=>id},preventDefault(){}});
+ await check('duplicate mood submission ignored',async()=>{const first=handler(event('ww-moodform'));await handler(event('ww-moodform'));assert.equal(posts,1);state.drawer={sid:'B',mood:80,err:''};resolve({ok:true,data:{session_id:'A',mood:25}});await first;assert.equal(rows[0].mood,25);assert.equal(state.drawer.mood,80);});
+ await check('failed response stays with original drawer',async()=>{state.drawer={sid:'A',mood:30,err:''};const first=handler(event('ww-moodform'));state.drawer={sid:'B',mood:80,err:''};resolve({ok:false,message:'denied'});await first;assert.equal(state.drawer.err,'');});
+ await check('duplicate DND submission ignored',async()=>{const first=handler(event('ww-sleepform'));const before=posts;await handler(event('ww-sleepform'));assert.equal(posts,before);resolve({ok:true,data:{start:'23:00',end:'08:00'}});await first;assert.equal(state.sleepDirty,false);});
+ const pendingTimers=new Map();let timerId=0,calls=0;
+ const timeScope={Set,Promise,L:a=>a,setTimeout:fn=>{pendingTimers.set(++timerId,fn);return timerId;},clearTimeout:id=>pendingTimers.delete(id),api:{post:()=>{calls++;return new Promise(()=>{});}}};
+ vm.createContext(timeScope);vm.runInContext(block('const timers =','const announce =')+'this.call=request;',timeScope);
+ await check('write timeout reports unknown result without retry',async()=>{const pending=timeScope.call('post','sleep',{});await Promise.resolve();[...pendingTimers.values()][0]();const r=await pending;assert.equal(r.ok,false);assert.match(r.message,/结果未知/);assert.equal(calls,1);assert.equal(pendingTimers.size,0);});
+ const refreshes=[];let applied=0;
+ const loadScope={S:{},disposed:false,loadSequence:0,statusRevision:0,L:a=>a,$:()=>({classList:{add(){},remove(){}}}),render(){},softRender(){},announce(){},api:{mode:'demo'},applyStatus:()=>applied++,request:()=>new Promise(r=>refreshes.push(r))};
+ vm.createContext(loadScope);vm.runInContext(block('const load =','/* Unwrap SDK')+'this.load=load;',loadScope);
+ await check('older overlapping refresh cannot overwrite newer refresh',async()=>{const old=loadScope.load(false),fresh=loadScope.load(false);refreshes[1]({ok:true,data:{sessions:[]}});await fresh;refreshes[0]({ok:true,data:{sessions:[]}});await old;assert.equal(applied,1);});
+ await check('in-flight GET cannot overwrite a newer SSE or write',async()=>{const old=loadScope.load(false);loadScope.statusRevision++;refreshes[2]({ok:true,data:{sessions:[]}});await old;assert.equal(applied,1);});
+ console.log(`WebUI completion tests passed (${count} cases)`);
+})().catch(e=>{console.error(e);process.exitCode=1;});

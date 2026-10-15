@@ -29,7 +29,7 @@ class LegacyReq:
     """Simulates an older core without extra_user_content_parts."""
 
 
-def _event(umo="webchat!u1!c1", user_id="u1", group_id="", text="在的"):
+def _event(umo="webchat:FriendMessage:u1:c1", user_id="u1", group_id="", text="在的"):
     message_obj = types.SimpleNamespace(
         message_id="m1",
         group_id=group_id,
@@ -48,6 +48,10 @@ def _session_for(plugin, event):
     s = plugin._get_or_create_session(event)
     plugin._ensure_session_shape(s)
     plugin._sessions[key] = s
+    identity = plugin._event_identity(event)
+    plugin.config[identity["kind"] + "_whitelist"] = [
+        plugin._whitelist_entry(identity["native_id"], identity["platform"], identity["kind"])
+    ]
     return key, s
 
 
@@ -159,7 +163,7 @@ def test_group_uses_only_group_proactive_text(plugin):
     gkey, gs = _session_for(plugin, group_event)
     plugin._remember_proactive_text(gkey, "群里的各位，周末有什么安排？", gs)
 
-    private_event = _event(umo="webchat!u1!c1", user_id="u1")
+    private_event = _event(umo="webchat:FriendMessage:u1:c1", user_id="u1")
     pkey, ps = _session_for(plugin, private_event)
     plugin._remember_proactive_text(pkey, "私聊里的小秘密", ps)
 
@@ -175,7 +179,7 @@ def test_group_uses_only_group_proactive_text(plugin):
 
 def test_group_session_does_not_leak_private_context(plugin):
     # 私聊有未回应主动，但群消息不能注入私聊内容。
-    private_event = _event(umo="webchat!u1!c1", user_id="u1")
+    private_event = _event(umo="webchat:FriendMessage:u1:c1", user_id="u1")
     pkey, ps = _session_for(plugin, private_event)
     plugin._remember_proactive_text(pkey, "私聊里的小秘密", ps)
 

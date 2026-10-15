@@ -30,19 +30,59 @@ except ImportError:
     from config import DEFAULT_CONFIG_FLAT
 
 # 关键词事件的稳定优先级（plan §2.1.2）。
-KEYWORD_EVENT_PRIORITY = ("misunderstood", "gratitude", "sudden_warmth", "cold_shoulder")
+KEYWORD_EVENT_PRIORITY = (
+    "misunderstood",
+    "gratitude",
+    "sudden_warmth",
+    "cold_shoulder",
+)
 POSITIVE_EVENT_TYPES = frozenset({"gratitude", "sudden_warmth", "valued_reply"})
 PROACTIVE_EVENT_TYPES = frozenset({"valued_reply", "ignored_proactive"})
 
 # expression 档位基准（plan §3.3；与 companion-core 保持一致）。
 EXPRESSION_BASELINES: Dict[str, Dict[str, object]] = {
-    "回避": {"tone": "简短克制", "warmth": 0.25, "length_bias": -0.50, "proactive_bias": -0.60},
-    "受伤": {"tone": "低落含蓄", "warmth": 0.30, "length_bias": -0.30, "proactive_bias": -0.40},
-    "放松": {"tone": "平和自然", "warmth": 0.45, "length_bias": 0.00, "proactive_bias": 0.00},
-    "活泼": {"tone": "轻快俏皮", "warmth": 0.55, "length_bias": 0.10, "proactive_bias": 0.10},
-    "温暖": {"tone": "柔和体贴", "warmth": 0.70, "length_bias": 0.05, "proactive_bias": 0.05},
-    "亲近": {"tone": "亲昵自然", "warmth": 0.80, "length_bias": 0.10, "proactive_bias": 0.15},
-    "爱意": {"tone": "深情温柔", "warmth": 0.95, "length_bias": 0.05, "proactive_bias": 0.20},
+    "回避": {
+        "tone": "简短克制",
+        "warmth": 0.25,
+        "length_bias": -0.50,
+        "proactive_bias": -0.60,
+    },
+    "受伤": {
+        "tone": "低落含蓄",
+        "warmth": 0.30,
+        "length_bias": -0.30,
+        "proactive_bias": -0.40,
+    },
+    "放松": {
+        "tone": "平和自然",
+        "warmth": 0.45,
+        "length_bias": 0.00,
+        "proactive_bias": 0.00,
+    },
+    "活泼": {
+        "tone": "轻快俏皮",
+        "warmth": 0.55,
+        "length_bias": 0.10,
+        "proactive_bias": 0.10,
+    },
+    "温暖": {
+        "tone": "柔和体贴",
+        "warmth": 0.70,
+        "length_bias": 0.05,
+        "proactive_bias": 0.05,
+    },
+    "亲近": {
+        "tone": "亲昵自然",
+        "warmth": 0.80,
+        "length_bias": 0.10,
+        "proactive_bias": 0.15,
+    },
+    "爱意": {
+        "tone": "深情温柔",
+        "warmth": 0.95,
+        "length_bias": 0.05,
+        "proactive_bias": 0.20,
+    },
 }
 GROUP_ALLOWED_MODES = frozenset({"放松", "活泼", "温暖"})
 GROUP_WARMTH_CAP = 0.55
@@ -164,7 +204,9 @@ class EmotionEventUnitsMixin:
             return f"msg:{message_id}"
         return f"msg:{umo}:{int(now_ts)}"
 
-    def _is_terse_message(self, text: str, keywords: Optional[Dict[str, list]] = None) -> bool:
+    def _is_terse_message(
+        self, text: str, keywords: Optional[Dict[str, list]] = None
+    ) -> bool:
         normalized = (text or "").strip()
         if not normalized or len(normalized) > 2:
             return False
@@ -193,9 +235,8 @@ class EmotionEventUnitsMixin:
         if self._is_terse_message(text, keywords):
             streak = int(session.get("companion_cold_streak", 0) or 0) + 1
             session["companion_cold_streak"] = streak
-            if (
-                streak >= self._emotion_cold_shoulder_streak()
-                and session.get("companion_positive_seen")
+            if streak >= self._emotion_cold_shoulder_streak() and session.get(
+                "companion_positive_seen"
             ):
                 self._reset_cold_streak(session)
                 return "cold_shoulder"
@@ -211,7 +252,9 @@ class EmotionEventUnitsMixin:
     # proactive receipt state machine
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _proactive_receipt_key(send_ts: float) -> str:
+    def _proactive_receipt_key(send_ts: float, attempt_id: Optional[str] = None) -> str:
+        if attempt_id:
+            return f"proactive:{attempt_id}"
         return f"proactive:{int(send_ts)}"
 
     def _collect_inbound_emotion_event(
@@ -233,27 +276,37 @@ class EmotionEventUnitsMixin:
             return None
         if session_key.startswith("group:"):
             return None
-        if not self._is_session_whitelisted(session_key):
+        if not self._session_state_whitelisted(session_key, session):
             return None
 
         pending = session.get("companion_receipt_pending")
         if isinstance(pending, dict):
             send_ts = _number(pending.get("send_ts"), 0.0, 1e18)
-            if send_ts is not None and (now_ts - send_ts) <= self._emotion_reply_window_sec():
+            attempt_id = _text(pending.get("attempt_id")) or None
+            if (
+                send_ts is not None
+                and (now_ts - send_ts) <= self._emotion_reply_window_sec()
+            ):
                 session.pop("companion_receipt_pending", None)
                 session["companion_positive_seen"] = True
                 return (
                     "valued_reply",
-                    self._proactive_receipt_key(send_ts),
+                    self._proactive_receipt_key(send_ts, attempt_id),
                     "kanjyou:proactive_reply",
                 )
 
         event_type = self._detect_keyword_event(text, session)
         if not event_type:
             return None
-        return (event_type, self._message_dedupe_key(event, umo, now_ts), "kanjyou:keyword")
+        return (
+            event_type,
+            self._message_dedupe_key(event, umo, now_ts),
+            "kanjyou:keyword",
+        )
 
-    async def _begin_proactive_receipt(self, session: Dict, umo: str, now_ts: float) -> None:
+    async def _begin_proactive_receipt(
+        self, session: Dict, umo: str, now_ts: float, attempt_id: Optional[str] = None
+    ) -> None:
         """Record a new pending proactive receipt, settling any stale one first."""
         if not self._emotion_event_enabled():
             return
@@ -263,14 +316,18 @@ class EmotionEventUnitsMixin:
         if isinstance(old, dict):
             old_ts = _number(old.get("send_ts"), 0.0, 1e18)
             old_umo = _text(old.get("umo")) or umo
+            old_attempt_id = _text(old.get("attempt_id")) or None
             if old_ts is not None:
                 await self._record_companion_emotion_event(
                     old_umo,
                     "ignored_proactive",
                     reason="kanjyou:superseded_proactive",
-                    dedupe_key=self._proactive_receipt_key(old_ts),
+                    dedupe_key=self._proactive_receipt_key(old_ts, old_attempt_id),
                 )
-        session["companion_receipt_pending"] = {"send_ts": float(now_ts), "umo": umo}
+        pending = {"send_ts": float(now_ts), "umo": umo}
+        if attempt_id:
+            pending["attempt_id"] = attempt_id
+        session["companion_receipt_pending"] = pending
 
     async def _settle_expired_receipt(self, session: Dict, now_ts: float) -> bool:
         """Settle ``ignored_proactive`` once the ignore window elapses."""
@@ -286,6 +343,7 @@ class EmotionEventUnitsMixin:
         if send_ts is None:
             session.pop("companion_receipt_pending", None)
             return True
+        attempt_id = _text(pending.get("attempt_id")) or None
         if (now_ts - send_ts) < self._emotion_ignore_window_sec():
             return False
         umo = _text(pending.get("umo"))
@@ -294,7 +352,7 @@ class EmotionEventUnitsMixin:
             umo,
             "ignored_proactive",
             reason="kanjyou:proactive_unanswered",
-            dedupe_key=self._proactive_receipt_key(send_ts),
+            dedupe_key=self._proactive_receipt_key(send_ts, attempt_id),
         )
         return True
 
@@ -314,8 +372,8 @@ class EmotionEventUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"emotion adapter init failed: {exc}")
+        except Exception:
+            self._debug("emotion adapter init failed")
             return False
         try:
             result = await asyncio.wait_for(
@@ -330,8 +388,10 @@ class EmotionEventUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"emotion record timeout umo={umo} type={event_type}")
             return False
-        except Exception as exc:
-            self._debug(f"emotion record failed umo={umo} type={event_type} err={exc}")
+        except Exception:
+            self._debug(
+                f"emotion record failed umo={umo} type={event_type} err_type=unknown"
+            )
             return False
         return isinstance(result, dict)
 
@@ -352,7 +412,9 @@ class EmotionEventUnitsMixin:
         hints = expression.get("style_hints")
         hints = hints if isinstance(hints, dict) else {}
         warmth = _number_or(hints.get("warmth"), base["warmth"], 0.0, 1.0)
-        length_bias = _number_or(hints.get("length_bias"), base["length_bias"], -1.0, 1.0)
+        length_bias = _number_or(
+            hints.get("length_bias"), base["length_bias"], -1.0, 1.0
+        )
         proactive_bias = _number_or(
             hints.get("proactive_bias"), base["proactive_bias"], -1.0, 1.0
         )
@@ -403,9 +465,7 @@ class EmotionEventUnitsMixin:
             )
         mood = None
         if isinstance(session, dict):
-            mood = _number(
-                session.get("mood", self._mood_initial()), 0.0, 100.0
-            )
+            mood = _number(session.get("mood", self._mood_initial()), 0.0, 100.0)
         warmth_ps = 0.0
         if mood is not None:
             warmth_ps = max(
@@ -470,7 +530,8 @@ class EmotionEventUnitsMixin:
             6.0,
             min(
                 120.0,
-                midpoint + float(merged["length_bias"]) * EXPRESSION_LENGTH_CHARS_PER_UNIT,
+                midpoint
+                + float(merged["length_bias"]) * EXPRESSION_LENGTH_CHARS_PER_UNIT,
             ),
         )
         new_low = max(6, round(target - width / 2.0))

@@ -59,14 +59,25 @@ def test_session_key_private_and_group(plugin):
             self.sender = _Sender()
 
     class _Event:
-        def __init__(self, group_id=""):
+        def __init__(self, group_id="", umo=""):
             self.message_obj = _Msg(group_id)
+            self.unified_msg_origin = umo
 
         def get_sender_id(self):
             return "10001"
 
-    assert plugin._session_key(_Event()) == "private:10001"
-    assert plugin._session_key(_Event(group_id="555")) == "group:555"
+    assert (
+        plugin._session_key(_Event(umo="webchat:FriendMessage:10001"))
+        == "private:webchat:FriendMessage:10001"
+    )
+    assert (
+        plugin._session_key(_Event(group_id="555", umo="aiocqhttp:GroupMessage:555"))
+        == "group:aiocqhttp:GroupMessage:555"
+    )
+    # Without a complete UMO, the plugin must fail closed rather than collapse
+    # different platforms/threads to a native-only key.
+    assert plugin._session_key(_Event()) == ""
+    assert plugin._session_key(_Event(group_id="555")) == ""
 
 
 def test_send_image_uses_url_image_for_http(plugin):

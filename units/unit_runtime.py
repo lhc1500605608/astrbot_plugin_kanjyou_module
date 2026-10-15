@@ -1,10 +1,15 @@
 import asyncio
 import random
+import uuid
 from datetime import datetime
 from typing import Dict, Optional
 
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
+
+
+class _ProactiveDeliveryFailure(Exception):
+    """Internal marker for an explicit send_message(False) delivery failure."""
 
 
 class RuntimeUnitsMixin:
@@ -16,9 +21,12 @@ class RuntimeUnitsMixin:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self._log_error("idle_loop_error", f"idle loop error: {exc}")
+                self._log_error(
+                    "idle_loop_error", f"idle loop error err_type={type(exc).__name__}"
+                )
 
     async def _check_sessions(self):
+        await self._flush_all_attempt_outcomes()
         if not self.config.get("enabled", True):
             self._debug_throttled("loop_plugin_disabled", "loop skip: plugin disabled")
             return
@@ -40,21 +48,24 @@ class RuntimeUnitsMixin:
         if not self._unit_global_guard(now_ts):
             return
 
-        changed = False
-
         async with self._lock:
-            for session_key, s in list(self._sessions.items()):
-                session_changed = await self._process_session(
-                    session_key, s, now, now_ts
-                )
-                changed = changed or session_changed
+            sessions = iter(list(self._sessions.items()))
 
-            if changed:
-                self._save_state()
+        async def consume():
+            for session_key, session in sessions:
+                changed = await self._process_session(session_key, session, now, now_ts)
+                if changed:
+                    async with self._lock:
+                        self._save_state()
+
+        # A fixed worker pool bounds both queued work and generation concurrency.
+        await asyncio.gather(consume(), consume())
 
     async def _process_session(
         self, session_key: str, s: Dict, now: datetime, now_ts: float
     ) -> bool:
+        if not isinstance(s, dict) or not self._session_identity(session_key, s):
+            return False
         self._unit_rollover_counters(s, now)
         self._recover_session_mood(s, now_ts)
         self._update_mood_low_streak(s)
@@ -76,7 +87,6 @@ class RuntimeUnitsMixin:
         if not decision.get("allow", False):
             return bool(decision.get("state_changed", False)) or receipt_settled
 
-        period = str(decision.get("period", self._get_period(now)))
         idle_sec = float(
             decision.get("idle_sec", now_ts - s.get("last_interaction_at", now_ts))
         )
@@ -88,22 +98,8 @@ class RuntimeUnitsMixin:
             idle_sec,
             s,
         )
-        self._unit_finalize_result(
-            session_key, s, success, sent_text, period, idle_sec, decay, now, now_ts
-        )
-        if success:
-            # Phase 2-A: record the pending receipt (state only; no ledger write).
-            await self._begin_proactive_receipt(s, umo, now_ts)
-            # Phase 2-B: 发送成功才回执续接计数（失败清空候选，静默降级）。
-            await self._commit_open_thread_followup(s, umo, now_ts)
-        else:
+        if not success:
             s.pop("companion_open_thread_followup", None)
-        # companion-core 回执：发送结果确定后回传一次（不可用则静默降级）。
-        await self._report_companion_outcome(
-            umo,
-            sent=success,
-            reason_code=(decision.get("reason_codes") or ["allow"])[0],
-        )
         self._debug_decision(
             session_key,
             {
@@ -115,6 +111,281 @@ class RuntimeUnitsMixin:
             },
         )
         return True
+
+    # ------------------------------------------------------------------ #
+    # Phase 2 send pipeline helpers
+    # ------------------------------------------------------------------ #
+    def _proactive_generation_timeout_sec(self) -> float:
+        """Bound the whole generation pipeline without adding a config key."""
+        try:
+            return max(
+                1.0,
+                max(60.0, float(self.config.get("lite_llm_timeout_sec", 6)))
+                + float(self.config.get("memory_recall_timeout_sec", 2))
+                + float(self.config.get("companion_timeout_sec", 1.5)),
+            )
+        except (TypeError, ValueError):
+            return 63.5
+
+    def _proactive_persona_id(self) -> str:
+        """Current configured persona ID only; never another session global."""
+        return str(self.config.get("persona_id") or "").strip()
+
+    def _capture_proactive_baseline(self, session_key: str, session: Dict) -> Dict:
+        return {
+            "session_key": session_key,
+            "unified_msg_origin": str(
+                (session or {}).get("unified_msg_origin")
+                or self._canonical_umo_from_session_key(session_key)
+                or ""
+            ),
+            "revision": int((session or {}).get("user_message_revision", 0) or 0),
+            "last_human_at": float((session or {}).get("last_human_at", 0.0) or 0.0),
+            "origin": str((session or {}).get("unified_msg_origin") or ""),
+            "identity": dict((session or {}).get("identity") or {}),
+        }
+
+    def _canonical_umo_from_session_key(self, session_key: str) -> str:
+        identity = self._parse_canonical_session_key(session_key)
+        return identity["umo"] if identity else ""
+
+    def _proactive_new_human_message(
+        self, session_key: str, baseline: Dict, now_ts: float
+    ) -> bool:
+        session = self._sessions.get(session_key)
+        if not isinstance(session, dict):
+            return True
+        # Inbound handlers advance this revision; a send never impersonates a human.
+        if int(session.get("user_message_revision", 0) or 0) != int(
+            baseline.get("revision", 0)
+        ):
+            return True
+        return float(session.get("last_human_at", 0.0) or 0.0) > float(
+            baseline.get("last_human_at", 0.0) or 0.0
+        )
+
+    def _proactive_delivery_gate(
+        self,
+        session_key: str,
+        session: Dict,
+        baseline: Dict,
+        *,
+        source: str,
+        now_ts: float,
+    ) -> Optional[str]:
+        """Fresh, strict pre-delivery gate; None means send is still allowed."""
+        if self._terminating:
+            return "shutdown"
+        if not isinstance(session, dict):
+            return "session_missing"
+        if not self._session_identity(session_key, session):
+            return "identity_mismatch"
+        if not self._session_state_whitelisted(session_key, session):
+            return "whitelist_removed"
+        current = self._sessions.get(session_key)
+        if current is not session:
+            return "session_replaced"
+        if dict(session.get("identity") or {}) != baseline.get("identity") or str(
+            session.get("unified_msg_origin") or ""
+        ) != baseline.get("origin"):
+            return "identity_changed"
+        if self._proactive_new_human_message(session_key, baseline, now_ts):
+            return "new_human_message"
+        if source == "manual":
+            # Explicit WebUI test intentionally bypasses schedule cooldown and
+            # DND/sleep only; hard identity/whitelist/shutdown/new-human guards
+            # above remain authoritative.
+            return None
+        if not self.config.get("enabled", True):
+            return "disabled"
+        if now_ts < self._global_pause_until:
+            return "safety_pause"
+        if self._in_sleep_window(self._now()):
+            return "night_quiet"
+        if now_ts < float(session.get("cooldown_until", 0.0) or 0.0):
+            return "cooldown_guard"
+        if int(session.get("today_proactive_count", 0) or 0) >= int(
+            self._max_per_session_per_day()
+        ):
+            return "daily_limit"
+        self._trim_global_send_history(now_ts)
+        if (
+            len(self._global_send_history) + self._global_send_inflight
+            >= self._security_global_hourly_cap()
+        ):
+            return "global_hourly_cap"
+        period = self._get_period(self._now())
+        if self._period_quota_enabled() and period:
+            counts = session.get("period_proactive_count") or {}
+            if int(counts.get(period, 0)) >= self._effective_period_quota_limit(
+                period, self._now()
+            ):
+                return "period_limit"
+        if self._require_human_reply_before_next_proactive() and session.get(
+            "pending_human_reply"
+        ):
+            return "await_human_reply"
+        return None
+
+    def _proactive_attempt_metadata(
+        self,
+        session_key: str,
+        umo: str,
+        baseline: Dict,
+        *,
+        source: str,
+        now_ts: float,
+    ) -> Dict:
+        """Metadata persisted before the first external send (never text)."""
+        return {
+            "attempt_id": str(uuid.uuid4()),
+            "session_key": session_key,
+            "umo": umo,
+            "source": source,
+            "persona_id": self._proactive_persona_id(),
+            "revision": int(baseline.get("revision", 0) or 0),
+            "last_human_at": float(baseline.get("last_human_at", 0.0) or 0.0),
+            "origin": str(baseline.get("origin") or ""),
+            "identity": dict(baseline.get("identity") or {}),
+            "started_at": now_ts,
+            "state": "pending",
+        }
+
+    async def _run_proactive_generation(
+        self,
+        unified_msg_origin: str,
+        session_key: str,
+        idle_sec: float,
+        session: Dict,
+    ) -> str:
+        """Owned, bounded generation task; cancellation propagates safely."""
+        if len(self._proactive_generation_tasks) >= 8:
+            raise RuntimeError("generation_queue_full")
+
+        async def bounded_generate():
+            async with self._proactive_generation_semaphore:
+                return await self._generate_proactive_text(
+                    unified_msg_origin, session_key, idle_sec, session
+                )
+
+        task = asyncio.create_task(bounded_generate())
+        self._proactive_generation_tasks.add(task)
+        try:
+            return await asyncio.wait_for(
+                task, timeout=self._proactive_generation_timeout_sec()
+            )
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+            raise
+        finally:
+            self._proactive_generation_tasks.discard(task)
+            if not task.done():
+                task.cancel()
+
+    async def _cancel_proactive_generation_tasks(self) -> None:
+        tasks = list(
+            (self._proactive_generation_tasks | self._proactive_send_tasks)
+            - {asyncio.current_task()}
+        )
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _flush_all_attempt_outcomes(self) -> None:
+        for session in list(getattr(self, "_sessions", {}).values()):
+            if isinstance(session, dict):
+                try:
+                    await self._flush_attempt_outcomes(session)
+                except Exception:
+                    pass
+
+    def _remember_proactive_attempt(
+        self, session: Dict, metadata: Dict, *, now_ts: float
+    ) -> None:
+        if not isinstance(session, dict):
+            return
+        # Pending outcome is keyed by attempt_id; it contains no message text.
+        pending = session.setdefault("proactive_attempt_pending", {})
+        if not isinstance(pending, dict):
+            pending = {}
+            session["proactive_attempt_pending"] = pending
+        pending[metadata["attempt_id"]] = dict(metadata)
+        session["proactive_attempt_inflight"] = metadata["attempt_id"]
+        session["proactive_attempt_updated_at"] = now_ts
+
+    def _finish_proactive_attempt(
+        self, session: Dict, attempt_id: str, *, state: str, reason_code: str
+    ) -> None:
+        if not isinstance(session, dict):
+            return
+        pending = session.get("proactive_attempt_pending")
+        if isinstance(pending, dict):
+            item = pending.get(attempt_id)
+            if isinstance(item, dict):
+                item["state"] = state
+                item["reason_code"] = reason_code
+                item["finished_at"] = self._now().timestamp()
+        if session.get("proactive_attempt_inflight") == attempt_id:
+            session.pop("proactive_attempt_inflight", None)
+            session["proactive_attempt_inflight"] = None
+
+    async def _record_attempt_result(
+        self, session: Dict, umo: str, metadata: Dict, sent: bool, reason_code: str
+    ) -> bool:
+        """Call the adapter immediately after the actual send outcome."""
+        self._finish_proactive_attempt(
+            session,
+            metadata["attempt_id"],
+            state="sent" if sent else "blocked",
+            reason_code=reason_code,
+        )
+        try:
+            result = await self._record_attempt_outcome(
+                session,
+                umo,
+                event_id=metadata["attempt_id"],
+                persona_id=metadata["persona_id"],
+                sent=sent,
+                reason_code=reason_code,
+            )
+        except Exception:
+            result = False
+        if result or not self._companion_enabled():
+            pending = session.get("proactive_attempt_pending")
+            if isinstance(pending, dict):
+                pending.pop(metadata["attempt_id"], None)
+        self._last_proactive_attempt_result = {
+            "attempt_id": metadata["attempt_id"],
+            "sent": sent,
+            "reason_code": reason_code,
+            "source": metadata.get("source", ""),
+        }
+        self._save_state()
+        return bool(result)
+
+    def _cleanup_expired_attempt_metadata(self, session: Dict, now_ts: float) -> None:
+        pending = (
+            session.get("proactive_attempt_pending")
+            if isinstance(session, dict)
+            else None
+        )
+        if not isinstance(pending, dict):
+            return
+        expired = []
+        for attempt_id, item in pending.items():
+            if not isinstance(item, dict):
+                expired.append(attempt_id)
+                continue
+            started = float(item.get("started_at", 0.0) or 0.0)
+            if now_ts - started > 300:
+                expired.append(attempt_id)
+        for attempt_id in expired:
+            pending.pop(attempt_id, None)
 
     async def _decision_engine(
         self, session_key: str, s: Dict, now: datetime, now_ts: float
@@ -527,7 +798,7 @@ class RuntimeUnitsMixin:
         self._rollover_period_counter(s, now)
 
     def _unit_gate_whitelist(self, session_key: str, s: Dict, now_ts: float) -> bool:
-        if self._is_session_whitelisted(session_key):
+        if self._session_state_whitelisted(session_key, s):
             return False
         # Whitelist is a hard skip gate for proactive sends only.
         # Do not mutate session timing here, otherwise state will be persisted every loop.
@@ -765,41 +1036,258 @@ class RuntimeUnitsMixin:
         session_key: str = "",
         idle_sec: float = 0.0,
         session: Optional[Dict] = None,
+        source: str = "scheduled",
     ) -> tuple[bool, str]:
-        topic = await self._generate_proactive_text(
-            unified_msg_origin, session_key, idle_sec, session
+        if source not in ("manual", "scheduled"):
+            source = "scheduled"
+        if not session_key:
+            session_key = "private:" + unified_msg_origin if unified_msg_origin else ""
+        session = (
+            session if isinstance(session, dict) else self._sessions.get(session_key)
         )
+        if not isinstance(session, dict):
+            self._debug(
+                f"send proactive blocked session={session_key} reason=session_missing"
+            )
+            return False, ""
+        if unified_msg_origin != str(session.get("unified_msg_origin") or ""):
+            self._debug(
+                f"send proactive blocked session={session_key} reason=origin_mismatch"
+            )
+            return False, ""
 
-        async def _send_segment(segment: str) -> None:
-            chain = MessageChain().message(segment)
-            delivered = await self.context.send_message(unified_msg_origin, chain)
-            if delivered is False:
-                # AstrBot 4.23.2 send_message returns bool; False means no platform matched.
-                self._debug(
-                    f"send_message returned False (platform not found) session={session_key}"
-                )
-
+        # Complete-UMO per-session lock. A second concurrent manual request is
+        # busy; two sequential requests both revalidate under fresh state.
+        lock = self._proactive_session_locks.setdefault(session_key, asyncio.Lock())
+        if len(session.get("companion_attempt_receipt_pending") or {}) >= 16:
+            self._debug("send proactive blocked reason=receipt_backlog_full")
+            return False, ""
+        owner = object()
+        if session_key in self._proactive_session_inflight:
+            self._debug(f"send proactive busy session={session_key} source={source}")
+            return False, ""
+        self._proactive_session_inflight.add(session_key)
+        self._proactive_session_lock_owners[session_key] = owner
+        send_task = asyncio.current_task()
+        self._proactive_send_tasks.add(send_task)
+        reserved = False
         try:
-            await self._dispatch_reply_segments(_send_segment, topic, proactive=True)
-            self._debug(f"send proactive ok session={session_key} topic={topic}")
-            self._remember_proactive_text(session_key, topic, session)
-            return True, topic
-        except Exception:
-            try:
-                # 兼容部分适配器对 MessageChain 构造差异
-                await self.context.send_message(unified_msg_origin, [Plain(topic)])
+            if lock.locked():
                 self._debug(
-                    f"send proactive ok(fallback) session={session_key} topic={topic}"
+                    f"send proactive busy session={session_key} source={source}"
+                )
+                return False, ""
+            async with lock:
+                now_ts = self._now().timestamp()
+                async with self._lock:
+                    baseline = self._capture_proactive_baseline(session_key, session)
+                    baseline["revision"] = (
+                        int(session.get("user_message_revision", 0) or 0) + 1
+                    )
+                    session["user_message_revision"] = baseline["revision"]
+                    self._cleanup_expired_attempt_metadata(session, now_ts)
+                    self._remember_proactive_attempt(
+                        session,
+                        self._proactive_attempt_metadata(
+                            session_key,
+                            unified_msg_origin,
+                            baseline,
+                            source=source,
+                            now_ts=now_ts,
+                        ),
+                        now_ts=now_ts,
+                    )
+                    self._save_state()
+                metadata = session["proactive_attempt_pending"][
+                    session["proactive_attempt_inflight"]
+                ]
+
+                try:
+                    topic = await self._run_proactive_generation(
+                        unified_msg_origin, session_key, idle_sec, session
+                    )
+                except asyncio.CancelledError:
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        "generation_cancelled",
+                    )
+                    return False, ""
+                except asyncio.TimeoutError:
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        "generation_timeout",
+                    )
+                    return False, ""
+                except Exception:
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        "generation_failed",
+                    )
+                    return False, ""
+
+                delivery_now_ts = self._now().timestamp()
+                gate_reason = self._proactive_delivery_gate(
+                    session_key,
+                    session,
+                    baseline,
+                    source=source,
+                    now_ts=delivery_now_ts,
+                )
+                if gate_reason:
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        gate_reason,
+                    )
+                    self._debug(
+                        f"send proactive blocked session={session_key} "
+                        f"reason={gate_reason} source={source}"
+                    )
+                    return False, ""
+
+                if source == "scheduled":
+                    self._global_send_inflight += 1
+                    reserved = True
+                delivered_segments = 0
+
+                async def _send_segment(segment: str) -> None:
+                    nonlocal delivered_segments
+                    chain = MessageChain().message(segment)
+                    delivered = await self.context.send_message(
+                        unified_msg_origin, chain
+                    )
+                    # AstrBot 4.23.2 send_message returns bool; False means no
+                    # platform matched. Treat it as definitive failure.
+                    if delivered is False:
+                        self._debug(
+                            "send_message returned False (platform not found) "
+                            f"session={session_key}"
+                        )
+                        raise _ProactiveDeliveryFailure()
+                    delivered_segments += 1
+
+                sent = False
+                failure_reason = "send_failed"
+                try:
+                    await self._dispatch_reply_segments(
+                        _send_segment, topic, proactive=True
+                    )
+                    sent = True
+                except _ProactiveDeliveryFailure:
+                    failure_reason = "send_message_false"
+                except Exception as initial_error:
+                    try:
+                        # Only a first-call payload type mismatch can safely use
+                        # the legacy payload form; unknown or partial delivery
+                        # is never replayed as a full message.
+                        if delivered_segments or not isinstance(
+                            initial_error, TypeError
+                        ):
+                            raise initial_error
+                        delivered = await self.context.send_message(
+                            unified_msg_origin, [Plain(topic)]
+                        )
+                        if delivered is False:
+                            raise _ProactiveDeliveryFailure()
+                        sent = True
+                    except _ProactiveDeliveryFailure:
+                        failure_reason = "send_message_false"
+                    except Exception as exc:
+                        self._log_error(
+                            "send_failed",
+                            f"send failed err_type={type(exc).__name__}",
+                        )
+                        if event:
+                            await event.send(
+                                event.plain_result(
+                                    "主动消息发送失败，请检查适配器是否支持主动消息。"
+                                )
+                            )
+
+                if not sent:
+                    if source == "scheduled":
+                        async with self._lock:
+                            self._unit_finalize_result(
+                                session_key,
+                                session,
+                                False,
+                                "",
+                                self._get_period(self._now()),
+                                idle_sec,
+                                self._no_reply_decay_factor(session),
+                                self._now(),
+                                delivery_now_ts,
+                            )
+                    await self._record_attempt_result(
+                        session,
+                        unified_msg_origin,
+                        metadata,
+                        False,
+                        failure_reason,
+                    )
+                    return False, ""
+
+                async with self._lock:
+                    if source == "scheduled":
+                        self._unit_finalize_result(
+                            session_key,
+                            session,
+                            True,
+                            topic,
+                            self._get_period(self._now()),
+                            idle_sec,
+                            self._no_reply_decay_factor(session),
+                            self._now(),
+                            delivery_now_ts,
+                        )
+                    else:
+                        session["manual_proactive_count"] = (
+                            int(session.get("manual_proactive_count", 0)) + 1
+                        )
+                        session["last_manual_proactive_at"] = delivery_now_ts
+                    self._save_state()
+                await self._begin_proactive_receipt(
+                    session,
+                    unified_msg_origin,
+                    delivery_now_ts,
+                    attempt_id=metadata["attempt_id"],
+                )
+                if source == "scheduled":
+                    await self._commit_open_thread_followup(
+                        session, unified_msg_origin, delivery_now_ts
+                    )
+
+                # Adapter receipt is immediately after the actual send. Do not
+                # expose or persist generated message text in attempt metadata.
+                await self._record_attempt_result(
+                    session,
+                    unified_msg_origin,
+                    metadata,
+                    True,
+                    "ok",
+                )
+                self._debug(
+                    f"send proactive ok session={session_key} chars={len(topic)} "
+                    f"source={source}"
                 )
                 self._remember_proactive_text(session_key, topic, session)
                 return True, topic
-            except Exception as exc:
-                self._log_error("send_failed", f"send failed: {exc}")
-                self._debug(f"send proactive failed session={session_key} err={exc}")
-                if event:
-                    await event.send(
-                        event.plain_result(
-                            "主动消息发送失败，请检查适配器是否支持主动消息。"
-                        )
-                    )
-                return False, ""
+        finally:
+            self._proactive_send_tasks.discard(send_task)
+            if reserved:
+                self._global_send_inflight -= 1
+            self._proactive_session_inflight.discard(session_key)
+            if self._proactive_session_lock_owners.get(session_key) is owner:
+                self._proactive_session_lock_owners.pop(session_key, None)
+                self._proactive_session_locks.pop(session_key, None)

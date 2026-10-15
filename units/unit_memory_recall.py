@@ -249,8 +249,8 @@ class MemoryRecallUnitsMixin:
         if query:
             try:
                 adapter = self._memory_recall_adapter()
-            except Exception as exc:
-                self._debug(f"memory recall adapter init failed: {exc}")
+            except Exception:
+                self._debug("memory recall adapter init failed")
                 adapter = None
             if adapter is not None:
                 try:
@@ -268,8 +268,10 @@ class MemoryRecallUnitsMixin:
                         f"memory recall timeout session={session_key} "
                         f"timeout={self._memory_recall_timeout_sec()}s"
                     )
-                except Exception as exc:
-                    self._debug(f"memory recall failed session={session_key} err={exc}")
+                except Exception:
+                    self._debug(
+                        f"memory recall failed session={session_key} err_type=unknown"
+                    )
 
         merged = self._merge_memory_snippets(
             memories,

@@ -134,16 +134,22 @@ def _install_star(plugin, star, name="astrbot_plugin_tcompanion_core", activated
 
 def _enable(plugin, **overrides):
     plugin.config["companion_enabled"] = True
-    plugin.config["private_whitelist"] = ["u1"]
-    plugin.config["group_whitelist"] = ["g1"]
+    plugin.config["private_whitelist"] = [plugin._whitelist_entry("u1", "aiocqhttp")]
+    plugin.config["group_whitelist"] = [plugin._whitelist_entry("g1", "aiocqhttp", kind="group")]
     for key, value in overrides.items():
         plugin.config[key] = value
+    plugin._sessions["private:aiocqhttp:private:u1"] = _session()
 
 
 def _session(**overrides):
     session = {
-        "session_key": "private:u1",
+        "session_key": "private:aiocqhttp:private:u1",
         "unified_msg_origin": UMO,
+        "identity": {
+            "platform": "aiocqhttp",
+            "native_id": "u1",
+            "sender_id": "u1",
+        },
         "companion_open_thread_cooldown": {},
     }
     session.update(overrides)
@@ -247,9 +253,9 @@ def test_sanitize_label_collapses_and_truncates():
 
 def test_completion_collects_close_action(plugin):
     _enable(plugin)
-    assert plugin._collect_inbound_open_thread("private:u1", "发你了", UMO) == {
-        "action": "close"
-    }
+    assert plugin._collect_inbound_open_thread(
+        "private:aiocqhttp:private:u1", "发你了", UMO
+    ) == {"action": "close"}
 
 
 def test_apply_completion_closes_newest_open_thread(plugin):
@@ -307,8 +313,18 @@ def test_group_scope_is_isolated(plugin):
     _enable(plugin)
     adapter = _OpenThreadAdapter(threads=[{"thread_id": "thread:g", "status": "open"}])
     plugin._companion_adapter_override = adapter
-    assert plugin._collect_inbound_open_thread("group:g1", "发你了", "aiocqhttp:group:g1") is None
-    assert plugin._select_open_thread_followup(_ctx(), "group:g1", _session(), 0.0) is None
+    assert (
+        plugin._collect_inbound_open_thread(
+            "group:aiocqhttp:group:g1", "发你了", "aiocqhttp:group:g1"
+        )
+        is None
+    )
+    assert (
+        plugin._select_open_thread_followup(
+            _ctx(), "group:aiocqhttp:group:g1", _session(), 0.0
+        )
+        is None
+    )
     assert adapter.recorded == [] and adapter.closed == []
 
 
@@ -328,8 +344,18 @@ def test_missing_companion_disables_everything(plugin):
     adapter = _OpenThreadAdapter()
     plugin._companion_adapter_override = adapter
     # companion_enabled default False.
-    assert plugin._collect_inbound_open_thread("private:u1", "我明天发你", UMO) is None
-    assert plugin._select_open_thread_followup(_ctx(), "private:u1", _session(), 0.0) is None
+    assert (
+        plugin._collect_inbound_open_thread(
+            "private:aiocqhttp:private:u1", "我明天发你", UMO
+        )
+        is None
+    )
+    assert (
+        plugin._select_open_thread_followup(
+            _ctx(), "private:aiocqhttp:private:u1", _session(), 0.0
+        )
+        is None
+    )
     assert (
         asyncio.run(plugin._record_companion_open_thread(
             UMO, kind="commitment", label="x", confidence=0.8
@@ -411,7 +437,9 @@ def test_fetch_context_keeps_details_with_capability(plugin):
 
 def test_select_returns_candidate_when_all_gates_pass(plugin):
     _enable(plugin)
-    selected = plugin._select_open_thread_followup(_ctx(), "private:u1", _session(), NOW)
+    selected = plugin._select_open_thread_followup(
+        _ctx(), "private:aiocqhttp:private:u1", _session(), NOW
+    )
     assert selected == {
         "thread_id": "thread:a",
         "label": "把方案发你",
@@ -427,7 +455,12 @@ def test_select_skips_low_confidence_and_stale(plugin):
             _detail(thread_id="thread:b", confidence=0.5),
         ]
     )
-    assert plugin._select_open_thread_followup(ctx, "private:u1", _session(), NOW) is None
+    assert (
+        plugin._select_open_thread_followup(
+            ctx, "private:aiocqhttp:private:u1", _session(), NOW
+        )
+        is None
+    )
 
 
 def test_select_respects_min_age(plugin):
@@ -436,15 +469,30 @@ def test_select_respects_min_age(plugin):
     recent = "2026-09-21T10:00:00"
     now = _dt.datetime.fromisoformat(recent).timestamp() + 60
     ctx = _ctx(open_thread_details=[_detail(last_seen=recent)])
-    assert plugin._select_open_thread_followup(ctx, "private:u1", _session(), now) is None
+    assert (
+        plugin._select_open_thread_followup(
+            ctx, "private:aiocqhttp:private:u1", _session(), now
+        )
+        is None
+    )
 
 
 def test_select_respects_cooldown_and_resets(plugin):
     _enable(plugin)
     session = _session(companion_open_thread_cooldown={"thread:a": NOW - 3600})
-    assert plugin._select_open_thread_followup(_ctx(), "private:u1", session, NOW) is None
+    assert (
+        plugin._select_open_thread_followup(
+            _ctx(), "private:aiocqhttp:private:u1", session, NOW
+        )
+        is None
+    )
     session["companion_open_thread_cooldown"] = {"thread:a": NOW - 25 * 3600}
-    assert plugin._select_open_thread_followup(_ctx(), "private:u1", session, NOW) is not None
+    assert (
+        plugin._select_open_thread_followup(
+            _ctx(), "private:aiocqhttp:private:u1", session, NOW
+        )
+        is not None
+    )
 
 
 def test_select_respects_followup_count_cap(plugin):
@@ -452,27 +500,35 @@ def test_select_respects_followup_count_cap(plugin):
     ctx = _ctx(
         open_thread_details=[_detail(followup_count=OPEN_THREAD_FOLLOWUP_MAX)]
     )
-    assert plugin._select_open_thread_followup(ctx, "private:u1", _session(), NOW) is None
+    assert (
+        plugin._select_open_thread_followup(
+            ctx, "private:aiocqhttp:private:u1", _session(), NOW
+        )
+        is None
+    )
 
 
 def test_select_respects_quota_streak_and_bias(plugin):
     _enable(plugin)
     assert (
         plugin._select_open_thread_followup(
-            _ctx(quota={"allow": False}), "private:u1", _session(), NOW
+            _ctx(quota={"allow": False}),
+            "private:aiocqhttp:private:u1",
+            _session(),
+            NOW,
         )
         is None
     )
     assert (
         plugin._select_open_thread_followup(
-            _ctx(unanswered_streak=3), "private:u1", _session(), NOW
+            _ctx(unanswered_streak=3), "private:aiocqhttp:private:u1", _session(), NOW
         )
         is None
     )
     assert (
         plugin._select_open_thread_followup(
             _ctx(expression={"mode": "回避", "style_hints": {"proactive_bias": -0.6}}),
-            "private:u1",
+            "private:aiocqhttp:private:u1",
             _session(),
             NOW,
         )
@@ -530,7 +586,9 @@ def test_generation_injects_open_thread_block(plugin):
     _mock_llm(plugin, captured)
     session = _session()
     text = asyncio.run(
-        plugin._generate_proactive_text(UMO, "private:u1", 3600, session)
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
     )
     assert text
     assert "【未完话题】" in captured["prompt"]
@@ -544,7 +602,11 @@ def test_generation_uses_placeholder_when_present(plugin):
     plugin.config["proactive_prompt_template"] = "话题：{open_thread_followup}\n"
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, _session()))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, _session()
+        )
+    )
     prompt = captured["prompt"]
     assert "话题：对方之前提过" in prompt
     assert "【未完话题】" not in prompt
@@ -556,7 +618,11 @@ def test_generation_no_thread_leaves_v273_behavior(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session()
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     assert "【未完话题】" not in captured["prompt"]
     assert "companion_open_thread_followup" not in session
 
@@ -567,7 +633,9 @@ def test_generation_group_never_injects_open_thread(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     asyncio.run(
-        plugin._generate_proactive_text("aiocqhttp:group:g1", "group:g1", 3600, _session())
+        plugin._generate_proactive_text(
+            "aiocqhttp:group:g1", "group:aiocqhttp:group:g1", 3600, _session()
+        )
     )
     assert "【未完话题】" not in captured["prompt"]
 
@@ -601,7 +669,11 @@ def test_generation_cooldown_keeps_label_out_of_prompt(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session(companion_open_thread_cooldown={"thread:a": time.time()})
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     assert "【未完话题】" not in captured["prompt"]
     assert LEGACY_LABEL not in captured["prompt"]
     assert "companion_open_thread_followup" not in session
@@ -616,7 +688,11 @@ def test_generation_followup_cap_keeps_label_out_of_prompt(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session()
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     assert "【未完话题】" not in captured["prompt"]
     assert LEGACY_LABEL not in captured["prompt"]
 
@@ -627,7 +703,11 @@ def test_generation_toggle_off_keeps_label_out_of_prompt(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session()
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     assert "【未完话题】" not in captured["prompt"]
     assert LEGACY_LABEL not in captured["prompt"]
 
@@ -638,7 +718,11 @@ def test_generation_single_injection_path_when_gate_passes(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session()
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     prompt = captured["prompt"]
     assert prompt.count("把方案发你") == 1
     assert LEGACY_LABEL not in prompt
@@ -676,7 +760,11 @@ def test_generation_cooldown_hides_motivation_label(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session(companion_open_thread_cooldown={"thread:a": time.time()})
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     assert MOTIVATION_LABEL not in captured["prompt"]
     assert "companion_open_thread_followup" not in session
 
@@ -689,7 +777,11 @@ def test_generation_followup_cap_hides_motivation_label(plugin):
     plugin._companion_adapter_override = _FetchAdapter(ctx)
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, _session()))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, _session()
+        )
+    )
     assert MOTIVATION_LABEL not in captured["prompt"]
 
 
@@ -698,7 +790,11 @@ def test_generation_toggle_off_hides_motivation_label(plugin):
     plugin._companion_adapter_override = _FetchAdapter(_ctx_with_motivation(LEAKY_REASON))
     captured = {}
     _mock_llm(plugin, captured)
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, _session()))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, _session()
+        )
+    )
     assert MOTIVATION_LABEL not in captured["prompt"]
 
 
@@ -708,9 +804,12 @@ def test_generation_gate_pass_keeps_label_only_in_followup_block(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     session = _session()
-    asyncio.run(plugin._generate_proactive_text(UMO, "private:u1", 3600, session))
+    asyncio.run(
+        plugin._generate_proactive_text(
+            UMO, "private:aiocqhttp:private:u1", 3600, session
+        )
+    )
     prompt = captured["prompt"]
     assert GENERIC_REASON in prompt
     assert prompt.count(MOTIVATION_LABEL) == 1
     assert "【未完话题】" in prompt
-

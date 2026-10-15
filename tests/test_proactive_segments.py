@@ -111,6 +111,20 @@ def test_send_proactive_routes_through_segmented_dispatch(plugin, gen, monkeypat
         return topic
 
     plugin._generate_proactive_text = _fake_generate
+    key = "private:aiocqhttp:FriendMessage:1"
+    plugin._sessions[key] = {
+        "session_key": key,
+        "unified_msg_origin": "aiocqhttp:FriendMessage:1",
+        "identity": {"platform": "aiocqhttp", "native_id": "1"},
+        "last_human_at": 0.0,
+        "last_interaction_at": 0.0,
+        "cooldown_until": 0.0,
+        "today_proactive_count": 0,
+        "user_message_revision": 0,
+    }
+    plugin.config["private_whitelist"] = [
+        plugin._whitelist_entry("1", "aiocqhttp", "private")
+    ]
 
     sent = []
 
@@ -122,7 +136,9 @@ def test_send_proactive_routes_through_segmented_dispatch(plugin, gen, monkeypat
     _install(gen, monkeypatch)
 
     ok, text = asyncio.run(
-        plugin._send_proactive("aiocqhttp:FriendMessage:1", None, "private:1", 10, {})
+        plugin._send_proactive(
+            "aiocqhttp:FriendMessage:1", None, key, 10, plugin._sessions[key]
+        )
     )
     assert ok is True
     assert text == topic

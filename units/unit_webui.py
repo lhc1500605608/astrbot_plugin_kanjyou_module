@@ -108,7 +108,8 @@ class WebUIUnitsMixin:
                 register(route, handler, [method], desc)
             except Exception as exc:
                 self._log_error(
-                    "web_api_register_failed", f"register {route} failed: {exc}"
+                    "web_api_register_failed",
+                    f"register failed route_type={type(exc).__name__}",
                 )
 
     # ---------------------------------------------------------------- GET
@@ -143,7 +144,7 @@ class WebUIUnitsMixin:
         session = self._sessions.get(session_id)
         if not isinstance(session, dict):
             return error_response("会话不存在")
-        if not self._is_session_whitelisted(session_id):
+        if not self._session_state_whitelisted(session_id, session):
             return error_response("会话不在白名单，无法测试")
         umo = str(session.get("unified_msg_origin") or "").strip()
         if not umo:
@@ -152,10 +153,13 @@ class WebUIUnitsMixin:
         idle_sec = max(0.0, now_ts - float(session.get("last_interaction_at", now_ts)))
         try:
             success, _text = await self._send_proactive(
-                umo, None, session_id, idle_sec, session
+                umo, None, session_id, idle_sec, session, source="manual"
             )
         except Exception as exc:
-            self._log_error("web_api_test_failed", f"manual test failed: {exc}")
+            self._log_error(
+                "web_api_test_failed",
+                f"manual test failed err_type={type(exc).__name__}",
+            )
             return error_response("主动消息发送失败")
         return json_response(
             {
@@ -169,6 +173,7 @@ class WebUIUnitsMixin:
         op = body.get("op")
         kind = body.get("kind")
         target = body.get("id")
+        platform = body.get("platform")
         if op not in VALID_WHITELIST_OPS:
             return error_response("op 必须为 add 或 del")
         if kind not in VALID_WHITELIST_KINDS:
@@ -176,9 +181,13 @@ class WebUIUnitsMixin:
         if not isinstance(target, str) or not target.strip():
             return error_response("id 必须为非空字符串")
         target = target.strip()
-        if len(target) > 128:
-            return error_response("id 长度超限")
+        if not isinstance(platform, str) or not platform.strip():
+            return error_response("白名单必须显式提供 platform 实例")
+        platform = platform.strip()
+        if len(target) > 128 or len(platform) > 128:
+            return error_response("id/platform 长度超限")
         key = "private_whitelist" if kind == "private" else "group_whitelist"
+        target = self._whitelist_entry(target, platform, kind)
         current = self.config.get(key)
         if not isinstance(current, list):
             current = []
@@ -263,8 +272,8 @@ class WebUIUnitsMixin:
     def _webui_default_session_id(self) -> str:
         candidates = [
             session_id
-            for session_id in self._sessions
-            if self._is_session_whitelisted(session_id)
+            for session_id, session in self._sessions.items()
+            if self._session_state_whitelisted(session_id, session)
         ]
         if not candidates:
             return ""
@@ -284,7 +293,7 @@ class WebUIUnitsMixin:
         now_ts = now.timestamp()
         sessions: List[Dict] = []
         for session_id, session in list(self._sessions.items()):
-            if not isinstance(session, dict):
+            if not isinstance(session, dict) or session_id.startswith("__quarantine__"):
                 continue
             sessions.append(
                 self._webui_session_snapshot(session_id, session, now, now_ts)
@@ -302,6 +311,11 @@ class WebUIUnitsMixin:
             "whitelist": {
                 "private": self._webui_list("private_whitelist"),
                 "group": self._webui_list("group_whitelist"),
+            },
+            "settings": {
+                "sleep_start": self.config.get("sleep_start", "23:30"),
+                "sleep_end": self.config.get("sleep_end", "08:00"),
+                "timezone": self.config.get("timezone", "Asia/Shanghai"),
             },
             "recent": self._webui_recent_decisions(),
         }
@@ -388,29 +402,27 @@ class WebUIUnitsMixin:
         if not trace:
             return []
         if last_seen is None:
-            return [item for item in trace[-WEB_RECENT_LIMIT:] if isinstance(item, dict)]
+            return [
+                item for item in trace[-WEB_RECENT_LIMIT:] if isinstance(item, dict)
+            ]
         for idx in range(len(trace) - 1, -1, -1):
             if trace[idx] is last_seen:
-                return [
-                    item for item in trace[idx + 1 :] if isinstance(item, dict)
-                ]
+                return [item for item in trace[idx + 1 :] if isinstance(item, dict)]
         return [item for item in trace[-WEB_RECENT_LIMIT:] if isinstance(item, dict)]
 
     async def _webui_event_stream(self):
         last_seen = None
         heartbeat = 0.0
-        yield self._webui_sse(
-            {"type": "status", "data": self._webui_status_data()}
-        )
+        yield self._webui_sse({"type": "status", "data": self._webui_status_data()})
         while True:
             try:
                 await asyncio.sleep(WEB_EVENT_INTERVAL_SEC)
             except asyncio.CancelledError:
                 return
-            yield self._webui_sse(
-                {"type": "status", "data": self._webui_status_data()}
+            yield self._webui_sse({"type": "status", "data": self._webui_status_data()})
+            trace = (
+                self._decision_trace if isinstance(self._decision_trace, list) else []
             )
-            trace = self._decision_trace if isinstance(self._decision_trace, list) else []
             for decision in self._webui_new_decisions(trace, last_seen):
                 yield self._webui_sse(
                     {"type": "decision", "data": self._webui_safe_decision(decision)}
@@ -426,7 +438,10 @@ class WebUIUnitsMixin:
         try:
             config_data = self._webui_read_config_file()
         except Exception as exc:
-            self._log_error("web_api_reload_failed", f"reload config failed: {exc}")
+            self._log_error(
+                "web_api_reload_failed",
+                f"reload config failed err_type={type(exc).__name__}",
+            )
             config_data = None
         if config_data is not None:
             raw = getattr(self.config, "_raw", None)
@@ -436,7 +451,10 @@ class WebUIUnitsMixin:
         try:
             self._sessions = self._load_state()
         except Exception as exc:
-            self._log_error("web_api_reload_state_failed", f"reload state failed: {exc}")
+            self._log_error(
+                "web_api_reload_state_failed",
+                f"reload state failed err_type={type(exc).__name__}",
+            )
         self._normalize_webui_config()
         self._run_startup_config_checks()
 

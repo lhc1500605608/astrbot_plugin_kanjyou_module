@@ -1,481 +1,210 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="zh-CN" data-page="control">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WarmWhisper Control</title>
-  <style>
-:root {
-  --bg: #111827;
-  --surface: #1f2937;
-  --surface2: #374151;
-  --border: #2d333b;
-  --text: #f3f4f6;
-  --text2: #9ca3af;
-  --text3: #6b7280;
-  --accent: #58a6ff;
-  --accent2: #3fb950;
-  --warn: #d29922;
-  --danger: #f85149;
-  --brand: #6366f1;
-  --brand-hover: #4f46e5;
-  --brand-light: rgba(99,102,241,.15);
-  --radius: 8px;
-  --radius-sm: 4px;
-  --shadow: 0 4px 24px rgba(0,0,0,.5);
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  --mono: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
-  --transition: 150ms ease;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WarmWhisper · 暖语</title>
+<style>
+:root{
+  --bg:#F7F5F0;--card:#FFFFFF;--fg:#26231F;--fg2:#5E5850;--muted:#8A8378;--line:#E7E2D8;--line2:#EFEBE3;
+  --accent:#D97A4A;--accent-ink:#A9532A;--accent-soft:#FBEDE4;--ok:#2F9E5B;--ok-soft:#E3F4EA;--warn:#B7791F;--warn-soft:#FBF1DC;
+  --bad:#C0392B;--bad-soft:#FBE6E3;--info:#3C6E9F;--info-soft:#E4EEF7;
+  --shadow:0 1px 2px rgba(38,35,31,.04),0 4px 16px rgba(38,35,31,.05);--shadow-lg:0 20px 60px rgba(38,35,31,.18);
+  --radius:14px;--serif:"Songti SC","Noto Serif CJK SC","Source Han Serif SC","STSong",Georgia,serif;
+  --sans:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 14px;
-  line-height: 1.5;
-  min-height: 100vh;
+[data-theme=dark]{
+  --bg:#181614;--card:#211F1C;--fg:#F1ECE4;--fg2:#C6BEB2;--muted:#9A9184;--line:#36322D;--line2:#2C2925;
+  --accent:#E68A5A;--accent-ink:#F0A47B;--accent-soft:#3A2A21;--ok:#4CC27B;--ok-soft:#1E3327;--warn:#E0A847;--warn-soft:#3A3020;
+  --bad:#EF6B5C;--bad-soft:#3D2320;--info:#7FAEDB;--info-soft:#1F2C3A;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
 }
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.app{display:flex;min-height:100vh}
+/* sidebar */
+.side{width:232px;flex:none;border-right:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;transition:width .2s}
+.brand{display:flex;align-items:center;gap:10px;padding:20px 18px 18px}
+.mark{width:30px;height:30px;flex:none}
+.brand b{font-family:var(--serif);font-size:16px;letter-spacing:.02em}
+.brand small{display:block;color:var(--muted);font-size:11px;letter-spacing:.06em}
+.nav{padding:6px 10px;display:flex;flex-direction:column;gap:2px;flex:1}
+.nav button{display:flex;align-items:center;gap:10px;border:0;background:none;padding:9px 10px;border-radius:9px;cursor:pointer;color:var(--fg2);text-align:left;transition:background .15s,color .15s}
+.nav button:hover{background:var(--line2);color:var(--fg)}
+.nav button[aria-current=page]{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.nav svg{width:17px;height:17px;flex:none}
+.side-foot{padding:14px 18px;border-top:1px solid var(--line2);display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px}
+.collapsed .side{width:64px}
+.collapsed .side .lbl,.collapsed .brand div,.collapsed .side-foot .ver{display:none}
+.iconbtn{border:1px solid var(--line);background:var(--card);border-radius:9px;width:32px;height:32px;display:inline-grid;place-items:center;cursor:pointer;transition:border-color .15s,background .15s}
+.iconbtn:hover{border-color:var(--accent)}
+.iconbtn svg{width:16px;height:16px}
+/* main */
+.main{flex:1;min-width:0;padding:28px 36px 90px;max-width:1280px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:26px}
+h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:.01em;margin:0 0 4px}
+.sub{color:var(--muted);margin:0}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:12px;color:var(--fg2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill[data-s=live] .dot{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2s infinite}
+.pill[data-s=connecting] .dot{background:var(--warn)}
+.pill[data-s=offline] .dot,.pill[data-s=error] .dot{background:var(--bad)}
+.pill[data-s=demo] .dot{background:var(--accent)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 50%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);padding:7px 13px;border-radius:9px;cursor:pointer;font-size:13px;transition:border-color .15s,background .15s,transform .1s}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover:not(:disabled){background:var(--accent-ink)}
+.btn.danger{color:var(--bad)}
+.btn.danger.solid{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn svg{width:14px;height:14px}
+.btn.sm{padding:4px 9px;font-size:12px}
+.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.banner{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;background:var(--card)}
+.banner.demo{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent);color:var(--accent-ink)}
+.banner.err{background:var(--bad-soft);border-color:color-mix(in srgb,var(--bad) 30%,transparent);color:var(--bad)}
+.banner.warn{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.card-h h2{font-size:15px;margin:0;font-weight:600}
+.card-b{padding:18px 20px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat{padding:18px 20px}
+.stat .k{color:var(--muted);font-size:12px;letter-spacing:.04em}
+.stat .v{font-family:var(--serif);font-size:32px;font-weight:600;line-height:1.2;margin-top:6px;font-variant-numeric:tabular-nums}
+.stat .h{font-size:12px;color:var(--muted)}
+.stat.bad .v{color:var(--bad)}
+.stack{display:flex;flex-direction:column;gap:18px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.toggle-row{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:18px 20px;flex-wrap:wrap}
+.switch{position:relative;width:44px;height:24px;border-radius:999px;background:var(--line);border:0;cursor:pointer;transition:background .2s;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
+.switch[aria-checked=true]{background:var(--ok)}
+.switch[aria-checked=true]::after{transform:translateX(20px)}
+.switch:disabled{opacity:.5;cursor:not-allowed}
+.note{font-size:12px;color:var(--muted)}
+.input,select.input{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:7px 11px;min-width:0;transition:border-color .15s}
+.input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.input[aria-invalid=true]{border-color:var(--bad)}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:12px;color:var(--fg2);font-weight:500}
+.err-t{font-size:12px;color:var(--bad);min-height:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;padding:2px;background:var(--card)}
+.seg button{border:0;background:none;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--fg2)}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:10px 14px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tbody tr{transition:background .12s}
+tbody tr:hover{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
+tbody tr:last-child td{border-bottom:0}
+.tw{overflow-x:auto}
+.name{font-weight:600}
+.mini{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--line2);color:var(--fg2);white-space:nowrap;font-weight:500}
+.badge.private{background:var(--info-soft);color:var(--info)}
+.badge.group{background:var(--accent-soft);color:var(--accent-ink)}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.bad{background:var(--bad-soft);color:var(--bad)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)}
+.mood{display:flex;align-items:center;gap:8px;min-width:130px}
+.bar{flex:1;height:6px;border-radius:99px;background:var(--line2);overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#E9B04F)}
+.num{font-variant-numeric:tabular-nums}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--fg2);font-weight:600;margin-bottom:4px}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,var(--line2),var(--line),var(--line2));background-size:200% 100%;animation:sk 1.2s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+.dec{display:flex;gap:12px;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--line2)}
+.dec:last-child{border-bottom:0}
+.dec .t{width:88px;flex:none;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;padding-top:2px}
+.dec .b{flex:1;min-width:0}
+.reasons{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.reason{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);color:var(--fg2);cursor:help;background:var(--card)}
+.wl-legacy td{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.help{font-size:13px;color:var(--fg2);line-height:1.7}
+.help code{font-family:var(--mono);font-size:12px;background:var(--line2);padding:1px 6px;border-radius:5px}
+/* drawer & dialog */
+.scrim{position:fixed;inset:0;background:rgba(24,22,20,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.8,.2,1);z-index:50;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.drawer-h{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--line2)}
+.drawer-b{padding:20px 22px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:20px}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:8px 12px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-all}
+input[type=range]{width:100%;accent-color:var(--accent)}
+dialog{border:1px solid var(--line);border-radius:16px;padding:0;background:var(--card);color:var(--fg);box-shadow:var(--shadow-lg);max-width:440px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(24,22,20,.4)}
+.dlg-b{padding:22px 24px}
+.dlg-b h3{margin:0 0 8px;font-family:var(--serif);font-size:18px}
+.dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--line2)}
+.toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:60}
+.toast{background:var(--fg);color:var(--bg);padding:10px 14px;border-radius:10px;box-shadow:var(--shadow-lg);font-size:13px;animation:tin .2s;max-width:360px}
+.toast.bad{background:var(--bad);color:#fff}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}}
+.tabs{display:none}
+@media (max-width:1000px){.grid4{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}}
+@media (max-width:820px){
+  .side{display:none}.main{padding:20px 16px 90px}h1{font-size:22px}
+  .tabs{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);z-index:30;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .tabs button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);padding:4px;cursor:pointer;border-radius:8px}
+  .tabs button[aria-current=page]{color:var(--accent-ink)}
+  .tabs svg{width:18px;height:18px}
+  .hide-m{display:none}
 }
-.page-header h1 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
+@media (max-width:640px){
+  .sessions-table,.sessions-table tbody{display:block}.sessions-table thead{display:none}
+  .sessions-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;border-bottom:1px solid var(--line2)}
+  .sessions-table td{display:block;border:0;padding:6px;min-width:0}.sessions-table td.hide-m{display:none}
+  .sessions-table td:first-child,.sessions-table td:last-child{grid-column:1/-1}
+  .sessions-table td[data-label]::before{content:attr(data-label) " · ";color:var(--muted);font-size:12px}
+  .sessions-table .mini{overflow-wrap:anywhere}.sessions-table .mood{min-width:0}
+  .btn,.iconbtn{min-height:40px}.tools .iconbtn{min-width:40px}.toasts{bottom:82px;left:16px;right:16px}
 }
-.page-header .badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-weight: 500;
-}
-.badge-ok { background: rgba(63,185,80,.15); color: var(--accent2); }
-.badge-warn { background: rgba(210,153,34,.15); color: var(--warn); }
-.badge-err { background: rgba(248,81,73,.15); color: var(--danger); }
-.container {
-  padding: 16px 20px;
-  max-width: 960px;
-}
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
-.card-body {
-  padding: 12px 14px;
-}
-.card-body.no-pad {
-  padding: 0;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-th {
-  text-align: left;
-  padding: 8px 12px;
-  color: var(--text2);
-  font-weight: 500;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  vertical-align: middle;
-}
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,.02); }
-.mono { font-family: var(--mono); font-size: 12px; }
-.text2 { color: var(--text2); }
-.text3 { color: var(--text3); }
-.text-accent { color: var(--accent); }
-.text-ok { color: var(--accent2); }
-.text-warn { color: var(--warn); }
-.text-danger { color: var(--danger); }
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: all var(--transition);
-  white-space: nowrap;
-}
-.btn:hover { background: rgba(255,255,255,.08); }
-.btn:active { transform: scale(.97); }
-.btn-brand {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
-}
-.btn-brand:hover { background: var(--brand-hover); }
-.btn-danger {
-  background: transparent;
-  border-color: var(--danger);
-  color: var(--danger);
-}
-.btn-danger:hover { background: rgba(248,81,73,.1); }
-.btn-ok {
-  background: transparent;
-  border-color: var(--accent2);
-  color: var(--accent2);
-}
-.btn-ok:hover { background: rgba(63,185,80,.1); }
-.btn-sm {
-  padding: 3px 10px;
-  font-size: 12px;
-}
-.btn-group {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.input, select, textarea {
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font);
-  outline: none;
-  transition: border-color var(--transition);
-}
-.input:focus, select:focus, textarea:focus {
-  border-color: var(--brand);
-}
-.input::placeholder { color: var(--text3); }
-.form-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.form-label {
-  font-size: 13px;
-  color: var(--text2);
-  min-width: 100px;
-  flex-shrink: 0;
-}
-.form-value {
-  font-size: 13px;
-  color: var(--text);
-}
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 40px;
-  height: 22px;
-  flex-shrink: 0;
-}
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.toggle .slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  transition: all var(--transition);
-}
-.toggle .slider::before {
-  content: '';
-  position: absolute;
-  height: 16px;
-  width: 16px;
-  left: 2px;
-  bottom: 2px;
-  background: var(--text2);
-  border-radius: 50%;
-  transition: all var(--transition);
-}
-.toggle input:checked + .slider {
-  background: var(--brand);
-  border-color: var(--brand);
-}
-.toggle input:checked + .slider::before {
-  transform: translateX(18px);
-  background: #fff;
-}
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 10px;
-}
-.stat-item {
-  background: var(--surface2);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-}
-.stat-label {
-  font-size: 11px;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  margin-bottom: 4px;
-}
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text);
-}
-.empty-state {
-  text-align: center;
-  padding: 32px 16px;
-  color: var(--text3);
-  font-size: 13px;
-}
-.log-entry {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  font-family: var(--mono);
-  line-height: 1.6;
-  word-break: break-all;
-}
-.log-entry:last-child { border-bottom: none; }
-.log-ts { color: var(--text3); margin-right: 8px; }
-.log-session { color: var(--accent); margin-right: 6px; }
-.log-outcome { font-weight: 600; }
-.log-outcome.allow { color: var(--accent2); }
-.log-outcome.skip { color: var(--warn); }
-.log-outcome.triggered { color: var(--accent2); }
-.log-outcome.failed { color: var(--danger); }
-.log-reason { color: var(--text2); }
-.tag {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 500;
-  background: var(--surface2);
-  color: var(--text2);
-}
-.tag-private { background: rgba(88,166,255,.12); color: var(--accent); }
-.tag-group { background: rgba(99,102,241,.12); color: var(--brand); }
-.progress-bar {
-  height: 6px;
-  background: var(--surface2);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width .3s ease;
-}
-.toast-container {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.toast {
-  padding: 10px 16px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 13px;
-  box-shadow: var(--shadow);
-  animation: toast-in .2s ease;
-  max-width: 320px;
-}
-.toast-ok { border-color: var(--accent2); }
-.toast-err { border-color: var(--danger); }
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.sse-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.sse-dot.connected { background: var(--accent2); }
-.sse-dot.disconnected { background: var(--danger); }
-.sse-dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
-}
-[data-theme="light"] {
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --surface2: #f9fafb;
-  --border: #e5e7eb;
-  --text: #111827;
-  --text2: #6b7280;
-  --text3: #9ca3af;
-  --accent: #2563eb;
-  --accent2: #16a34a;
-  --warn: #ca8a04;
-  --danger: #dc2626;
-  --brand: #4f46e5;
-  --brand-hover: #4338ca;
-  --brand-light: rgba(79,70,229,.1);
-  --shadow: 0 4px 24px rgba(0,0,0,.08);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f3f4f6;
-    --surface: #ffffff;
-    --surface2: #f9fafb;
-    --border: #e5e7eb;
-    --text: #111827;
-    --text2: #6b7280;
-    --text3: #9ca3af;
-    --accent: #2563eb;
-    --accent2: #16a34a;
-    --warn: #ca8a04;
-    --danger: #dc2626;
-    --brand: #4f46e5;
-    --brand-hover: #4338ca;
-    --brand-light: rgba(79,70,229,.1);
-    --shadow: 0 4px 24px rgba(0,0,0,.08);
-  }
-}
-@media (max-width: 640px) {
-  .container { padding: 12px; }
-  .page-header { padding: 12px; }
-  .stat-grid { grid-template-columns: 1fr 1fr; }
-  .form-row { flex-direction: column; align-items: stretch; }
-  .form-label { min-width: auto; margin-bottom: 4px; }
-  table { font-size: 12px; }
-  th, td { padding: 6px 8px; }
-}
-  </style>
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
 <body>
-  <div class="page-header">
-    <h1 data-i18n="control.heading">Control</h1>
-    <button class="btn btn-sm" onclick="doReload()" data-i18n="control.reload">Reload</button>
-  </div>
-  <div class="container">
-    <div class="card">
-      <div class="card-header" data-i18n="control.master_switch.header">Master Switch</div>
-      <div class="card-body">
-        <div class="form-row">
-          <span class="form-label" data-i18n="control.master_switch.enabled">Enabled</span>
-          <label class="toggle">
-            <input type="checkbox" id="toggle-enabled" onchange="doToggle(this.checked)">
-            <span class="slider"></span>
-          </label>
-          <span id="enabled-label" class="text2">-</span>
-        </div>
-      </div>
+<div class="app" id="ww-app">
+  <aside class="side" aria-label="主导航">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="14" r="6" fill="#D97A4A"/><g stroke="#D97A4A" stroke-width="1.8" stroke-linecap="round"><path d="M16 3v2.5M16 22.5V25M5 14h2.5M24.5 14H27M8.2 6.2l1.8 1.8M22 20l1.8 1.8M23.8 6.2 22 8M10 20l-1.8 1.8"/></g><path d="M9 26c3 2.5 11 2.5 14 0l-2 4z" fill="#D97A4A" opacity=".55"/></svg>
+      <div><b>WarmWhisper</b><small>暖语 · 主动陪伴</small></div>
     </div>
-
-    <div class="card">
-      <div class="card-header" data-i18n="control.manual_test.header">Manual Test</div>
-      <div class="card-body">
-        <p class="text2" style="margin-bottom:10px;font-size:12px" data-i18n="control.manual_test.desc">Send a test proactive message to a whitelisted session.</p>
-        <div class="form-row">
-          <input type="text" class="input" id="test-session" data-i18n-placeholder="control.manual_test.session_placeholder" placeholder="Session ID (optional)" style="flex:1">
-          <button class="btn btn-brand btn-sm" onclick="doTest()" data-i18n="control.manual_test.send">Send Test</button>
-        </div>
+    <nav class="nav" id="ww-nav"></nav>
+    <div class="side-foot"><span class="ver">v2.13.3</span><button class="iconbtn" id="ww-collapse" aria-label="折叠侧栏" title="折叠侧栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
+  </aside>
+  <main class="main" id="ww-main">
+    <header class="top">
+      <div><h1 id="ww-title">让每一次主动，都恰到好处。</h1><p class="sub" id="ww-sub"></p></div>
+      <div class="tools">
+        <span class="pill" id="ww-pill" data-s="connecting" role="status"><span class="dot"></span><span id="ww-pill-t">连接中</span></span>
+        <button class="btn" id="ww-refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg><span id="ww-refresh-t">刷新</span></button>
+        <button class="iconbtn" id="ww-lang" aria-label="切换语言" title="中文 / English" style="width:auto;padding:0 10px;font-size:12px">EN</button>
+        <button class="iconbtn" id="ww-theme" aria-label="切换深色模式" title="深色模式"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
       </div>
-    </div>
+    </header>
+    <div id="ww-banners"></div>
+    <div id="ww-view"></div>
+  </main>
+  <nav class="tabs" id="ww-tabs" aria-label="移动导航"></nav>
+</div>
+<div class="scrim" id="ww-scrim"></div>
+<aside class="drawer" id="ww-drawer" role="dialog" aria-modal="true" aria-labelledby="ww-drawer-title" aria-hidden="true"></aside>
+<dialog id="ww-dlg"><form method="dialog"><div class="dlg-b"><h3 id="ww-dlg-t"></h3><div id="ww-dlg-m" class="help"></div></div><div class="dlg-f"><button class="btn" value="cancel" id="ww-dlg-c">取消</button><button class="btn primary" value="ok" id="ww-dlg-ok">确认</button></div></form></dialog>
+<div class="toasts" id="ww-toasts" aria-hidden="true"></div>
+<div class="sr" id="ww-live" aria-live="polite" role="status"></div>
+<div class="sr" id="ww-alert" aria-live="assertive" role="alert"></div>
 
-    <div class="card">
-      <div class="card-header" data-i18n="control.whitelist_private.header">Whitelist - Private</div>
-      <div class="card-body">
-        <div class="form-row">
-          <input type="text" class="input" id="wl-private-input" data-i18n-placeholder="control.whitelist_private.placeholder" placeholder="User ID" style="flex:1">
-          <button class="btn btn-ok btn-sm" onclick="doWl('add','private')" data-i18n="control.whitelist_private.add">Add</button>
-          <button class="btn btn-danger btn-sm" onclick="doWl('del','private')" data-i18n="control.whitelist_private.remove">Remove</button>
-        </div>
-        <div id="wl-private-list" class="text2 mono" style="font-size:12px;word-break:break-all">-</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header" data-i18n="control.whitelist_group.header">Whitelist - Group</div>
-      <div class="card-body">
-        <div class="form-row">
-          <input type="text" class="input" id="wl-group-input" data-i18n-placeholder="control.whitelist_group.placeholder" placeholder="Group ID" style="flex:1">
-          <button class="btn btn-ok btn-sm" onclick="doWl('add','group')" data-i18n="control.whitelist_group.add">Add</button>
-          <button class="btn btn-danger btn-sm" onclick="doWl('del','group')" data-i18n="control.whitelist_group.remove">Remove</button>
-        </div>
-        <div id="wl-group-list" class="text2 mono" style="font-size:12px;word-break:break-all">-</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header" data-i18n="control.dnd.header">Do Not Disturb</div>
-      <div class="card-body">
-        <div class="form-row">
-          <span class="form-label" data-i18n="control.dnd.start">Start</span>
-          <input type="time" class="input" id="sleep-start" value="23:30">
-        </div>
-        <div class="form-row">
-          <span class="form-label" data-i18n="control.dnd.end">End</span>
-          <input type="time" class="input" id="sleep-end" value="08:00">
-        </div>
-        <button class="btn btn-brand btn-sm" onclick="doSleep()" data-i18n="control.dnd.save">Save</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header" data-i18n="control.mood.header">Mood Adjustment</div>
-      <div class="card-body">
-        <p class="text2" style="margin-bottom:10px;font-size:12px" data-i18n="control.mood.desc">Adjust mood for a specific session.</p>
-        <div class="form-row">
-          <input type="text" class="input" id="mood-session" data-i18n-placeholder="control.mood.session_placeholder" placeholder="Session ID" style="flex:1">
-        </div>
-        <div class="form-row">
-          <span class="form-label" data-i18n="control.mood.label">Mood (0-100)</span>
-          <input type="number" class="input" id="mood-value" min="0" max="100" step="1" value="70" style="width:80px">
-          <button class="btn btn-brand btn-sm" onclick="doMood()" data-i18n="control.mood.set">Set</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
+<script>
 (function () {
   'use strict';
 
@@ -626,24 +355,64 @@ tr:hover td { background: rgba(255,255,255,.02); }
       if (!sdk) return { close() {} };
       var ep = path.charAt(0) === '/' ? path.slice(1) : path;
       var closed = false;
+      var subscriptionId = null;
+      var subscriptionReady = false;
       var handlers = {
         onMessage: function(info) {
           if (!closed) onEvent(info);
         },
         onOpen: function() {
-          if (onStatus) onStatus('connected');
+          if (!closed && onStatus) onStatus('connected');
         },
         onError: function() {
-          if (onStatus) onStatus('disconnected');
+          if (!closed && onStatus) onStatus('disconnected');
         }
       };
+
+      function unsubscribe(id) {
+        if (id == null) return;
+        try {
+          var result = sdk.unsubscribeSSE(id);
+          if (result && typeof result.then === 'function') {
+            result.catch(function (e) {
+              console.error('[kanjyou] unsubscribeSSE error:', ep, e);
+            });
+          }
+        } catch (e) {
+          console.error('[kanjyou] unsubscribeSSE error:', ep, e);
+        }
+      }
+
       try {
-        sdk.subscribeSSE(ep, handlers);
+        var subscription = sdk.subscribeSSE(ep, handlers);
+        var pending = subscription && typeof subscription.then === 'function'
+          ? subscription
+          : Promise.resolve(subscription);
+        pending.then(function (id) {
+          if (closed) {
+            unsubscribe(id);
+            return;
+          }
+          subscriptionId = id;
+          subscriptionReady = true;
+        }).catch(function (e) {
+          console.error('[kanjyou] subscribeSSE error:', ep, e);
+          if (!closed && onStatus) onStatus('disconnected');
+        });
       } catch (e) {
         console.error('[kanjyou] subscribeSSE error:', ep, e);
+        if (onStatus) onStatus('disconnected');
       }
+
       return {
-        close() { closed = true; },
+        close() {
+          closed = true;
+          if (!subscriptionReady) return;
+          var id = subscriptionId;
+          subscriptionId = null;
+          subscriptionReady = false;
+          unsubscribe(id);
+        },
       };
     },
 
@@ -795,122 +564,667 @@ tr:hover td { background: rgba(255,255,255,.02); }
 
   window.KANJYOU = KANJYOU;
 })();
-  </script>
-  <script>
-    var K = window.KANJYOU;
+</script>
+<script>
+{
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const qs = new URLSearchParams(location.search);
+const DEMO = qs.get("demo") === "1";
+const TZ = "Asia/Shanghai";
+const storage = {
+  getItem(key) { try { return window.localStorage.getItem(key); } catch (_) { return null; } },
+  setItem(key, value) { try { window.localStorage.setItem(key, value); } catch (_) {} },
+};
 
-    async function loadStatus() {
-      var resp = await K.apiGet('status');
-      var d = resp && resp.data ? resp.data : resp;
-      if (!d) return;
-      var g = d.global || {};
-      document.getElementById('toggle-enabled').checked = !!g.enabled;
-      document.getElementById('enabled-label').textContent = g.enabled ? K.t('common.on') : K.t('common.off');
-      var wl = d.whitelist || {};
-      document.getElementById('wl-private-list').textContent = (wl.private || []).join(', ') || '-';
-      document.getElementById('wl-group-list').textContent = (wl.group || []).join(', ') || '-';
+/* ---------------- i18n ---------------- */
+const I18N = {
+  zh: {
+    overview: "概览", sessions: "会话", whitelist: "白名单", settings: "设置", logs: "决策日志",
+    sub_overview: "实时会话状态与今日主动情况", sub_sessions: "全部会话 · 情绪、空闲与下次触发估算", sub_whitelist: "仅白名单内的会话会收到主动消息", sub_settings: "免打扰时段、手动测试与重载", sub_logs: "结构化决策记录 · 不包含任何消息正文",
+    refresh: "刷新", live: "实时连接", connecting: "连接中", offline: "未连接", error: "连接异常", demo: "演示数据",
+    s_sessions: "会话数", s_today: "今日主动", s_wl: "白名单", s_fail: "连续失败",
+    proactive: "主动消息", proactive_note: "关闭后仅停止主动轮询；消息合并与被动回复处理仍会继续。",
+    paused_until: "暂停至", search: "搜索会话名称或 ID", all: "全部", private: "私聊", group: "群聊",
+    c_name: "会话", c_platform: "平台实例", c_type: "类型", c_mood: "情绪 / 人格", c_idle: "空闲", c_next: "下次触发", c_today: "今日", c_actions: "",
+    details: "详情", copy: "复制 ID", copied: "已复制完整 ID", recent: "最近决策", view_all: "查看全部",
+    no_sessions: "暂无会话", no_sessions_h: "插件尚未记录到任何会话。", no_match: "没有匹配的结果",
+    mood_edit: "调整情绪值", save: "保存", saving: "保存中…", test_send: "测试发送", test_warn: "这会向该会话发送一条真实消息。确定继续吗？",
+    soon: "即将", none: "—",
+  },
+  en: {
+    overview: "Overview", sessions: "Sessions", whitelist: "Whitelist", settings: "Settings", logs: "Decision log",
+    sub_overview: "Live sessions and today's proactive activity", sub_sessions: "All sessions · mood, idle time and next-trigger estimate", sub_whitelist: "Only whitelisted sessions receive proactive messages", sub_settings: "Do-not-disturb, manual test and reload", sub_logs: "Structured decisions · no message content",
+    refresh: "Refresh", live: "Live", connecting: "Connecting", offline: "Disconnected", error: "Connection error", demo: "Demo data",
+    s_sessions: "Sessions", s_today: "Proactive today", s_wl: "Whitelisted", s_fail: "Failure streak",
+    proactive: "Proactive messages", proactive_note: "Turning off only stops proactive polling; merging and passive processing continue.",
+    paused_until: "Paused until", search: "Search name or ID", all: "All", private: "Private", group: "Group",
+    c_name: "Session", c_platform: "Platform", c_type: "Type", c_mood: "Mood / persona", c_idle: "Idle", c_next: "Next trigger", c_today: "Today", c_actions: "",
+    details: "Details", copy: "Copy ID", copied: "Full ID copied", recent: "Recent decisions", view_all: "View all",
+    no_sessions: "No sessions", no_sessions_h: "The plugin hasn't recorded any sessions yet.", no_match: "No matches",
+    mood_edit: "Adjust mood", save: "Save", saving: "Saving…", test_send: "Test send", test_warn: "This sends a REAL message to this session. Continue?",
+    soon: "soon", none: "—",
+  },
+};
+let lang = storage.getItem("ww-lang") || "zh";
+const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.zh[k] || k;
+const L = (zh, en) => (lang === "en" ? en : zh);
+
+const REASONS = {
+  not_in_proactive_whitelist: ["不在主动白名单", "Not whitelisted"], waiting_next_check: ["等待下次检查", "Waiting for next check"],
+  await_human_reply: ["等待对方回应", "Awaiting human reply"], period_limit: ["已达当前时段配额", "Period quota reached"],
+  idle_not_enough: ["空闲时间不足", "Insufficient idle time"], persona_state_low: ["人格状态暂不适合主动", "Persona state suppresses proactive"],
+  group_active: ["群聊仍活跃", "Group active"], group_quiet: ["群聊已安静", "Group quiet"], probability_miss: ["本轮概率未命中", "Probability missed"],
+  probability_pass: ["本轮概率通过", "Probability passed"], missing_origin: ["缺少会话来源", "Missing session origin"],
+  night_quiet: ["夜间免打扰", "Night quiet hours"], cooldown_guard: ["冷却保护", "Cooldown guard"],
+  global_hourly_cap: ["已达全局小时上限", "Global hourly cap"], lite_veto: ["辅助模型建议暂缓", "Lite model veto"],
+  trigger_success: ["主动发送成功", "Proactive sent"], trigger_failed: ["主动发送失败", "Proactive failed"],
+  idle_long: ["空闲足够久", "Idle long enough"], idle_short: ["空闲太短", "Idle too short"], not_idle: ["对方仍活跃", "User still active"],
+  user_active: ["对方仍活跃", "User still active"], dnd: ["免打扰时段", "Do-not-disturb"], quiet_hours: ["免打扰时段", "Quiet hours"], sleep: ["免打扰时段", "Sleep window"],
+  cooldown: ["冷却中", "Cooling down"], daily_cap: ["已达今日上限", "Daily cap reached"], daily_limit: ["已达今日上限", "Daily limit reached"], rate_limit: ["频率限制", "Rate limited"],
+  not_whitelisted: ["不在白名单", "Not whitelisted"], whitelist_miss: ["不在白名单", "Not whitelisted"], disabled: ["主动已关闭", "Proactive disabled"], paused: ["已暂停", "Paused"],
+  mood_high: ["情绪积极", "Positive mood"], mood_low: ["情绪低落", "Low mood"], low_confidence: ["置信度不足", "Low confidence"], high_confidence: ["置信度高", "High confidence"],
+  model_skip: ["模型建议跳过", "Model suggested skip"], model_declined: ["模型建议跳过", "Model declined"], send_failed: ["发送失败", "Send failed"], send_error: ["发送失败", "Send failed"],
+  fail_streak: ["连续失败熔断", "Failure circuit"], manual: ["手动触发", "Manual trigger"], timing_ok: ["时机合适", "Good timing"], random_jitter: ["随机抖动", "Random jitter"],
+};
+const reasonLabel = (c) => (REASONS[c] ? L(REASONS[c][0], REASONS[c][1]) : c);
+const OUTCOME = { allow: ["允许", "Allowed", "ok"], triggered: ["已触发", "Triggered", "ok"], skip: ["跳过", "Skipped", ""], failed: ["失败", "Failed", "bad"] };
+const outcomeBadge = (o) => { const x = OUTCOME[o] || [o, o, ""]; return `<span class="badge ${x[2]}">${esc(L(x[0], x[1]))}</span>`; };
+
+/* ---------------- formatting ---------------- */
+const fmtDur = (s) => {
+  if (s == null || isNaN(s)) return t("none");
+  s = Math.max(0, Math.round(Number(s)));
+  if (s < 60) return L(`${s} 秒`, `${s}s`);
+  if (s < 3600) return L(`${Math.floor(s / 60)} 分钟`, `${Math.floor(s / 60)}m`);
+  if (s < 86400) return L(`${Math.floor(s / 3600)} 小时 ${Math.floor((s % 3600) / 60)} 分`, `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`);
+  return L(`${Math.floor(s / 86400)} 天`, `${Math.floor(s / 86400)}d`);
+};
+const fmtNext = (s) => (s == null || isNaN(s) ? t("none") : Number(s) <= 0 ? t("soon") : L("约 ", "~") + fmtDur(s));
+const toDate = (v) => {
+  if (v == null || v === "") return null;
+  if (typeof v === "number" || /^\d+(\.\d+)?$/.test(String(v))) { const n = Number(v); return new Date(n < 1e12 ? n * 1000 : n); }
+  const d = new Date(v); return isNaN(d) ? null : d;
+};
+const fmtTime = (v, withDate) => {
+  // Existing backend timestamps have no offset: display their server wall time unchanged.
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
+    return withDate ? v : v.slice(5, 10).replace("-", "/") + " " + v.slice(11);
+  }
+  const d = toDate(v); if (!d) return t("none");
+  const o = { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
+  const sameDay = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d) === new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  if (withDate || !sameDay) Object.assign(o, { month: "2-digit", day: "2-digit" });
+  return new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "zh-CN", o).format(d);
+};
+const parseSid = (sid) => {
+  const p = String(sid || "").split(":");
+  const type = p[0] === "group" ? "group" : p[0] === "private" ? "private" : null;
+  const platform = p[1] || "";
+  const rest = p.slice(3).join(":") || p.slice(2).join(":") || sid;
+  return { type, platform, name: rest };
+};
+const parseWl = (raw, kindHint) => {
+  try {
+    const o = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (o && typeof o === "object") {
+      if (o.kind === kindHint && typeof o.platform === "string" && o.platform && typeof o.id === "string" && o.id) return { scoped: true, kind: o.kind, platform: String(o.platform), id: String(o.id), raw };
+      if (o.legacy_id != null) return { scoped: false, legacy: true, kind: kindHint, id: String(o.legacy_id), raw };
     }
+  } catch (e) {}
+  return { scoped: false, invalid: true, kind: kindHint, raw };
+};
 
-    async function doToggle(enabled) {
-      var resp = await K.apiPost('toggle', { enabled: enabled });
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        document.getElementById('enabled-label').textContent = enabled ? K.t('common.on') : K.t('common.off');
-        K.showToast(enabled ? K.t('common.enabled') : K.t('common.disabled'), 'ok');
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
-        document.getElementById('toggle-enabled').checked = !enabled;
-      }
+/* ---------------- API layer ---------------- */
+/* AstrBot Plugin Pages unwraps successful API envelopes before the SDK promise
+   resolves. Keep the backend envelope supported, but only allow a bare object
+   when it exactly matches the payload contract of the requested endpoint. */
+const normalize = (body, endpoint) => {
+  if (body == null) return { ok: false, message: L("请求失败或无响应", "Request failed / no response") };
+  if (typeof body === "string") { try { body = JSON.parse(body); } catch (e) { return { ok: false, message: L("响应格式无效", "Invalid response") }; } }
+  if (body && typeof body === "object") {
+    if (body.status === "ok") {
+      const data = body.data;
+      return validPayload(endpoint, data) ? { ok: true, data } : { ok: false, message: body.message || L("响应格式无效", "Invalid response") };
     }
+    if (body.status != null) return { ok: false, message: body.message || L("服务器返回错误", "Server returned an error") };
+    if (validPayload(endpoint, body)) return { ok: true, data: body };
+  }
+  return { ok: false, message: (body && typeof body === "object" && body.message) || L("服务器返回错误", "Server returned an error") };
+};
+function validPayload(endpoint, d) {
+  if (!d || typeof d !== "object" || Array.isArray(d)) return false;
+  if (endpoint === "status") {
+    return Array.isArray(d.sessions) && !!d.global && typeof d.global === "object" &&
+      typeof d.global.enabled === "boolean" && !!d.whitelist && typeof d.whitelist === "object" &&
+      Array.isArray(d.whitelist.private) && Array.isArray(d.whitelist.group);
+  }
+  if (endpoint === "toggle") return typeof d.enabled === "boolean";
+  if (endpoint === "test") return typeof d.triggered === "boolean" && typeof d.session_id === "string" && d.session_id !== "";
+  if (endpoint === "whitelist") return Array.isArray(d.private) && Array.isArray(d.group);
+  if (endpoint === "sleep") return typeof d.start === "string" && HHMM.test(d.start) && typeof d.end === "string" && HHMM.test(d.end);
+  if (endpoint === "mood") return typeof d.session_id === "string" && d.session_id !== "" && typeof d.mood === "number" && !isNaN(d.mood);
+  if (endpoint === "reload") return d.reloaded === true;
+  return false;
+}
 
-    async function doTest() {
-      var sid = document.getElementById('test-session').value.trim();
-      var body = {};
-      if (sid) body.session_id = sid;
-      var resp = await K.apiPost('test', body);
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        var session = d.session_id || 'session';
-        K.showToast(K.t('common.test_sent', { session: session }), 'ok');
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
+const ownSSE = (sdk, onData, onStatus) => {
+  let generation = 0, id = null, retry = null, closed = false;
+  const unsubscribe = (value) => { if (value == null) return; try { Promise.resolve(sdk.unsubscribeSSE(value)).catch(() => {}); } catch (_) {} };
+  const clear = () => { generation++; clearTimeout(retry); retry = null; if (id != null) { unsubscribe(id); id = null; } };
+  const open = async () => {
+    const current = ++generation;
+    onStatus("connecting");
+    const valid = () => !closed && current === generation;
+    const reconnectLater = () => {
+      if (!valid()) return;
+      onStatus("disconnected");
+      clearTimeout(retry);
+      retry = setTimeout(() => { clear(); if (!closed) open(); }, 5000);
+    };
+    try {
+      if (sdk.ready) await sdk.ready();
+      if (!valid()) return;
+      const value = await sdk.subscribeSSE("events", {
+        onMessage(message) { if (valid()) onData(message); },
+        onOpen() { if (valid()) onStatus("connected"); },
+        onError: reconnectLater,
+      });
+      if (valid()) id = value; else unsubscribe(value);
+    } catch (_) { reconnectLater(); }
+  };
+  open();
+  return { close() { closed = true; clear(); }, reconnect() { if (closed) return; clear(); open(); } };
+};
+
+const makeApi = () => {
+  if (DEMO) return demoApi();
+  const K = window.KANJYOU;
+  if (K && typeof K.apiGet === "function" && window.AstrBotPluginPage && typeof window.AstrBotPluginPage.apiGet === "function") {
+    return {
+      mode: "live",
+      get: async (e, p) => { try { if (K.sdk && K.sdk.ready) await K.sdk.ready(); return normalize(await K.apiGet(e, p), e); } catch (err) { return { ok: false, message: String(err && err.message || err) }; } },
+      post: async (e, b) => { try { if (K.sdk && K.sdk.ready) await K.sdk.ready(); return normalize(await K.apiPost(e, b), e); } catch (err) { return { ok: false, message: String(err && err.message || err) }; } },
+      sse: (onData, onStatus) => typeof K.connectSSEWithReconnect === "function" ? K.connectSSEWithReconnect("events", onData, onStatus) : window.AstrBotPluginPage ? ownSSE(window.AstrBotPluginPage, onData, onStatus) : null,
+    };
+  }
+  const sdk = window.AstrBotPluginPage;
+  if (sdk && typeof sdk.apiGet === "function") {
+    const call = async (fn, endpoint) => { try { if (sdk.ready) await sdk.ready(); return normalize(await fn(), endpoint); } catch (err) { return { ok: false, message: String(err && err.message || err) }; } };
+    return {
+      mode: "live",
+      get: (e, p) => call(() => sdk.apiGet(e, p), e),
+      post: (e, b) => call(() => sdk.apiPost(e, b), e),
+      sse: (onData, onStatus) => (typeof sdk.subscribeSSE === "function" ? ownSSE(sdk, onData, onStatus) : null),
+    };
+  }
+  return { mode: "nohost", get: async () => ({ ok: false, message: L("请在 AstrBot Plugin Pages 中打开", "Open inside AstrBot Plugin Pages") }), post: async () => ({ ok: false, message: L("请在 AstrBot Plugin Pages 中打开", "Open inside AstrBot Plugin Pages") }), sse: () => null };
+};
+
+/* ---------------- demo (only with ?demo=1) ---------------- */
+function demoApi() {
+  const now = () => Math.floor(Date.now() / 1000);
+  const db = {
+    sessions: [
+      { session_id: "private:qq-bot-A:FriendMessage:thread:42", session_type: "private", idle_sec: 5400, mood: 66, persona_state: "温暖", next_trigger_sec: 1260, today_count: 2, last_proactive_at: now() - 4100 },
+      { session_id: "group:qq-bot-A:GroupMessage:club:1088", session_type: "group", idle_sec: 860, mood: 48, persona_state: "活泼", next_trigger_sec: 3400, today_count: 1, last_proactive_at: now() - 9000 },
+      { session_id: "private:tg-main:FriendMessage:user:7731", session_type: "private", idle_sec: 21000, mood: 31, persona_state: "关切", next_trigger_sec: 0, today_count: 0, last_proactive_at: null },
+      { session_id: "private:wx-home:FriendMessage:mom", session_type: "private", idle_sec: 120, mood: 82, persona_state: "温暖", next_trigger_sec: 7200, today_count: 3, last_proactive_at: now() - 1500 },
+      { session_id: "group:tg-main:GroupMessage:readers:55", session_type: "group", idle_sec: 43000, mood: 57, persona_state: "安静", next_trigger_sec: null, today_count: 0, last_proactive_at: null },
+    ],
+    global: { enabled: true, paused_until: null, fail_streak: 1 },
+    settings: { sleep_start: "23:30", sleep_end: "08:00", timezone: "Asia/Shanghai" },
+    whitelist: {
+      private: [JSON.stringify({ kind: "private", platform: "qq-bot-A", id: "42" }), JSON.stringify({ kind: "private", platform: "wx-home", id: "mom" }), JSON.stringify({ legacy_id: "7731" })],
+      group: [JSON.stringify({ kind: "group", platform: "qq-bot-A", id: "1088" })],
+    },
+    recent: [],
+  };
+  const codesPool = [["idle_long", "timing_ok"], ["dnd"], ["cooldown"], ["user_active", "idle_short"], ["mood_low", "idle_long"], ["send_failed"], ["daily_cap"], ["not_whitelisted"], ["low_confidence"]];
+  const mk = (i, at) => { const s = db.sessions[i % db.sessions.length]; const codes = codesPool[i % codesPool.length]; const outcome = codes.includes("send_failed") ? "failed" : codes.includes("timing_ok") ? "triggered" : codes.includes("mood_low") ? "allow" : "skip"; return { session_id: s.session_id, at: new Date(at * 1000).toISOString(), outcome, reason_codes: codes, confidence: Math.round((0.5 + ((i * 37) % 50) / 100) * 100) / 100, mode: i % 3 ? "heuristic" : "llm", idle_sec: s.idle_sec, mood: s.mood }; };
+  for (let i = 0; i < 14; i++) db.recent.push(mk(i, now() - i * 640 - 30));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const ok = (data) => ({ ok: true, data: JSON.parse(JSON.stringify(data)) });
+  const er = (m) => ({ ok: false, message: m });
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+  return {
+    mode: "demo",
+    get: async (e) => { await wait(350); if (e === "status") return ok(db); return er("unknown endpoint"); },
+    post: async (e, b) => {
+      await wait(450);
+      if (e === "toggle") { if (typeof b.enabled !== "boolean") return er("enabled must be boolean"); db.global.enabled = b.enabled; return ok({ enabled: b.enabled }); }
+      if (e === "mood") { const s = db.sessions.find((x) => x.session_id === b.session_id); if (!s) return er("session not found"); if (!(b.value >= 0 && b.value <= 100)) return er("value out of range"); s.mood = b.value; return ok({ session_id: s.session_id, mood: s.mood }); }
+      if (e === "test") { const s = db.sessions.find((x) => x.session_id === b.session_id); if (!s) return er("session not found"); s.today_count++; db.recent.unshift({ ...mk(0, now()), session_id: s.session_id, reason_codes: ["manual"], outcome: "triggered" }); return ok({ triggered: true, session_id: s.session_id }); }
+      if (e === "sleep") { if (!hhmm.test(b.start || "") || !hhmm.test(b.end || "")) return er("invalid HH:MM"); db.settings.sleep_start = b.start; db.settings.sleep_end = b.end; return ok({ start: b.start, end: b.end }); }
+      if (e === "reload") return ok({ reloaded: true });
+      if (e === "whitelist") {
+        if (!["private", "group"].includes(b.kind) || !b.platform || !b.id) return er("kind/platform/id required");
+        const key = JSON.stringify({ kind: b.kind, platform: b.platform, id: b.id }); const list = db.whitelist[b.kind];
+        if (b.op === "add") { if (list.includes(key)) return er("already exists"); list.push(key); }
+        else if (b.op === "del") { const i = list.indexOf(key); if (i < 0) return er("entry not found"); list.splice(i, 1); }
+        else return er("bad op");
+        return ok(db.whitelist);
       }
+      return er("unknown endpoint");
+    },
+    sse: (onData, onStatus) => {
+      onStatus("live"); let n = 20;
+      const id = setInterval(() => { const r = mk(n++, now()); db.recent.unshift(r); db.recent.length = Math.min(db.recent.length, 60); onData({ data: JSON.stringify({ type: "decision", data: r }) }); }, 9000);
+      return { close() { clearInterval(id); onStatus("offline"); }, reconnect() { onStatus("live"); } };
+    },
+  };
+}
+
+/* ---------------- state ---------------- */
+let api = { mode: "pending", get: async () => ({ ok: false, message: "pending" }), post: async () => ({ ok: false, message: "pending" }), sse: () => null };
+const MUT = { get on() { return api.mode === "live" || api.mode === "demo"; } };
+const PAGE_MAP = { status: "overview", control: "settings", logs: "logs" };
+const SECTIONS = ["overview", "sessions", "whitelist", "settings", "logs"];
+const S = {
+  section: SECTIONS.includes(qs.get("section")) ? qs.get("section") : PAGE_MAP[document.documentElement.dataset.page] || "overview",
+  data: null, loading: true, loadError: null, conn: "connecting",
+  q: "", type: "all", wlKind: "all", logQ: "", logOutcome: "all", drawer: null, busy: {}, sleepSaved: null, sleepDirty: false, sleepTimezone: "",
+  wlForm: { kind: "private", platform: "", id: "" }, wlErr: {}, sleepForm: { start: "", end: "" }, sleepErr: {}, testSid: "",
+};
+let sse = null;
+const timers = new Set();
+let disposed = false, loadSequence = 0, statusRevision = 0;
+// A timed-out write may already have reached the server. Never retry it automatically.
+const request = (method, endpoint, body) => new Promise((resolve) => {
+  if (disposed) { resolve({ ok: false, message: "Page closed" }); return; }
+  let done = false;
+  const finish = result => { if (done) return; done = true; if (method === "post" && result?.ok) statusRevision++; clearTimeout(timer); timers.delete(timer); resolve(result); };
+  const timer = setTimeout(() => finish({ ok: false, message: method === "post" ? L("请求超时，操作结果未知。请刷新状态确认后再操作。", "Request timed out; the result is unknown. Refresh before trying again.") : L("读取超时，请重试。", "Read timed out. Please retry.") }), endpoint === "test" ? 120000 : 15000);
+  timers.add(timer);
+  Promise.resolve().then(() => api[method](endpoint, body)).then(finish, error => finish({ ok: false, message: String(error?.message || error) }));
+});
+
+/* ---------------- announce/toast/dialog ---------------- */
+const announce = (msg, bad) => {
+  const el = bad ? $("#ww-alert") : $("#ww-live"); el.textContent = ""; setTimeout(() => (el.textContent = msg), 30);
+  const tEl = document.createElement("div"); tEl.className = "toast" + (bad ? " bad" : ""); tEl.textContent = msg; $("#ww-toasts").appendChild(tEl);
+  const id = setTimeout(() => { tEl.remove(); timers.delete(id); }, 3800); timers.add(id);
+};
+const confirmDlg = (title, html, okText, danger) => new Promise((res) => {
+  const d = $("#ww-dlg"); if (d.open) { res(false); return; } $("#ww-dlg-t").textContent = title; $("#ww-dlg-m").innerHTML = html;
+  const ok = $("#ww-dlg-ok"); ok.textContent = okText || L("确认", "Confirm"); ok.className = "btn " + (danger ? "danger solid" : "primary");
+  $("#ww-dlg-c").textContent = L("取消", "Cancel");
+  d.returnValue = ""; d.onclose = () => res(d.returnValue === "ok"); d.showModal(); $("#ww-dlg-c").focus();
+});
+
+/* ---------------- icons ---------------- */
+const IC = {
+  overview: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
+  sessions: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  whitelist: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+};
+const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
+
+/* ---------------- render ---------------- */
+const dis = (extra) => (!MUT.on || extra ? "disabled" : "");
+const renderChrome = () => {
+  if (disposed) return;
+  document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+  const nav = SECTIONS.map((s) => `<button data-nav="${s}" ${S.section === s ? 'aria-current="page"' : ""} title="${esc(t(s))}">${svg(s)}<span class="lbl">${esc(t(s))}</span></button>`).join("");
+  for (const id of ["#ww-nav", "#ww-tabs"]) { const n = $(id); if (n.dataset.navKey !== S.section + lang) { n.innerHTML = nav; n.dataset.navKey = S.section + lang; } }
+  $("#ww-title").textContent = L("让每一次主动，都恰到好处。", "Every proactive touch, just right.");
+  $("#ww-sub").textContent = t("sub_" + S.section);
+  $("#ww-refresh-t").textContent = t("refresh");
+  $("#ww-lang").textContent = lang === "en" ? "中文" : "EN";
+  const p = $("#ww-pill"); p.dataset.s = S.conn; $("#ww-pill-t").textContent = t(S.conn) || S.conn;
+  let b = "";
+  if (api.mode === "demo") b += `<div class="banner demo"><b>DEMO</b><span>${L("当前展示的是合成演示数据，所有操作仅在本页内存中生效，不会发送任何真实消息。", "Synthetic demo data. Actions only affect in-page memory; no real messages are sent.")}</span></div>`;
+  if (api.mode === "nohost") b += `<div class="banner warn"><b>${L("请在 AstrBot Plugin Pages 中打开", "Please open inside AstrBot Plugin Pages")}</b><span>${L("未检测到宿主 SDK，所有修改操作已禁用。", "Host SDK not detected; all mutations are disabled.")}</span></div>`;
+  else if (S.loadError) b += `<div class="banner err"><b>${L("加载失败", "Load failed")}</b><span>${esc(S.loadError)}</span></div>`;
+  if (api.mode === "live" && S.data && S.conn !== "live") b += `<div class="banner warn"><span>${L("实时连接中断，当前数据可能已过期。可点击刷新或前往日志页重新连接。", "Live connection unavailable; displayed data may be stale. Refresh or reconnect on the Logs page.")}</span></div>`;
+  $("#ww-banners").innerHTML = b;
+};
+
+const sessionsOf = () => (S.data && Array.isArray(S.data.sessions) ? S.data.sessions : []);
+const filteredSessions = () => {
+  const q = S.q.trim().toLowerCase();
+  return sessionsOf().filter((s) => (S.type === "all" || s.session_type === S.type) && (!q || String(s.session_id).toLowerCase().includes(q) || String(s.persona_state || "").toLowerCase().includes(q)));
+};
+const typeBadge = (tp) => tp === "group" ? `<span class="badge group">${t("group")}</span>` : tp === "private" ? `<span class="badge private">${t("private")}</span>` : `<span class="badge">?</span>`;
+const moodCell = (s) => `<div class="mood"><div class="bar" role="img" aria-label="${L("情绪", "Mood")} ${Math.round(s.mood || 0)}/100"><i style="width:${Math.max(0, Math.min(100, Number(s.mood) || 0))}%"></i></div><span class="num">${Math.round(Number(s.mood) || 0)}</span></div><div class="note">${esc(s.persona_state || t("none"))}</div>`;
+
+const sessionTable = (rows, compact) => {
+  if (S.loading && !S.data) return `<div class="card-b">${[1, 2, 3].map(() => '<div class="skel" style="margin:14px 0"></div>').join("")}</div>`;
+  if (!S.data) return `<div class="empty"><b>${L("无法获取会话", "Sessions unavailable")}</b>${L("请检查连接后点击刷新。", "Check connection and refresh.")}</div>`;
+  if (!sessionsOf().length) return `<div class="empty"><b>${t("no_sessions")}</b>${t("no_sessions_h")}</div>`;
+  if (!rows.length) return `<div class="empty"><b>${t("no_match")}</b></div>`;
+  return `<div class="tw"><table class="sessions-table"><thead><tr><th>${t("c_name")}</th><th class="hide-m">${t("c_platform")}</th><th>${t("c_type")}</th><th>${t("c_mood")}</th><th>${t("c_idle")}</th><th class="hide-m">${t("c_next")}</th><th>${t("c_today")}</th><th><span class="sr">${L("操作", "Actions")}</span></th></tr></thead><tbody>${rows.map((s) => { const p = parseSid(s.session_id); return `<tr>
+    <td><div class="name">${esc(p.name)}</div><div class="mini" title="${esc(s.session_id)}">${esc(String(s.session_id).slice(0, 28))}${String(s.session_id).length > 28 ? "…" : ""}</div></td>
+    <td class="hide-m"><span class="mini">${esc(p.platform)}</span></td><td>${typeBadge(s.session_type || p.type)}</td><td>${moodCell(s)}</td>
+    <td class="num" data-label="${t("c_idle")}">${fmtDur(s.idle_sec)}</td><td class="num hide-m">${fmtNext(s.next_trigger_sec)}</td><td class="num" data-label="${t("c_today")}">${esc(s.today_count ?? 0)}</td>
+    <td style="white-space:nowrap"><button class="btn sm" data-copy="${esc(s.session_id)}" aria-label="${t("copy")} ${esc(p.name)}">${t("copy")}</button> <button class="btn sm" data-open="${esc(s.session_id)}">${t("details")}</button></td></tr>`; }).join("")}</tbody></table></div>`;
+};
+
+const sessionFilters = () => `<div class="row"><input class="input" type="search" id="ww-q" placeholder="${esc(t("search"))}" aria-label="${esc(t("search"))}" value="${esc(S.q)}" style="width:220px"><div class="seg" role="group" aria-label="${L("类型筛选", "Type filter")}">${["all", "private", "group"].map((k) => `<button data-type="${k}" aria-pressed="${S.type === k}">${t(k)}</button>`).join("")}</div></div>`;
+
+const decisionRow = (r) => { const p = parseSid(r.session_id); return `<div class="dec"><div class="t">${fmtTime(r.at)}</div><div class="b"><div class="row" style="gap:8px">${outcomeBadge(r.outcome)}<span class="name">${esc(p.name)}</span><span class="mini">${esc(p.platform)}</span>${r.mode ? `<span class="badge">${esc(r.mode)}</span>` : ""}<span class="note num">${L("置信度", "conf.")} ${r.confidence != null ? Math.round(r.confidence * 100) + "%" : t("none")} · ${L("空闲", "idle")} ${fmtDur(r.idle_sec)} · ${L("情绪", "mood")} ${r.mood != null ? Math.round(r.mood) : t("none")}</span></div><div class="reasons">${(r.reason_codes || []).map((c) => `<span class="reason" title="${esc(c)}" tabindex="0" aria-label="${esc(reasonLabel(c))} (${esc(c)})">${esc(reasonLabel(c))}</span>`).join("") || `<span class="note">${L("无原因码", "No reason codes")}</span>`}</div></div></div>`; };
+
+const viewOverview = () => {
+  const d = S.data, ss = sessionsOf(), g = (d && d.global) || {};
+  const today = ss.reduce((a, s) => a + (Number(s.today_count) || 0), 0);
+  const entries = d && d.whitelist ? ["private", "group"].flatMap((kind) => (d.whitelist[kind] || []).map((entry) => parseWl(entry, kind))) : [];
+  const wl = d ? entries.filter((entry) => entry.scoped).length : null;
+  const unbound = entries.filter((entry) => !entry.scoped).length;
+  const v = (x) => (d ? x : "—");
+  const recent = (d && d.recent) || [];
+  return `<div class="grid4">
+    <div class="card stat"><div class="k">${t("s_sessions")}</div><div class="v">${v(ss.length)}</div><div class="h">${d ? `${ss.filter((s) => s.session_type === "private").length} ${t("private")} · ${ss.filter((s) => s.session_type === "group").length} ${t("group")}` : "&nbsp;"}</div></div>
+    <div class="card stat"><div class="k">${t("s_today")}</div><div class="v">${v(today)}</div><div class="h">${L("所有会话合计", "Sum across sessions")}</div></div>
+    <div class="card stat"><div class="k">${t("s_wl")}</div><div class="v">${v(wl)}</div><div class="h">${unbound ? L(`${unbound} 条未绑定 / 无效条目不计入`, `${unbound} unbound / invalid excluded`) : L("已绑定的私聊 + 群聊条目", "Scoped private + group entries")}</div></div>
+    <div class="card stat ${g.fail_streak > 0 ? "bad" : ""}"><div class="k">${t("s_fail")}</div><div class="v">${v(g.fail_streak ?? 0)}</div><div class="h">${g.paused_until ? `${t("paused_until")} ${fmtTime(g.paused_until, true)}` : L("未暂停", "Not paused")}</div></div>
+  </div>
+  <div class="stack">
+    <div class="card toggle-row"><div><div class="name">${t("proactive")} · <span style="color:${g.enabled ? "var(--ok)" : "var(--muted)"}">${d ? (g.enabled ? L("已开启", "On") : L("已关闭", "Off")) : "—"}</span></div><div class="note">${t("proactive_note")}</div></div>
+      <button class="switch" role="switch" id="ww-toggle" aria-label="${esc(t("proactive"))}" aria-checked="${!!g.enabled}" ${dis(!d || S.busy.toggle)}></button></div>
+    <div class="card"><div class="card-h"><h2>${t("sessions")}</h2>${sessionFilters()}</div>${sessionTable(filteredSessions())}</div>
+    <div class="card"><div class="card-h"><h2>${t("recent")}</h2><button class="btn sm" data-nav="logs">${t("view_all")} →</button></div>${recent.length ? recent.slice(0, 6).map(decisionRow).join("") : `<div class="empty"><b>${L("暂无决策", "No decisions yet")}</b></div>`}</div>
+  </div>`;
+};
+const viewSessions = () => `<div class="card"><div class="card-h"><h2>${t("sessions")} <span class="note">(${filteredSessions().length})</span></h2>${sessionFilters()}</div>${sessionTable(filteredSessions())}</div>`;
+
+const viewWhitelist = () => {
+  const w = (S.data && S.data.whitelist) || null;
+  const rows = [];
+  if (w) ["private", "group"].forEach((k) => (w[k] || []).forEach((raw) => rows.push(parseWl(raw, k))));
+  const shown = rows.filter((r) => S.wlKind === "all" || r.kind === S.wlKind);
+  const f = S.wlForm, e = S.wlErr;
+  const table = !w ? (S.loading ? `<div class="card-b"><div class="skel"></div></div>` : `<div class="empty"><b>${L("无法获取白名单", "Whitelist unavailable")}</b></div>`)
+    : !shown.length ? `<div class="empty"><b>${L("白名单为空", "Whitelist is empty")}</b>${L("未加入白名单的会话不会收到主动消息。", "Sessions not on the list won't receive proactive messages.")}</div>`
+    : `<div class="tw"><table><thead><tr><th>${t("c_type")}</th><th>${L("平台实例", "Platform instance")}</th><th>${L("原生 ID", "Native ID")}</th><th>${L("状态", "Status")}</th><th><span class="sr">${L("操作", "Actions")}</span></th></tr></thead><tbody>${shown.map((r) => r.scoped
+      ? `<tr><td>${typeBadge(r.kind)}</td><td class="mini">${esc(r.platform)}</td><td class="mini">${esc(r.id)}</td><td><span class="badge ok">${L("已绑定", "Scoped")}</span></td><td><button class="btn sm danger" data-wldel='${esc(JSON.stringify({ kind: r.kind, platform: r.platform, id: r.id }))}' ${dis(S.busy.wl)}>${L("移除", "Remove")}</button></td></tr>`
+      : `<tr class="wl-legacy"><td>${typeBadge(r.kind)}</td><td><span class="note">${L("未绑定平台", "No platform")}</span></td><td class="mini">${r.legacy ? esc(r.id) : L("无法解析", "Unparseable")}</td><td><span class="badge warn" title="${L("旧版条目，未绑定平台实例，不授予主动权限", "Legacy entry, not bound to a platform; grants no permission")}">${r.legacy ? L("未绑定 / 不授权", "Unbound / no grant") : L("格式无效", "Invalid")}</span></td><td><span class="note">${L("请在 AstrBot 插件配置中移除", "Remove in AstrBot plugin config")}</span></td></tr>`).join("")}</tbody></table></div>`;
+  const hasLegacy = rows.some((r) => !r.scoped);
+  return `<div class="stack">
+  <div class="card"><div class="card-h"><h2>${L("添加白名单", "Add entry")}</h2><span class="note">${L("必须填写确切的平台实例 ID，不支持通配", "Exact platform instance ID required — no wildcards")}</span></div>
+  <form class="card-b" id="ww-wlform" novalidate><div class="row" style="align-items:flex-start">
+    <div class="field"><label for="wl-kind">${t("c_type")}</label><select class="input" id="wl-kind" name="kind"><option value="private" ${f.kind === "private" ? "selected" : ""}>${t("private")}</option><option value="group" ${f.kind === "group" ? "selected" : ""}>${t("group")}</option></select><span class="err-t"></span></div>
+    <div class="field" style="flex:1;min-width:180px"><label for="wl-platform">${L("平台实例 ID", "Platform instance ID")} *</label><input class="input" id="wl-platform" name="platform" required placeholder="qq-bot-A" value="${esc(f.platform)}" aria-invalid="${!!e.platform}" aria-describedby="wl-platform-e"><span class="err-t" id="wl-platform-e">${esc(e.platform || "")}</span></div>
+    <div class="field" style="flex:1;min-width:180px"><label for="wl-id">${L("原生 ID", "Native ID")} *</label><input class="input" id="wl-id" name="native_id" required placeholder="10001" value="${esc(f.id)}" aria-invalid="${!!e.id}" aria-describedby="wl-id-e"><span class="err-t" id="wl-id-e">${esc(e.id || "")}</span></div>
+    <div class="field"><label>&nbsp;</label><button class="btn primary" type="submit" ${dis(S.busy.wl)}>${S.busy.wl ? L("提交中…", "Submitting…") : L("添加", "Add")}</button><span class="err-t">${esc(e.form || "")}</span></div>
+  </div><p class="note" style="margin:4px 0 0">${L("平台实例 ID 是 AstrBot 为该适配器实例配置的唯一 ID，不是适配器类型或显示名称。原生用户 / 群 ID 可能不同于线程 ID，请从平台或管理命令确认。", "Platform instance ID is the adapter instance name in AstrBot; native ID is the user/group ID on that platform. See session details for reference.")}</p></form></div>
+  <div class="card"><div class="card-h"><h2>${t("whitelist")} <span class="note">(${shown.length})</span></h2><div class="seg" role="group" aria-label="${L("类型筛选", "Type filter")}">${["all", "private", "group"].map((k) => `<button data-wlkind="${k}" aria-pressed="${S.wlKind === k}">${t(k)}</button>`).join("")}</div></div>${table}</div>
+  ${hasLegacy ? `<div class="banner warn"><span>${L("部分旧版条目未绑定平台实例，不会授予主动权限，且无法通过此页面移除。请前往 AstrBot → 插件 → WarmWhisper 配置中手动删除。", "Some legacy entries are unbound and grant no permission. They can't be removed here — delete them in AstrBot → Plugins → WarmWhisper config.")}</span></div>` : ""}
+  </div>`;
+};
+
+const viewSettings = () => {
+  const f = S.sleepForm, e = S.sleepErr, ss = sessionsOf();
+  return `<div class="two">
+  <div class="card"><div class="card-h"><h2>${L("免打扰时段", "Do-not-disturb")}</h2><span class="badge warn">${S.sleepDirty ? L("有未保存修改", "Unsaved changes") : S.sleepSaved ? L("已与服务端同步", "Synced with server") : L("当前值未知", "Current value unknown")}</span></div>
+  <form class="card-b" id="ww-sleepform" novalidate>
+    <p class="help" style="margin-top:0">${L("时段按下方插件时区生效，可跨越午夜。建议避免设置相同的开始与结束时间；时区请在 AstrBot 插件配置中修改。", "Times use the plugin timezone below and may cross midnight. Avoid setting equal start and end times. Change the timezone in AstrBot plugin settings.")}</p>
+    <div class="row" style="align-items:flex-start">
+      <div class="field"><label for="sl-start">${L("开始 (HH:MM)", "Start (HH:MM)")}</label><input class="input" id="sl-start" name="start" inputmode="numeric" placeholder="23:00" maxlength="5" value="${esc(f.start)}" ${dis(S.busy.sleep)} aria-invalid="${!!e.start}" aria-describedby="sl-start-e"><span class="err-t" id="sl-start-e">${esc(e.start || "")}</span></div>
+      <div class="field"><label for="sl-end">${L("结束 (HH:MM)", "End (HH:MM)")}</label><input class="input" id="sl-end" name="end" inputmode="numeric" placeholder="08:00" maxlength="5" value="${esc(f.end)}" ${dis(S.busy.sleep)} aria-invalid="${!!e.end}" aria-describedby="sl-end-e"><span class="err-t" id="sl-end-e">${esc(e.end || "")}</span></div>
+      <div class="field"><label>&nbsp;</label><button class="btn primary" type="submit" ${dis(S.busy.sleep)}>${S.busy.sleep ? t("saving") : t("save")}</button><button class="btn" type="button" id="ww-sleep-reset" ${dis(S.busy.sleep || !S.sleepSaved)}>${L("恢复已保存值", "Restore saved values")}</button></div>
+    </div>
+    ${S.sleepSaved ? `<p class="note">${L("服务端确认：", "Server confirmed: ")}${esc(S.sleepSaved.start)} – ${esc(S.sleepSaved.end)}（${esc(S.sleepTimezone || L("插件配置时区", "Plugin timezone"))}）</p>` : ""}
+    ${!S.sleepSaved ? `<p class="note">${L("尚未读取到当前设置。旧版后端可能不支持回显，请先在 AstrBot 配置中核对。", "Current settings have not been received. Older backends may not support readback; check AstrBot config first.")}</p>` : ""}
+    ${e.form ? `<p class="err-t">${esc(e.form)}</p>` : ""}
+  </form></div>
+  <div class="card"><div class="card-h"><h2>${L("手动测试", "Manual test")}</h2><span class="badge bad">${L("发送真实消息", "Sends a real message")}</span></div>
+  <div class="card-b"><div class="field"><label for="ww-testsid">${L("选择已有会话", "Choose an existing session")}</label><select class="input" id="ww-testsid"><option value="">${L("— 请选择 —", "— Select —")}</option>${ss.map((s) => `<option value="${esc(s.session_id)}" ${S.testSid === s.session_id ? "selected" : ""}>${esc(parseSid(s.session_id).name)} · ${esc(parseSid(s.session_id).platform)}</option>`).join("")}</select></div>
+  <div class="row" style="margin-top:12px"><button class="btn primary" id="ww-testbtn" ${dis(!S.testSid || S.busy.test)}>${S.busy.test ? L("发送中…", "Sending…") : t("test_send")}</button><span class="note">${L("会弹出二次确认，不会自动执行。", "Requires confirmation; never runs automatically.")}</span></div></div></div>
+  <div class="card"><div class="card-h"><h2>${L("启用范围", "Enable scope")}</h2></div><div class="card-b help">${L("主动消息仅会发往<b>白名单</b>中同时匹配平台实例与原生 ID 的会话。主动轮询开关位于概览页；关闭只停止主动轮询，消息合并与被动处理照常运行。", "Proactive messages only go to sessions on the <b>whitelist</b> matching both platform instance and native ID. The proactive polling switch is on Overview; turning it off only stops polling — merging and passive handling continue.")}</div></div>
+  <div class="card"><div class="card-h"><h2>${L("消息合并", "Message merging")}</h2></div><div class="card-b help">${L("此页面不提供合并开关。如需启用或关闭，请在 AstrBot → 插件 → WarmWhisper 配置中修改 <code>merge_enabled</code>，然后在下方执行重载。", "No merge switch here. Change <code>merge_enabled</code> in AstrBot → Plugins → WarmWhisper config, then reload below.")}</div></div>
+  <div class="card" style="grid-column:1/-1"><div class="toggle-row"><div><div class="name">${L("重载配置与状态", "Reload config & state")}</div><div class="note">${L("将从磁盘重新读取已持久化的配置与运行状态，未持久化的内存变更可能被覆盖。", "Re-reads persisted config and state from disk; unpersisted in-memory changes may be overwritten.")}</div></div><button class="btn" id="ww-reload" ${dis(S.busy.reload)}>${S.busy.reload ? L("重载中…", "Reloading…") : L("重载", "Reload")}</button></div></div>
+  </div>`;
+};
+
+const viewLogs = () => {
+  const all = (S.data && S.data.recent) || [];
+  const q = S.logQ.trim().toLowerCase();
+  const rows = all.filter((r) => (S.logOutcome === "all" || r.outcome === S.logOutcome) && (!q || String(r.session_id).toLowerCase().includes(q) || (r.reason_codes || []).some((c) => c.toLowerCase().includes(q) || reasonLabel(c).toLowerCase().includes(q))));
+  return `<div class="card"><div class="card-h"><div class="row"><input class="input" type="search" id="ww-logq" placeholder="${L("搜索原因或会话", "Search reason or session")}" aria-label="${L("搜索原因或会话", "Search reason or session")}" value="${esc(S.logQ)}" style="width:220px">
+    <div class="seg" role="group" aria-label="${L("结果筛选", "Outcome filter")}">${["all", "triggered", "allow", "skip", "failed"].map((k) => `<button data-out="${k}" aria-pressed="${S.logOutcome === k}">${k === "all" ? t("all") : esc(L(OUTCOME[k][0], OUTCOME[k][1]))}</button>`).join("")}</div></div>
+    <div class="row"><span class="pill" data-s="${S.conn}"><span class="dot"></span>${esc(t(S.conn))}</span><button class="btn sm" id="ww-reconnect" ${api.mode === "nohost" ? "disabled" : ""}>${L("重新连接", "Reconnect")}</button></div></div>
+    ${!S.data ? (S.loading ? `<div class="card-b"><div class="skel"></div></div>` : `<div class="empty"><b>${L("无法获取日志", "Logs unavailable")}</b></div>`) : rows.length ? rows.map(decisionRow).join("") : `<div class="empty"><b>${all.length ? t("no_match") : L("暂无决策记录", "No decisions yet")}</b></div>`}
+    <div class="card-b note" style="border-top:1px solid var(--line2)">${L("未带时区的日志按服务端时间原样显示；带时区时间转换为 Asia/Shanghai。仅显示结构化决策，不包含消息正文或模型输出。", "Unzoned log times retain server wall time; zoned times use Asia/Shanghai. Structured decisions only; no message or model text.")}</div></div>`;
+};
+
+const renderDrawer = () => {
+  const dr = $("#ww-drawer"), sc = $("#ww-scrim");
+  const s = S.drawer && sessionsOf().find((x) => x.session_id === S.drawer.sid);
+  if (!s) { $("#ww-app").inert = false; document.body.style.overflow = ""; dr.classList.remove("on"); sc.classList.remove("on"); dr.setAttribute("aria-hidden", "true"); dr.innerHTML = ""; return; }
+  $("#ww-app").inert = true;
+  document.body.style.overflow = "hidden";
+  const p = parseSid(s.session_id), m = S.drawer.mood;
+  dr.innerHTML = `<div class="drawer-h"><div><h2 id="ww-drawer-title" style="margin:0;font-size:17px;font-family:var(--serif)">${esc(p.name)}</h2><div class="row" style="gap:6px;margin-top:4px">${typeBadge(s.session_type || p.type)}<span class="mini">${esc(p.platform)}</span></div></div><button class="iconbtn" id="ww-dclose" aria-label="${L("关闭", "Close")}">✕</button></div>
+  <div class="drawer-b">
+    <dl class="kv"><dt>${L("完整 ID", "Full ID")}</dt><dd class="mini">${esc(s.session_id)} <button class="btn sm" data-copy="${esc(s.session_id)}">${t("copy")}</button></dd>
+    <dt>${L("人格状态", "Persona")}</dt><dd>${esc(s.persona_state || t("none"))}</dd><dt>${t("c_idle")}</dt><dd>${fmtDur(s.idle_sec)}</dd><dt>${t("c_next")}</dt><dd>${fmtNext(s.next_trigger_sec)}</dd>
+    <dt>${t("c_today")}</dt><dd>${esc(s.today_count ?? 0)}</dd><dt>${L("上次主动", "Last proactive")}</dt><dd>${s.last_proactive_at ? fmtTime(s.last_proactive_at, true) : t("none")}</dd></dl>
+    <form id="ww-moodform" class="card" style="padding:16px;box-shadow:none"><div class="field"><label for="ww-mood-r">${t("mood_edit")} <span class="note">(0–100)</span></label>
+      <div class="row"><input type="range" id="ww-mood-r" min="0" max="100" step="1" value="${esc(m)}" style="flex:1" aria-describedby="ww-mood-e"><input class="input num" id="ww-mood-n" type="number" min="0" max="100" step="1" value="${esc(m)}" style="width:76px" aria-label="${t("mood_edit")}" aria-invalid="${!!S.drawer.err}"></div>
+      <span class="err-t" id="ww-mood-e">${esc(S.drawer.err || "")}</span></div>
+      <button class="btn primary" type="submit" ${dis(S.busy.mood)}>${S.busy.mood ? t("saving") : t("save")}</button></form>
+    <div class="card" style="padding:16px;box-shadow:none"><div class="name">${t("test_send")}</div><p class="note">${L("立即向该会话发送一条真实的主动消息。", "Immediately sends a real proactive message to this session.")}</p><button class="btn" id="ww-dtest" ${dis(S.busy.test)}>${S.busy.test ? L("发送中…", "Sending…") : t("test_send")}</button></div>
+  </div>`;
+  if (!dr.classList.contains("on")) { dr.classList.add("on"); sc.classList.add("on"); dr.setAttribute("aria-hidden", "false"); setTimeout(() => { const c = $("#ww-dclose"); c && c.focus(); }, 50); }
+};
+
+const render = () => {
+  if (disposed) return;
+  const a = document.activeElement, aid = a && a.id, sel = a && a.selectionStart;
+  const scroll = $("#ww-drawer .drawer-b")?.scrollTop || 0;
+  renderChrome();
+  const V = { overview: viewOverview, sessions: viewSessions, whitelist: viewWhitelist, settings: viewSettings, logs: viewLogs }[S.section];
+  $("#ww-view").innerHTML = V();
+  renderDrawer();
+  if (aid) { const n = document.getElementById(aid); if (n && n !== a) { n.focus(); try { if (sel != null) n.setSelectionRange(sel, sel); } catch (e) {} } }
+  for (const [id, key] of [["ww-wlform", "wl"], ["ww-sleepform", "sleep"], ["ww-moodform", "mood"]]) { if (S.busy[key]) document.getElementById(id)?.querySelectorAll("input,select,button").forEach(n => n.disabled = true); }
+  const body = $("#ww-drawer .drawer-b"); if (body) body.scrollTop = scroll;
+};
+
+/* ---------------- data ---------------- */
+const mergeDecisions = (incoming, existing = []) => {
+  const unique = new Map();
+  for (const row of [...incoming, ...existing]) {
+    if (!row || typeof row !== "object") continue;
+    const key = JSON.stringify([row.session_id, row.at, row.outcome, row.reason_codes]);
+    if (!unique.has(key)) unique.set(key, row);
+  }
+  return [...unique.values()].sort((a, b) => (toDate(b.at)?.getTime() || 0) - (toDate(a.at)?.getTime() || 0)).slice(0, 200);
+};
+const applySettings = (settings) => {
+  if (!settings || !HHMM.test(settings.sleep_start) || !HHMM.test(settings.sleep_end)) return;
+  S.sleepSaved = { start: settings.sleep_start, end: settings.sleep_end };
+  S.sleepTimezone = typeof settings.timezone === "string" ? settings.timezone : "";
+  if (!S.sleepDirty && !S.busy.sleep) S.sleepForm = { ...S.sleepSaved };
+};
+const applyStatus = (d) => { if (!d || typeof d !== "object") return; applySettings(d.settings); S.data = { sessions: d.sessions || [], global: d.global || {}, whitelist: d.whitelist || { private: [], group: [] }, recent: mergeDecisions(d.recent || [], S.data?.recent || []) }; S.loadError = null; };
+const load = async (manual) => {
+  const sequence = ++loadSequence, revision = statusRevision;
+  S.loading = true; if (manual) { $("#ww-refresh svg").classList.add("spin"); } render();
+  const r = await request("get", "status");
+  if (disposed || sequence !== loadSequence) return;
+  S.loading = false; $("#ww-refresh svg") && $("#ww-refresh svg").classList.remove("spin");
+  if (r.ok && r.data && Array.isArray(r.data.sessions)) { if (revision === statusRevision) applyStatus(r.data); if (manual) announce(L("已刷新", "Refreshed")); }
+  else { S.loadError = r.ok ? L("响应缺少会话数据", "Response missing sessions") : r.message; if (manual || api.mode !== "nohost") announce(L("加载失败：", "Load failed: ") + S.loadError, true); }
+  softRender();
+};
+/* Unwrap SDK/facade wrappers until we reach the backend envelope {type, data}. */
+const parseMaybe = (v) => { if (typeof v !== "string") return v; try { return JSON.parse(v); } catch (e) { return undefined; } };
+const unwrapEvent = (msg) => {
+  let cur = parseMaybe(msg);
+  for (let i = 0; i < 5 && cur && typeof cur === "object"; i++) {
+    if (cur.type === "status" || cur.type === "decision") return { type: cur.type, data: parseMaybe(cur.data) };
+    if (cur.data !== undefined) { cur = parseMaybe(cur.data); continue; }
+    break;
+  }
+  // last-resort fallbacks: SDK event name, or a bare status object
+  const top = parseMaybe(msg);
+  if (top && (top.event === "status" || top.event === "decision")) return { type: top.event, data: parseMaybe(top.data) };
+  if (cur && Array.isArray(cur.sessions)) return { type: "status", data: cur };
+  return null;
+};
+/* Skip rebuilding the view while the user is editing; flush on focusout. */
+let pendingRender = false;
+const editing = () => { const a = document.activeElement; return !!(a && a.matches && (a.matches("input,select,textarea") || a.closest("form") || a.closest("#ww-drawer")) && (a.closest("#ww-view") || a.closest("#ww-drawer"))) || $("#ww-dlg").open; };
+const softRender = () => { if (editing()) { pendingRender = true; renderChrome(); } else { pendingRender = false; render(); } };
+const onEvent = (msg) => {
+  if (disposed) return;
+  try {
+    const ev = unwrapEvent(msg); if (!ev || !ev.data || typeof ev.data !== "object") return;
+    if (ev.type === "status" && Array.isArray(ev.data.sessions)) { statusRevision++; applyStatus(ev.data); softRender(); }
+    else if (ev.type === "decision" && ev.data.session_id) { if (!S.data) return; S.data.recent = mergeDecisions([ev.data], S.data.recent); if (S.section === "overview" || S.section === "logs") softRender(); }
+  } catch (e) { /* ignore malformed / unknown */ }
+};
+const onConn = (st) => { const m = { open: "live", connected: "live", live: "live", connecting: "connecting", reconnecting: "connecting", error: "error", closed: "offline", offline: "offline", disconnected: "offline" }; S.conn = api.mode === "demo" ? (st === "offline" ? "offline" : "demo") : m[st] || "connecting"; if (S.section === "logs") softRender(); else renderChrome(); };
+const connect = () => { if (sse) { try { sse.close(); } catch (e) {} } sse = api.sse(onEvent, onConn); if (!sse && api.mode !== "demo") { S.conn = "offline"; renderChrome(); } };
+
+/* ---------------- actions ---------------- */
+const setBusy = (k, v) => { S.busy[k] = v; render(); };
+const doToggle = async () => {
+  if (S.busy.toggle) return;
+  const g = S.data.global, next = !g.enabled;
+  if (!next && !(await confirmDlg(L("关闭主动消息？", "Turn off proactive messages?"), esc(t("proactive_note")), L("关闭", "Turn off"), true))) return;
+  setBusy("toggle", true); const r = await request("post", "toggle", { enabled: next }); S.busy.toggle = false;
+  if (r.ok && r.data && typeof r.data.enabled === "boolean") { S.data.global.enabled = r.data.enabled; announce(next ? L("主动消息已开启", "Proactive enabled") : L("主动消息已关闭", "Proactive disabled")); } else announce(L("切换失败：", "Toggle failed: ") + (r.message || L("响应格式无效", "Invalid response")), true);
+  render();
+};
+const doTest = async (sid) => {
+  if (S.busy.test) return;
+  const p = parseSid(sid);
+  if (!(await confirmDlg(L("发送测试消息？", "Send test message?"), `${esc(t("test_warn"))}<br><span class="mini">${esc(sid)}</span>`, L("确认发送", "Send"), true))) return;
+  setBusy("test", true); const r = await request("post", "test", { session_id: sid }); S.busy.test = false;
+  if (r.ok && r.data && r.data.triggered === true) announce(L(`已向 ${p.name} 发送测试消息`, `Test sent to ${p.name}`));
+  else if (r.ok) announce(L("服务端未触发发送（triggered=false）", "Server did not trigger (triggered=false)"), true);
+  else announce(L("测试失败：", "Test failed: ") + r.message, true);
+  render();
+};
+const copy = async (txt) => { try { await navigator.clipboard.writeText(txt); announce(t("copied")); } catch (e) { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); announce(ok ? t("copied") : L("复制失败", "Copy failed"), !ok); } };
+const closeDrawer = () => { const sid = S.drawer && S.drawer.sid; S.drawer = null; renderDrawer(); const b = sid && document.querySelector(`[data-open="${CSS.escape(sid)}"]`); b && b.focus(); };
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/* ---------------- events ---------------- */
+const on = (el, ev, fn) => { el.addEventListener(ev, fn); cleanups.push(() => el.removeEventListener(ev, fn)); };
+const cleanups = [];
+on(document, "click", async (e) => {
+  const tg = e.target.closest("button,[data-nav]"); if (!tg || tg.disabled) return;
+  if (tg.dataset.nav) { S.section = tg.dataset.nav; render(); $("#ww-main").scrollIntoView({ block: "start" }); return; }
+  if (tg.dataset.type) { S.type = tg.dataset.type; render(); return; }
+  if (tg.dataset.wlkind) { S.wlKind = tg.dataset.wlkind; render(); return; }
+  if (tg.dataset.out) { S.logOutcome = tg.dataset.out; render(); return; }
+  if (tg.dataset.copy) { copy(tg.dataset.copy); return; }
+  if (tg.dataset.open) { const s = sessionsOf().find((x) => x.session_id === tg.dataset.open); if (s) { S.drawer = { sid: s.session_id, mood: Math.round(Number(s.mood) || 0), err: "" }; renderDrawer(); } return; }
+  if (tg.dataset.wldel) {
+    if (S.busy.wl) return;
+    const x = JSON.parse(tg.dataset.wldel);
+    if (!(await confirmDlg(L("移除白名单条目？", "Remove whitelist entry?"), `${typeBadge(x.kind)} <span class="mini">${esc(x.platform)}</span> / <span class="mini">${esc(x.id)}</span><br>${L("仅移除这一条已绑定平台的条目，此会话将不再收到主动消息。", "Removes only this scoped entry; the session will stop receiving proactive messages.")}`, L("移除", "Remove"), true))) return;
+    setBusy("wl", true); const r = await request("post", "whitelist", { op: "del", kind: x.kind, platform: x.platform, id: x.id }); S.busy.wl = false;
+    if (r.ok && r.data && Array.isArray(r.data.private) && Array.isArray(r.data.group)) { S.data.whitelist = r.data; announce(L("已移除", "Removed")); } else announce(L("移除失败：", "Remove failed: ") + (r.ok ? L("响应格式无效", "Invalid response") : r.message), true);
+    render(); return;
+  }
+  switch (tg.id) {
+    case "ww-refresh": if (api.mode === "nohost" && hasHost()) boot(); else load(true); break;
+    case "ww-toggle": if (S.data) doToggle(); break;
+    case "ww-collapse": $("#ww-app").classList.toggle("collapsed"); storage.setItem("ww-col", $("#ww-app").classList.contains("collapsed") ? "1" : ""); break;
+    case "ww-lang": lang = lang === "en" ? "zh" : "en"; storage.setItem("ww-lang", lang); render(); break;
+    case "ww-theme": { const d = document.documentElement.dataset.theme === "dark" ? "" : "dark"; document.documentElement.dataset.theme = d; storage.setItem("ww-theme", d); break; }
+    case "ww-dclose": closeDrawer(); break;
+    case "ww-dtest": doTest(S.drawer.sid); break;
+    case "ww-testbtn": if (S.testSid) doTest(S.testSid); break;
+    case "ww-reconnect": if (sse && sse.reconnect) { S.conn = "connecting"; render(); sse.reconnect(); } else connect(); load(false); break;
+    case "ww-sleep-reset": S.sleepForm = { ...S.sleepSaved }; S.sleepDirty = false; S.sleepErr = {}; render(); break;
+    case "ww-reload": {
+      if (S.busy.reload) return;
+      if (!(await confirmDlg(L("重载配置与状态？", "Reload config & state?"), L("将重新读取已持久化的配置与状态，未持久化的内存变更可能丢失。", "Persisted config and state will be re-read; unpersisted changes may be lost."), L("重载", "Reload"), true))) return;
+      setBusy("reload", true); const r = await request("post", "reload", {}); S.busy.reload = false;
+      if (r.ok && r.data && r.data.reloaded === true) { announce(L("已重载", "Reloaded")); load(false); } else announce(L("重载失败：", "Reload failed: ") + (r.ok ? "reloaded≠true" : r.message), true);
+      render(); break;
     }
+  }
+});
+on($("#ww-scrim"), "click", closeDrawer);
+on(document, "keydown", (e) => {
+  if (!S.drawer || $("#ww-dlg").open) return;
+  if (e.key === "Escape") { closeDrawer(); return; }
+  if (e.key === "Tab") {
+    const controls = [...$("#ww-drawer").querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex='0']")];
+    const first = controls[0], last = controls.at(-1);
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+  }
+});
+on(document, "input", (e) => {
+  const id = e.target.id, v = e.target.value;
+  if (id === "ww-q") { S.q = v; render(); }
+  else if (id === "ww-logq") { S.logQ = v; render(); }
+  else if (id === "wl-platform" || id === "wl-id") { S.wlForm[id.slice(3)] = v; }
+  else if (id === "sl-start" || id === "sl-end") { S.sleepForm[id.slice(3)] = v; S.sleepDirty = true; const badge = $("#ww-sleepform")?.closest(".card")?.querySelector(".badge"); if (badge) badge.textContent = L("有未保存修改", "Unsaved changes"); }
+  else if (id === "ww-mood-r") { S.drawer.mood = Number(v); $("#ww-mood-n").value = v; }
+  else if (id === "ww-mood-n") { S.drawer.mood = v === "" ? "" : Number(v); if (v !== "" && Number(v) >= 0 && Number(v) <= 100) $("#ww-mood-r").value = v; }
+});
+on(document, "change", (e) => { if (e.target.id === "wl-kind") S.wlForm.kind = e.target.value; if (e.target.id === "ww-testsid") { S.testSid = e.target.value; render(); } });
+on(document, "submit", async (e) => {
+  const f = e.target;
+  if (!["ww-wlform", "ww-sleepform", "ww-moodform"].includes(f.getAttribute("id"))) return;
+  e.preventDefault();
+  const busyKey = { "ww-wlform": "wl", "ww-sleepform": "sleep", "ww-moodform": "mood" }[f.getAttribute("id")];
+  if (S.busy[busyKey]) return;
+  if (f.getAttribute("id") === "ww-wlform") {
+    const w = { kind: S.wlForm.kind, platform: S.wlForm.platform.trim(), id: S.wlForm.id.trim() }, err = {};
+    if (!w.platform) err.platform = L("必填：确切的平台实例 ID", "Required: exact platform instance ID");
+    else if (/[*?]/.test(w.platform) || w.platform === "all") err.platform = L("不支持通配平台", "Wildcard platforms not allowed");
+    if (!w.id) err.id = L("必填：原生 ID", "Required: native ID");
+    const key = JSON.stringify({ kind: w.kind, platform: w.platform, id: w.id });
+    if (!err.platform && !err.id && S.data && (S.data.whitelist[w.kind] || []).some((r) => { const p = parseWl(r, w.kind); return p.scoped && p.kind === w.kind && p.platform === w.platform && p.id === w.id; })) err.form = L("该条目已存在", "Entry already exists");
+    S.wlErr = err; if (Object.keys(err).length) { render(); announce(Object.values(err)[0], true); return; }
+    setBusy("wl", true); const r = await request("post", "whitelist", { op: "add", ...w }); S.busy.wl = false;
+    if (r.ok && r.data && Array.isArray(r.data.private) && Array.isArray(r.data.group)) { S.data.whitelist = r.data; S.wlForm = { kind: w.kind, platform: w.platform, id: "" }; announce(L("已添加到白名单", "Added to whitelist")); }
+    else { S.wlErr = { form: r.ok ? L("响应格式无效", "Invalid response") : r.message }; announce(L("添加失败：", "Add failed: ") + S.wlErr.form, true); }
+    render();
+  } else if (f.getAttribute("id") === "ww-sleepform") {
+    const s = { start: S.sleepForm.start.trim(), end: S.sleepForm.end.trim() }, err = {};
+    if (!HHMM.test(s.start)) err.start = L("格式应为 HH:MM，如 23:00", "Use HH:MM, e.g. 23:00");
+    if (!HHMM.test(s.end)) err.end = L("格式应为 HH:MM，如 08:00", "Use HH:MM, e.g. 08:00");
+    S.sleepErr = err; if (Object.keys(err).length) { render(); announce(Object.values(err)[0], true); return; }
+    setBusy("sleep", true); const r = await request("post", "sleep", s); S.busy.sleep = false;
+    if (r.ok && r.data && HHMM.test(r.data.start) && HHMM.test(r.data.end)) { S.sleepSaved = { start: r.data.start, end: r.data.end }; S.sleepForm = { ...S.sleepSaved }; S.sleepDirty = false; announce(L("免打扰时段已保存", "DND saved")); }
+    else { S.sleepErr = { form: r.ok ? L("响应格式无效", "Invalid response") : r.message }; announce(L("保存失败：", "Save failed: ") + S.sleepErr.form, true); }
+    render();
+  } else if (f.getAttribute("id") === "ww-moodform") {
+    if (!S.drawer) return;
+    const v = S.drawer.mood;
+    if (v === "" || isNaN(v) || v < 0 || v > 100) { S.drawer.err = L("请输入 0 到 100 之间的数值", "Enter a value between 0 and 100"); renderDrawer(); announce(S.drawer.err, true); return; }
+    const sid = S.drawer.sid; S.drawer.err = ""; setBusy("mood", true); const r = await request("post", "mood", { session_id: sid, value: Number(v) }); S.busy.mood = false;
+    if (r.ok && r.data && r.data.session_id === sid && typeof r.data.mood === "number") { const s = sessionsOf().find((x) => x.session_id === sid); if (s) s.mood = r.data.mood; if (S.drawer?.sid === sid) S.drawer.mood = Math.round(r.data.mood); announce(L("情绪值已更新为 ", "Mood updated to ") + Math.round(r.data.mood)); }
+    else { if (S.drawer?.sid === sid) S.drawer.err = r.ok ? L("响应格式无效", "Invalid response") : r.message; announce(L("保存失败：", "Save failed: ") + (S.drawer ? S.drawer.err : r.message), true); }
+    render();
+  }
+});
+window.addEventListener("pageshow", (event) => { if (event.persisted) location.reload(); });
+on(window, "pagehide", () => { disposed = true; const dialog = $("#ww-dlg"); if (dialog.open) dialog.close("cancel"); if (sse) { try { sse.close(); } catch (e) {} sse = null; } timers.forEach((x) => { clearTimeout(x); clearInterval(x); }); timers.clear(); cleanups.splice(0).forEach((f) => f()); });
 
-    async function doWl(op, kind) {
-      var inputId = kind === 'private' ? 'wl-private-input' : 'wl-group-input';
-      var id = document.getElementById(inputId).value.trim();
-      if (!id) return;
-      var resp = await K.apiPost('whitelist', { op: op, kind: kind, id: id });
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        K.showToast(op === 'add' ? K.t('common.added') : K.t('common.removed'), 'ok');
-        document.getElementById(inputId).value = '';
-        document.getElementById('wl-private-list').textContent = (d.private || []).join(', ') || '-';
-        document.getElementById('wl-group-list').textContent = (d.group || []).join(', ') || '-';
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
-      }
-    }
-
-    async function doSleep() {
-      var start = document.getElementById('sleep-start').value;
-      var end = document.getElementById('sleep-end').value;
-      var resp = await K.apiPost('sleep', { start: start, end: end });
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        K.showToast(K.t('common.saved'), 'ok');
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
-      }
-    }
-
-    async function doMood() {
-      var sid = document.getElementById('mood-session').value.trim();
-      var val = parseFloat(document.getElementById('mood-value').value);
-      if (!sid || isNaN(val)) {
-        K.showToast(K.t('common.session_required'), 'err');
-        return;
-      }
-      var resp = await K.apiPost('mood', { session_id: sid, value: val });
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        var mood = d.mood;
-        K.showToast(K.t('common.mood_set', { mood: mood }), 'ok');
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
-      }
-    }
-
-    async function doReload() {
-      var resp = await K.apiPost('reload', {});
-      var d = resp && resp.data ? resp.data : resp;
-      if (d) {
-        K.showToast(K.t('common.reloaded'), 'ok');
-        await loadStatus();
-      } else {
-        K.showToast(K.t('common.failed'), 'err');
-      }
-    }
-
-    async function init() {
-      document.title = K.t('control.title');
-      K.applyI18n();
-      await loadStatus();
-    }
-
-    (function waitForBridge() {
-      if (window.AstrBotPluginPage) {
-        var s = window.AstrBotPluginPage;
-        if (typeof s.ready === 'function') {
-          s.ready().then(init).catch(init);
-        } else {
-          init();
-        }
-      } else {
-        setTimeout(waitForBridge, 50);
-      }
-    })();
-  </script>
+/* ---------------- boot ---------------- */
+if (storage.getItem("ww-theme") === "dark" || (!storage.getItem("ww-theme") && matchMedia("(prefers-color-scheme: dark)").matches && storage.getItem("ww-theme") !== "")) document.documentElement.dataset.theme = "dark";
+if (storage.getItem("ww-col") === "1") $("#ww-app").classList.add("collapsed");
+on(document, "focusout", () => { setTimeout(() => { if (pendingRender && !editing()) { pendingRender = false; render(); } }, 0); });
+const hasHost = () => !!(window.AstrBotPluginPage && typeof window.AstrBotPluginPage.apiGet === "function");
+let booted = false;
+const boot = () => {
+  if (booted && api.mode !== "nohost") return; booted = true;
+  api = makeApi();
+  if (api.mode === "nohost") { S.loading = false; S.conn = "offline"; render(); return; }
+  S.conn = api.mode === "demo" ? "demo" : "connecting"; load(false); connect();
+};
+render();
+if (DEMO || hasHost()) boot();
+else {
+  const started = Date.now();
+  const poll = setInterval(() => { if (hasHost() || Date.now() - started > 4000) { clearInterval(poll); timers.delete(poll); boot(); } }, 150);
+  timers.add(poll);
+  ["AstrBotPluginPageReady", "kanjyou:ready", "astrbot-plugin-page-ready"].forEach((n) => on(window, n, () => { if (hasHost()) { clearInterval(poll); boot(); } }));
+}
+}
+</script>
 </body>
 </html>

@@ -60,35 +60,47 @@ class CommandUnitsMixin:
 
     async def _cmd_idle_wl_add_private(self, event: AstrMessageEvent, user_id: str):
         self._shield_command_from_llm(event)
+        entry = self._whitelist_entry(user_id, self._platform_instance_id(event))
         wl: List[str] = self.config["private_whitelist"]
-        if user_id not in wl:
-            wl.append(user_id)
+        if not entry:
+            yield event.plain_result("当前平台实例无法识别，未修改白名单。")
+            return
+        if entry not in wl:
+            wl.append(entry)
             self._save_webui_config()
-        yield event.plain_result(f"私聊白名单已添加: {user_id}")
+        yield event.plain_result(
+            "私聊白名单已添加（当前平台实例）"
+        )
 
     async def _cmd_idle_wl_del_private(self, event: AstrMessageEvent, user_id: str):
         self._shield_command_from_llm(event)
+        entry = self._whitelist_entry(user_id, self._platform_instance_id(event))
         wl: List[str] = self.config["private_whitelist"]
-        if user_id in wl:
-            wl.remove(user_id)
+        if entry in wl:
+            wl.remove(entry)
             self._save_webui_config()
-        yield event.plain_result(f"私聊白名单已移除: {user_id}")
+        yield event.plain_result("私聊白名单已移除（当前平台实例）")
 
     async def _cmd_idle_wl_add_group(self, event: AstrMessageEvent, group_id: str):
         self._shield_command_from_llm(event)
+        entry = self._whitelist_entry(group_id, self._platform_instance_id(event), kind="group")
         wl: List[str] = self.config["group_whitelist"]
-        if group_id not in wl:
-            wl.append(group_id)
+        if not entry:
+            yield event.plain_result("当前平台实例无法识别，未修改白名单。")
+            return
+        if entry not in wl:
+            wl.append(entry)
             self._save_webui_config()
-        yield event.plain_result(f"群聊白名单已添加: {group_id}")
+        yield event.plain_result("群聊白名单已添加（当前平台实例）")
 
     async def _cmd_idle_wl_del_group(self, event: AstrMessageEvent, group_id: str):
         self._shield_command_from_llm(event)
+        entry = self._whitelist_entry(group_id, self._platform_instance_id(event), kind="group")
         wl: List[str] = self.config["group_whitelist"]
-        if group_id in wl:
-            wl.remove(group_id)
+        if entry in wl:
+            wl.remove(entry)
             self._save_webui_config()
-        yield event.plain_result(f"群聊白名单已移除: {group_id}")
+        yield event.plain_result("群聊白名单已移除（当前平台实例）")
 
     async def _cmd_idle_sleep_set(
         self, event: AstrMessageEvent, start_hm: str, end_hm: str

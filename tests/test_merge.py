@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
-PRIVATE_UMO = "webchat!u1!c1"
+PRIVATE_UMO = "webchat:FriendMessage:u1:c1"
 GROUP_UMO = "aiocqhttp:group:g1"
 
 
@@ -38,6 +38,7 @@ class _FakeEvent:
         wake: bool = True,
         platform_id: str = "webchat",
     ):
+        self.role = "member"
         self.message_str = text
         self.message_obj = _MessageObj(components, group_id, sender_id)
         self.unified_msg_origin = umo
@@ -110,9 +111,8 @@ def _make_plugin(plugin):
 
 
 def _key(event):
-    if event.message_obj.group_id:
-        return f"group:{event.message_obj.group_id}"
-    return f"private:{event.message_obj.sender.user_id}"
+    kind = "group" if event.message_obj.group_id else "private"
+    return f"{kind}:{event.unified_msg_origin}"
 
 
 def _would_call_default_llm(event) -> bool:
@@ -489,7 +489,7 @@ def test_note_typing_capped_by_max_wait(plugin):
 def test_note_typing_without_leader_returns_false(plugin):
     instance = _make_plugin(plugin)
     assert instance._merge_note_typing(session_key="private:none") is False
-    assert instance._merge_note_typing(umo="webchat!u1!c1") is False
+    assert instance._merge_note_typing(umo="webchat:FriendMessage:u1:c1") is False
 
 
 def test_note_typing_resolves_group_umo(plugin):

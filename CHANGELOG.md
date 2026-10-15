@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.13.3 — 2026-10-15
+
+- 完整 UMO 会话和平台实例白名单隔离；消息合并按发送者与权限上下文划分，日志移除正文及外部命令参数。
+- 完善 WebUI 面板、SDK 响应处理与 SSE 订阅清理，明确核心/WebUI 兼容范围及 enabled 语义。
+- 统一手动与定时主动投递，增加生成后复核、并发上限、关闭清理和全局配额预约；未知投递结果不整条重发。
+- 发送采用独立 attempt ID，陪伴回执按原 ID 补报，手动发送计数独立；emotion receipt 复用 attempt ID。
+- 协作版本：Hearthlight v1.10.1，tmemory v0.17.0（未修改）。历史版本逐步规范，不强行跳号对齐。
+- 验证：393 项 Python 测试、5 项跨仓测试、WebUI JavaScript 回归与 Ruff 通过；生产手动测试接口返回成功，数据库对应回执确认。
+
 All notable changes to this project will be documented in this file.
 
 ## [2.13.2] - 2026-09-30

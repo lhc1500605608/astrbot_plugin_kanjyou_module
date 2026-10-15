@@ -126,8 +126,21 @@ class KanjyouIdleProactivePlugin(
         self._quality_trace: Dict[str, int] = {}
         self._loop_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        # Phase 2 send pipeline: session-scoped serialization plus bounded,
+        # owned generation tasks. The global lock is only for short state
+        # snapshots/commits and is never held across LLM/platform awaits.
+        self._proactive_session_locks: Dict[str, asyncio.Lock] = {}
+        self._proactive_session_lock_owners: Dict[str, object] = {}
+        self._proactive_session_inflight: set = set()
+        self._proactive_send_tasks: set = set()
+        self._global_send_inflight = 0
+        self._proactive_generation_tasks: set = set()
+        self._proactive_generation_semaphore = asyncio.Semaphore(2)
+        self._terminating = False
+        self._last_proactive_attempt_result: Dict = {}
 
     async def initialize(self):
+        self._terminating = False
         if self._loop_task is None or self._loop_task.done():
             self._loop_task = asyncio.create_task(self._idle_loop())
         plugin_dir = Path(__file__).parent
@@ -154,6 +167,8 @@ class KanjyouIdleProactivePlugin(
         self._debug("plugin initialize complete")
 
     async def terminate(self):
+        self._terminating = True
+        await self._cancel_proactive_generation_tasks()
         if self._loop_task and not self._loop_task.done():
             self._loop_task.cancel()
             try:
@@ -161,6 +176,7 @@ class KanjyouIdleProactivePlugin(
             except asyncio.CancelledError:
                 pass
         self._merge_shutdown()
+        await self._flush_all_attempt_outcomes()
         self._save_state()
         if self.config.get("lifecycle_log", True):
             logger.info("[idle-proactive] terminated")

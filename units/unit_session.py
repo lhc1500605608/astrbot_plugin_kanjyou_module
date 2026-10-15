@@ -64,13 +64,28 @@ class SessionConfigUnitsMixin:
         key = self._session_key(event)
         now_ts = self._now().timestamp()
         old = self._sessions.get(key)
-        if old:
-            old["unified_msg_origin"] = event.unified_msg_origin
-            return old
+        if isinstance(old, dict):
+            # Never overwrite a trusted origin and inherit unrelated history.
+            if not self._session_origin_matches_event(old, event):
+                self._quarantine_row(self._sessions, key, old)
+                old = None
+            else:
+                return old
 
         return {
             "session_key": key,
             "unified_msg_origin": event.unified_msg_origin,
+            "identity": {
+                "platform": self._platform_instance_id(event),
+                "native_id": (
+                    str(
+                        getattr(getattr(event, "message_obj", None), "group_id", "")
+                        or ""
+                    )
+                    or self._event_sender_id(event)
+                ),
+                "sender_id": self._event_sender_id(event),
+            },
             "last_human_at": now_ts,
             "last_bot_at": 0.0,
             "last_interaction_at": now_ts,
@@ -90,6 +105,11 @@ class SessionConfigUnitsMixin:
             "companion_positive_seen": False,
             "companion_receipt_pending": None,
         }
+
+    def _session_origin_matches_event(self, session: Dict, event: AstrMessageEvent) -> bool:
+        current = self._event_identity(event)
+        saved = self._session_identity(self._session_key(event), session)
+        return bool(current and saved and current["platform"] == saved["platform"] and current["native_id"] == saved["native_id"])
 
     def _ensure_session_shape(self, session: Dict):
         if "pending_human_reply" not in session:
@@ -225,7 +245,9 @@ class SessionConfigUnitsMixin:
             0.0,
             min(
                 100.0,
-                float(self.config.get("mood_initial", DEFAULT_CONFIG_FLAT["mood_initial"])),
+                float(
+                    self.config.get("mood_initial", DEFAULT_CONFIG_FLAT["mood_initial"])
+                ),
             ),
         )
 
@@ -350,7 +372,8 @@ class SessionConfigUnitsMixin:
                 100.0,
                 float(
                     self.config.get(
-                        "mood_cost_on_dialogue", DEFAULT_CONFIG_FLAT["mood_cost_on_dialogue"]
+                        "mood_cost_on_dialogue",
+                        DEFAULT_CONFIG_FLAT["mood_cost_on_dialogue"],
                     )
                 ),
             ),
@@ -505,7 +528,8 @@ class SessionConfigUnitsMixin:
 
     def _debug_decision_enabled(self) -> bool:
         return self._to_bool(
-            self.config.get("debug_decision_log"), DEFAULT_CONFIG_FLAT["debug_decision_log"]
+            self.config.get("debug_decision_log"),
+            DEFAULT_CONFIG_FLAT["debug_decision_log"],
         )
 
     def _decision_mode(self) -> str:
@@ -691,7 +715,8 @@ class SessionConfigUnitsMixin:
             changed = True
         if not isinstance(self.config.get("advanced_enabled"), bool):
             self.config["advanced_enabled"] = self._to_bool(
-                self.config.get("advanced_enabled"), DEFAULT_CONFIG_FLAT["advanced_enabled"]
+                self.config.get("advanced_enabled"),
+                DEFAULT_CONFIG_FLAT["advanced_enabled"],
             )
             changed = True
 
@@ -767,7 +792,9 @@ class SessionConfigUnitsMixin:
             self.config["lite_provider_id"] = DEFAULT_CONFIG_FLAT["lite_provider_id"]
             changed = True
         if not isinstance(self.config.get("lite_llm_timeout_sec"), (int, float)):
-            self.config["lite_llm_timeout_sec"] = DEFAULT_CONFIG_FLAT["lite_llm_timeout_sec"]
+            self.config["lite_llm_timeout_sec"] = DEFAULT_CONFIG_FLAT[
+                "lite_llm_timeout_sec"
+            ]
             changed = True
         if float(self.config.get("lite_llm_timeout_sec", 0)) < 1:
             self.config["lite_llm_timeout_sec"] = 1
@@ -810,9 +837,7 @@ class SessionConfigUnitsMixin:
         if int(self.config.get("output_segment_max_chars", 0)) < 10:
             self.config["output_segment_max_chars"] = 10
             changed = True
-        if not isinstance(
-            self.config.get("output_segment_delay_min_ms"), (int, float)
-        ):
+        if not isinstance(self.config.get("output_segment_delay_min_ms"), (int, float)):
             self.config["output_segment_delay_min_ms"] = DEFAULT_CONFIG_FLAT[
                 "output_segment_delay_min_ms"
             ]
@@ -820,9 +845,7 @@ class SessionConfigUnitsMixin:
         if int(self.config.get("output_segment_delay_min_ms", 0)) < 0:
             self.config["output_segment_delay_min_ms"] = 0
             changed = True
-        if not isinstance(
-            self.config.get("output_segment_delay_max_ms"), (int, float)
-        ):
+        if not isinstance(self.config.get("output_segment_delay_max_ms"), (int, float)):
             self.config["output_segment_delay_max_ms"] = DEFAULT_CONFIG_FLAT[
                 "output_segment_delay_max_ms"
             ]
@@ -1088,7 +1111,9 @@ class SessionConfigUnitsMixin:
             ]
             changed = True
         if not isinstance(self.config.get("mood_recover_per_min"), (int, float)):
-            self.config["mood_recover_per_min"] = DEFAULT_CONFIG_FLAT["mood_recover_per_min"]
+            self.config["mood_recover_per_min"] = DEFAULT_CONFIG_FLAT[
+                "mood_recover_per_min"
+            ]
             changed = True
         self.config["mood_initial"] = self._mood_clamp(
             self.config.get("mood_initial", DEFAULT_CONFIG_FLAT["mood_initial"])
@@ -1123,9 +1148,7 @@ class SessionConfigUnitsMixin:
                 DEFAULT_CONFIG_FLAT["persona_state_enabled"],
             )
             changed = True
-        if not isinstance(
-            self.config.get("persona_state_low_threshold"), (int, float)
-        ):
+        if not isinstance(self.config.get("persona_state_low_threshold"), (int, float)):
             self.config["persona_state_low_threshold"] = DEFAULT_CONFIG_FLAT[
                 "persona_state_low_threshold"
             ]
@@ -1147,10 +1170,14 @@ class SessionConfigUnitsMixin:
         self.config["persona_state_low_threshold"] = low
         self.config["persona_state_high_threshold"] = high
         if not isinstance(self.config.get("persona_state_preset"), str):
-            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT["persona_state_preset"]
+            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT[
+                "persona_state_preset"
+            ]
             changed = True
         elif not self.config["persona_state_preset"].strip():
-            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT["persona_state_preset"]
+            self.config["persona_state_preset"] = DEFAULT_CONFIG_FLAT[
+                "persona_state_preset"
+            ]
             changed = True
         if not isinstance(self.config.get("persona_state_custom"), (dict, list)):
             self.config["persona_state_custom"] = {}
@@ -1201,7 +1228,9 @@ class SessionConfigUnitsMixin:
             )
             changed = True
         if not isinstance(self.config.get("memory_recall_limit"), (int, float)):
-            self.config["memory_recall_limit"] = DEFAULT_CONFIG_FLAT["memory_recall_limit"]
+            self.config["memory_recall_limit"] = DEFAULT_CONFIG_FLAT[
+                "memory_recall_limit"
+            ]
             changed = True
         if not isinstance(self.config.get("memory_recall_timeout_sec"), (int, float)):
             self.config["memory_recall_timeout_sec"] = DEFAULT_CONFIG_FLAT[
@@ -1234,20 +1263,118 @@ class SessionConfigUnitsMixin:
                 save_func()
             except Exception as exc:
                 self._log_error(
-                    "config_save_failed", f"save webui config failed: {exc}"
+                    "config_save_failed",
+                    f"save webui config failed err_type={type(exc).__name__}",
                 )
 
     def _load_state(self) -> Dict[str, Dict]:
-        if not self._state_path.exists():
-            return {}
         try:
-            data = self._read_json(self._state_path)
-            if isinstance(data, dict):
-                return data
-            return {}
+            data = self._read_json(self._state_path) if self._state_path.exists() else {}
+            migrated, quarantined = self._migrate_session_state(data if isinstance(data, dict) else {})
+            self._migrate_legacy_whitelists(migrated)
+            if quarantined:
+                self._log_error("state_quarantined", f"unresolved sessions retained={quarantined}")
+            return migrated
         except Exception as exc:
-            self._log_error("state_load_failed", f"load state failed: {exc}")
+            self._log_error("state_load_failed", f"load state failed err_type={type(exc).__name__}")
+            # Never infer a platform when loading the evidence failed.
+            self._migrate_legacy_whitelists({})
             return {}
+
+    def _quarantine_row(self, target: Dict, key: str, row: Dict) -> None:
+        candidate = "__quarantine__:" + key
+        suffix = 1
+        while candidate in target:
+            suffix += 1
+            candidate = "__quarantine__:" + key + ":" + str(suffix)
+        target[candidate] = copy.deepcopy(row)
+
+    def _migrate_session_state(self, data: Dict) -> tuple[Dict[str, Dict], int]:
+        result: Dict[str, Dict] = {}
+        count = 0
+        # Canonical rows take precedence over legacy aliases, independent of JSON order.
+        ordered = sorted(data, key=lambda key: (self._parse_canonical_session_key(key) is None, key))
+        for old_key in ordered:
+            original = data[old_key]
+            if old_key.startswith("__quarantine__"):
+                result[old_key] = copy.deepcopy(original)
+                continue
+            if not isinstance(original, dict):
+                self._quarantine_row(result, old_key, original)
+                count += 1
+                continue
+            row = copy.deepcopy(original)
+            parsed = self._parse_umo(row.get("unified_msg_origin"))
+            canonical = self._parse_canonical_session_key(old_key)
+            kind, sep, native = old_key.partition(":")
+            valid = parsed and kind == parsed["kind"] and sep
+            if canonical:
+                valid = valid and self._session_identity(old_key, row) is not None
+            else:
+                # The old key is authoritative only for its native subject, never platform.
+                valid = valid and ":" not in native and bool(native) and row.get("session_key", old_key) == old_key
+                if valid:
+                    row["identity"] = {"platform": parsed["platform"], "native_id": native}
+            if valid:
+                # Stored callbacks must not target a different origin than their owning row.
+                for field in ("companion_receipt_pending", "companion_open_thread_followup"):
+                    pending = row.get(field)
+                    if isinstance(pending, dict) and pending.get("umo") not in (None, "", parsed["umo"]):
+                        valid = False
+                new_key = kind + ":" + parsed["umo"]
+                if valid and new_key not in result:
+                    row["session_key"] = new_key
+                    result[new_key] = row
+                    continue
+            self._quarantine_row(result, old_key, original)
+            count += 1
+        return result, count
+
+    def _migrate_legacy_whitelists(self, sessions: Dict) -> None:
+        changed = False
+        unresolved = 0
+        for kind in ("private", "group"):
+            key = kind + "_whitelist"
+            before = self.config.get(key, [])
+            after = []
+            for value in before if isinstance(before, list) else []:
+                scoped = self._whitelist_entry_from_string(value)
+                if scoped:
+                    if json.loads(scoped)["kind"] == kind:
+                        after.append(scoped)
+                    else:
+                        after.append(value)  # retained but not used by the other kind
+                    continue
+                # Mark unresolved values once so later messages/reload cannot grant them.
+                try:
+                    decoded = json.loads(value) if isinstance(value, str) else None
+                except (ValueError, TypeError):
+                    decoded = None
+                if isinstance(decoded, dict) and "legacy_id" in decoded:
+                    after.append(value)
+                    continue
+                if not isinstance(value, str) or not value:
+                    after.append(value)
+                    continue
+                candidates = set()
+                for session_key, row in sessions.items():
+                    if not isinstance(row, dict):
+                        continue
+                    identity = self._session_identity(session_key, row)
+                    if identity and identity["kind"] == kind and identity["native_id"] == value:
+                        candidates.add(identity["platform"])
+                if len(candidates) == 1:
+                    after.append(self._whitelist_entry(value, next(iter(candidates)), kind))
+                else:
+                    after.append(json.dumps({"legacy_id": value}, ensure_ascii=False, separators=(",", ":")))
+                    unresolved += 1
+            if before != after:
+                self.config[key] = list(dict.fromkeys(after)) if all(isinstance(v, str) for v in after) else after
+                changed = True
+        if changed:
+            self._save_webui_config()
+        if unresolved:
+            self._log_error("whitelist_unresolved", f"unbound entries require explicit platform={unresolved}")
 
     def _save_state(self):
         self._write_json(self._state_path, self._sessions)
@@ -1261,14 +1388,17 @@ class SessionConfigUnitsMixin:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _debug_enabled(self) -> bool:
-        return self._to_bool(self.config.get("debug_log"), DEFAULT_CONFIG_FLAT["debug_log"])
+        return self._to_bool(
+            self.config.get("debug_log"), DEFAULT_CONFIG_FLAT["debug_log"]
+        )
 
     def _debug_window_sec(self) -> int:
         return max(
             60,
             int(
                 self.config.get(
-                    "debug_status_window_sec", DEFAULT_CONFIG_FLAT["debug_status_window_sec"]
+                    "debug_status_window_sec",
+                    DEFAULT_CONFIG_FLAT["debug_status_window_sec"],
                 )
             ),
         )

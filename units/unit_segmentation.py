@@ -97,8 +97,8 @@ class SegmentationUnitsMixin:
             if not self._output_segment_in_scope(event):
                 return
             event.set_extra("enable_streaming", False)
-        except Exception as exc:
-            self._debug(f"segment prepare failed: {exc}")
+        except Exception:
+            self._debug("segment prepare failed")
 
     async def _evt_on_decorating_result(self, event: AstrMessageEvent):
         """发送前钩子：仅接管纯文本 LLM 结果，逐条自发送并抑制原结果。
@@ -130,8 +130,8 @@ class SegmentationUnitsMixin:
                             await self._send_output_segments(event, parts, original)
                             # 分段全部发送失败时会还原结果 → 交回合併投递兜底。
                             took_over = event.get_result() is None
-        except Exception as exc:
-            self._debug(f"output segment failed: {exc}")
+        except Exception:
+            self._debug("output segment failed")
             if original is not None and event.get_result() is None:
                 try:
                     event.set_result(original)
@@ -232,8 +232,8 @@ class SegmentationUnitsMixin:
                 if not await self._merge_deliver_chain(event, result):
                     await event.send(result)
                 sent += 1
-            except Exception as exc:
-                self._debug(f"send output segment {index} failed: {exc}")
+            except Exception:
+                self._debug(f"send output segment {index} failed")
                 break
             if index < len(parts) - 1:
                 delay_ms = self._output_segment_delay_ms(part)

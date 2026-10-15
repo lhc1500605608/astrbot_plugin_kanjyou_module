@@ -12,6 +12,7 @@ fail-closed：门内任何异常一律不 stop、放行；定时器异常立即�
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Dict
 
 from astrbot.api.event import AstrMessageEvent, MessageChain
@@ -50,7 +51,13 @@ _MERGE_DELIVER_PLATFORMS = ("webchat",)
 _MERGE_TYPING_EXTRA = "user_typing"
 
 # 事件/消息对象上可能的打字字段名（只读，不调用可调用对象，避免副作用）。
-_MERGE_TYPING_FIELDS = ("user_typing", "is_typing", "typing", "is_composing", "composing")
+_MERGE_TYPING_FIELDS = (
+    "user_typing",
+    "is_typing",
+    "typing",
+    "is_composing",
+    "composing",
+)
 
 
 class MergeUnitsMixin:
@@ -147,7 +154,7 @@ class MergeUnitsMixin:
                         return True
             return False
         except Exception as exc:
-            self._debug(f"merge typing signal error err={exc}")
+            self._debug(f"merge typing signal error err_type={type(exc).__name__}")
             return False
 
     def _merge_note_typing(
@@ -186,29 +193,15 @@ class MergeUnitsMixin:
             )
             return True
         except Exception as exc:
-            self._debug(f"merge note typing error err={exc}")
+            self._debug(f"merge note typing error err_type={type(exc).__name__}")
             return False
 
-    def _merge_resolve_key(
-        self, umo: str | None, session_key: str | None
-    ) -> str:
-        """由显式 session_key 或 umo 解析合并会话键（best-effort）。"""
-        key = str(session_key or "").strip()
-        if key:
-            return key
-        raw = str(umo or "").strip()
-        if not raw:
-            return ""
-        if raw.startswith("private:") or raw.startswith("group:"):
-            return raw
+    def _merge_resolve_key(self, umo: str | None, session_key: str | None) -> str:
         state = self._merge_state()
-        if raw in state:
-            return raw
-        if ":group:" in raw:
-            return f"group:{raw.rsplit(':', 1)[-1]}"
-        if "!group!" in raw:
-            return f"group:{raw.rsplit('!', 1)[-1]}"
-        return ""
+        if session_key:
+            return session_key if session_key in state else ""
+        matches = [key for key, row in state.items() if row.get("unified_msg_origin") == umo]
+        return matches[0] if len(matches) == 1 else ""
 
     # ------------------------------------------------------------------
     # 默认 LLM 抑制开关
@@ -274,9 +267,7 @@ class MergeUnitsMixin:
                 pass
             return chain
 
-    async def _merge_deliver_chain(
-        self, event: AstrMessageEvent, source: Any
-    ) -> bool:
+    async def _merge_deliver_chain(self, event: AstrMessageEvent, source: Any) -> bool:
         """重入队事件在 webchat 上改用 ``context.send_message`` 主动投递。
 
         webchat 请求结束后其 back queue 已被 Live Chat 服务移除，respond 阶段的
@@ -295,7 +286,7 @@ class MergeUnitsMixin:
         try:
             delivered = await sender(umo, self._merge_build_chain(source))
         except Exception as exc:
-            self._debug(f"merge proactive deliver failed: {exc}")
+            self._debug(f"merge proactive deliver failed err_type={type(exc).__name__}")
             return False
         return bool(delivered)
 
@@ -331,7 +322,9 @@ class MergeUnitsMixin:
             )
             return True
         except Exception as exc:
-            self._debug(f"merge proactive deliver hook failed: {exc}")
+            self._debug(
+                f"merge proactive deliver hook failed err_type={type(exc).__name__}"
+            )
             return False
 
     # ------------------------------------------------------------------
@@ -343,9 +336,30 @@ class MergeUnitsMixin:
         except Exception as exc:
             # fail-closed：绝不因为异常而吞掉消息。
             self._debug(
-                f"merge gate error session={self._session_key(event) or '-'} err={exc}"
+                f"merge gate error session={self._session_key(event) or '-'} err_type={type(exc).__name__}"
             )
             return False
+
+    def _merge_permission_key(self, event: AstrMessageEvent) -> str:
+        try:
+            role = getattr(event, "role", None)
+            if not isinstance(role, str) or not role:
+                return ""
+            checker = getattr(event, "is_admin", None)
+            admin = checker() if callable(checker) else role == "admin"
+            if not isinstance(admin, bool):
+                return ""
+            return json.dumps([role, admin], ensure_ascii=False)
+        except Exception:
+            return ""
+
+    def _merge_identity_key(self, event: AstrMessageEvent, session_key: str) -> str:
+        sender = self._event_sender_id(event)
+        permission = self._merge_permission_key(event)
+        current = self._session_key(event)
+        if not current or current != session_key or not sender or not permission:
+            return ""
+        return json.dumps([current, sender, permission], ensure_ascii=False)
 
     def _merge_gate(self, event: AstrMessageEvent) -> bool:
         if not self._merge_enabled():
@@ -373,17 +387,49 @@ class MergeUnitsMixin:
                 self._release_merge_leader(session_key, "exempt")
             return False
 
+        merge_key = self._merge_identity_key(event, session_key)
+        if not merge_key:
+            # 身份信息不完整时宁可释放旧 leader，也不跨未知身份合并。
+            if session_key in state:
+                self._release_merge_leader(session_key, "identity_unavailable")
+            return False
         now_ts = self._now().timestamp()
         row = state.get(session_key)
+        if isinstance(row, dict):
+            # 同一会话但 UMO/发送者/权限上下文变化：不能把 follower 文本放进
+            # 旧 leader 事件（leader 仍保留旧权限）。先释放旧 leader，本条正常
+            # 走 pipeline，保序且不吞消息。
+            row_key = str(row.get("merge_key") or "")
+            row_umo = str(row.get("unified_msg_origin") or "").strip()
+            current_umo = str(getattr(event, "unified_msg_origin", "") or "").strip()
+            row_sender = str(row.get("sender_id") or "")
+            row_permission = str(row.get("permission_key") or "")
+            if (
+                not row_key
+                or row_key != merge_key
+                or self._merge_identity_key(row.get("leader_event"), session_key) != row_key
+                or row_umo != current_umo
+                or row_sender != self._event_sender_id(event)
+                or row_permission != self._merge_permission_key(event)
+            ):
+                self._release_merge_leader(session_key, "identity_change")
+                row = None
+
         if isinstance(row, dict):
             hard_deadline = float(row.get("hard_deadline", 0.0) or 0.0)
             if now_ts >= hard_deadline:
                 # 防御：触顶但定时器未及释放 → 连同本条立即释放，只发一次。
+                row["events"].append(event)
+                row["identity_snapshots"].append(merge_key)
                 parts = row.get("parts")
                 if isinstance(parts, list) and text:
                     parts.append(text)
+                self._merge_set_call_llm(event, True)
+                event.stop_event()
                 self._release_merge_leader(session_key, "hard_deadline")
                 return True
+            row["events"].append(event)
+            row["identity_snapshots"].append(merge_key)
             parts = row.get("parts")
             if not isinstance(parts, list):
                 parts = []
@@ -410,11 +456,19 @@ class MergeUnitsMixin:
         hard_deadline = now_ts + self._merge_max_wait_sec()
         state[session_key] = {
             "leader_event": event,
+            "events": [event],
+            "identity_snapshots": [merge_key],
             "parts": [text],
             "first_at": now_ts,
             "deadline": min(now_ts + window, hard_deadline),
             "hard_deadline": hard_deadline,
             "task": None,
+            "merge_key": merge_key,
+            "unified_msg_origin": str(
+                getattr(event, "unified_msg_origin", "") or ""
+            ).strip(),
+            "sender_id": self._event_sender_id(event),
+            "permission_key": self._merge_permission_key(event),
         }
         if self._merge_typing_signal(event):
             self._merge_note_typing(session_key=session_key)
@@ -422,7 +476,7 @@ class MergeUnitsMixin:
             self._schedule_merge_flush(session_key)
         self._merge_set_call_llm(event, True)
         event.stop_event()
-        self._debug(f"merge leader session={session_key} text={text}")
+        self._debug(f"merge leader session={session_key} chars={len(text or '')}")
         return True
 
     def _merge_is_mergeable(self, event: AstrMessageEvent, text: str) -> bool:
@@ -450,7 +504,7 @@ class MergeUnitsMixin:
                 return "has_media"
             return ""
         except Exception as exc:
-            self._debug(f"merge skip check failed err={exc}")
+            self._debug(f"merge skip check failed err_type={type(exc).__name__}")
             return ""
 
     def _merge_has_blocking_component(self, event: AstrMessageEvent) -> bool:
@@ -488,7 +542,9 @@ class MergeUnitsMixin:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self._debug(f"merge timer error session={session_key} err={exc}")
+                self._debug(
+                    f"merge timer error session={session_key} err_type={type(exc).__name__}"
+                )
                 try:
                     self._release_merge_leader(session_key, "timer_error")
                 except Exception:
@@ -497,7 +553,9 @@ class MergeUnitsMixin:
         try:
             row["task"] = asyncio.create_task(_runner())
         except Exception as exc:
-            self._debug(f"merge schedule failed session={session_key} err={exc}")
+            self._debug(
+                f"merge schedule failed session={session_key} err_type={type(exc).__name__}"
+            )
             self._release_merge_leader(session_key, "schedule_error")
 
     def _release_merge_leader(self, session_key: str, reason: str) -> bool:
@@ -519,10 +577,23 @@ class MergeUnitsMixin:
         if event is None:
             return True
         try:
-            self._merge_requeue(event, merged)
+            events = row.get("events", [event])
+            snapshots = row.get("identity_snapshots", [])
+            changed = len(events) != len(snapshots) or any(
+                self._merge_identity_key(item, session_key) != snapshot
+                for item, snapshot in zip(events, snapshots)
+            )
+            if changed:
+                # Mutable host events must never carry another event's text under new authority.
+                for item, text in zip(events, parts):
+                    self._merge_requeue(item, text)
+            else:
+                self._merge_requeue(event, merged)
         except Exception as exc:
             # 尽力保持事件可继续，绝不静默丢弃。
-            self._debug(f"merge requeue failed session={session_key} err={exc}")
+            self._debug(
+                f"merge requeue failed session={session_key} err_type={type(exc).__name__}"
+            )
             try:
                 event.continue_event()
                 event.clear_result()
@@ -587,5 +658,6 @@ class MergeUnitsMixin:
                 self._release_merge_leader(session_key, "shutdown")
             except Exception as exc:
                 self._debug(
-                    f"merge shutdown release failed session={session_key} err={exc}"
+                    f"merge shutdown release failed session={session_key} "
+                    f"err_type={type(exc).__name__}"
                 )

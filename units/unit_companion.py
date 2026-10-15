@@ -9,6 +9,7 @@ v2.4.0（fail-closed）。
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import Dict, Optional
 
 try:
@@ -19,6 +20,8 @@ except ImportError:
 SUPPORTED_API_VERSION = 1
 DEFAULT_COMPANION_PLUGIN_NAME = "astrbot_plugin_tcompanion_core"
 COMPANION_BLOCK_HEADER = "【陪伴上下文】"
+#: Upper bound for privacy-safe attempt-outcome receipts retained in a session.
+ATTEMPT_OUTCOME_RECEIPT_LIMIT = 16
 
 _FIELD_LABELS = (
     ("life_state", "生活"),
@@ -722,7 +725,9 @@ class CompanionContextAdapter:
             return []
         return _sanitize_life_content(raw)
 
-    async def refresh_life_content(self, persona_id: Optional[str] = None) -> Optional[Dict]:
+    async def refresh_life_content(
+        self, persona_id: Optional[str] = None
+    ) -> Optional[Dict]:
         """Trigger one bounded ``refresh_life_content``; ``None`` when degraded.
 
         Uses its own generous timeout (:data:`LIFE_CONTENT_REFRESH_TIMEOUT_SEC`)
@@ -837,9 +842,7 @@ class CompanionContextAdapter:
         if not await self.has_capability("group_aware"):
             return None
         try:
-            result = await self._call(
-                fn, umo, member_id=member_id, topic=topic
-            )
+            result = await self._call(fn, umo, member_id=member_id, topic=topic)
         except Exception:
             return None
         return result if isinstance(result, dict) else None
@@ -876,8 +879,10 @@ class CompanionContextAdapter:
         if isinstance(member, dict):
             member_key = _clean_text(member.get("member_key"))
             familiarity = _clean_int(member.get("familiarity"))
-            if member_key or familiarity is not None or isinstance(
-                member.get("is_known"), bool
+            if (
+                member_key
+                or familiarity is not None
+                or isinstance(member.get("is_known"), bool)
             ):
                 view["member"] = {
                     "member_key": member_key,
@@ -895,24 +900,93 @@ class CompanionContextAdapter:
         sent: bool,
         reason_code: str,
         replied: bool = False,
-    ) -> bool:
-        """回执发送结果；失败/不可用返回 ``False``，绝不抛异常。"""
+        persona_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+    ) -> Dict:
+        """Report one proactive outcome; a structured result, never raises.
+
+        Returns ``{"ok": bool, "result": Optional[dict], "retryable": bool}``.
+        ``ok`` means the receipt was acknowledged as applied or duplicate. A
+        legacy core which returns ``None`` is deliberately treated as
+        acknowledged (it provides no structured contract result to reject);
+        explicit ``degraded`` / ``error`` / non-applied responses fail.
+        """
         out_fn = self._resolve_method("on_proactive_outcome")
         if out_fn is None:
-            return False
+            return {"ok": False, "result": None, "retryable": False}
         if not await self._contract_ok():
-            return False
+            return {"ok": False, "result": None, "retryable": True}
+        call_kwargs = {
+            "sent": bool(sent),
+            "reason_code": str(reason_code or ""),
+            "replied": bool(replied),
+        }
+        supports_new_keys = False
         try:
-            await self._call(
-                out_fn,
-                umo,
-                sent=bool(sent),
-                reason_code=str(reason_code or ""),
-                replied=bool(replied),
-            )
-        except Exception:
-            return False
-        return True
+            parameters = inspect.signature(out_fn).parameters
+            if "event_id" in parameters and "persona_id" in parameters:
+                keyword_kinds = (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+                supports_new_keys = (
+                    parameters["event_id"].kind in keyword_kinds
+                    and parameters["persona_id"].kind in keyword_kinds
+                )
+        except (TypeError, ValueError):
+            supports_new_keys = False
+        if supports_new_keys:
+            call_kwargs["persona_id"] = persona_id or None
+            call_kwargs["event_id"] = event_id or None
+        try:
+            result = await self._call(out_fn, umo, **call_kwargs)
+        except TypeError as exc:
+            # TypeError means the negotiated call did not match the runtime
+            # callable. Retrying with another arity would be unsound.
+            return {
+                "ok": False,
+                "result": None,
+                "retryable": False,
+                "error": type(exc).__name__,
+            }
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            return {
+                "ok": False,
+                "result": None,
+                "retryable": True,
+                "error": "TimeoutError",
+            }
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return {
+                "ok": False,
+                "result": None,
+                "retryable": True,
+                "error": type(exc).__name__,
+            }
+        if result is None:
+            # Legacy stubs deliberately return None and cannot reject the call.
+            return {"ok": True, "result": None, "retryable": False, "legacy": True}
+        if not isinstance(result, dict):
+            return {
+                "ok": False,
+                "result": None,
+                "retryable": False,
+                "error": "invalid_result",
+            }
+        if result.get("applied") is True or result.get("duplicate") is True:
+            return {"ok": True, "result": result, "retryable": False}
+        if result.get("isolated") is True and result.get("degraded") is not True:
+            return {"ok": False, "result": result, "retryable": False, "isolated": True}
+        return {
+            "ok": False,
+            "result": result,
+            "retryable": True,
+            "error": str(result.get("reason") or result.get("error") or "unapplied"),
+        }
 
 
 class CompanionContextUnitsMixin:
@@ -964,8 +1038,8 @@ class CompanionContextUnitsMixin:
             return {}
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"companion adapter init failed: {exc}")
+        except Exception:
+            self._debug("companion adapter init failed")
             return {}
         try:
             ctx = await asyncio.wait_for(
@@ -975,8 +1049,8 @@ class CompanionContextUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"companion context timeout umo={umo}")
             return {}
-        except Exception as exc:
-            self._debug(f"companion context failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"companion context failed umo={umo} err_type=unknown")
             return {}
         return ctx if isinstance(ctx, dict) else {}
 
@@ -995,8 +1069,8 @@ class CompanionContextUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"life content refresh adapter init failed: {exc}")
+        except Exception:
+            self._debug("life content refresh adapter init failed")
             return False
         persona_id = self._companion_persona_id()
         try:
@@ -1007,13 +1081,11 @@ class CompanionContextUnitsMixin:
         except asyncio.TimeoutError:
             self._debug("life content refresh timeout")
             return False
-        except Exception as exc:
-            self._debug(f"life content refresh failed: {exc}")
+        except Exception:
+            self._debug("life content refresh failed")
             return False
         if isinstance(result, dict) and result.get("applied"):
-            self._debug(
-                f"life content refreshed generated={result.get('generated')}"
-            )
+            self._debug(f"life content refreshed generated={result.get('generated')}")
             return True
         return False
 
@@ -1186,7 +1258,9 @@ class CompanionContextUnitsMixin:
         affinity = rel.get("affinity")
         if isinstance(affinity, (int, float)) and not isinstance(affinity, bool):
             affinity_text = f"好感 {float(affinity):.2f}"
-            text = f"{text}（{affinity_text}）" if text else f"与对方关系：{affinity_text}"
+            text = (
+                f"{text}（{affinity_text}）" if text else f"与对方关系：{affinity_text}"
+            )
         if rel.get("bond"):
             text = f"{text}，已建立专属羁绊" if text else "已建立专属羁绊"
         mode = _clean_text(rel.get("mode"))
@@ -1210,9 +1284,7 @@ class CompanionContextUnitsMixin:
             return ""
         return f"此刻想主动联系的理由：{reason}"
 
-    def _companion_prompt_fields(
-        self, ctx, session_key: str = ""
-    ) -> Dict[str, str]:
+    def _companion_prompt_fields(self, ctx, session_key: str = "") -> Dict[str, str]:
         """返回注入用的三个字段文本；关闭注入 / 缺失字段为空串。
 
         Group scopes never inject the private/persona companion fields
@@ -1226,7 +1298,9 @@ class CompanionContextUnitsMixin:
         if str(session_key or "").startswith("group:"):
             return fields
         if self._companion_inject_enabled("companion_inject_life_state"):
-            fields["life_state"] = self._companion_life_state_text(ctx.get("life_state"))
+            fields["life_state"] = self._companion_life_state_text(
+                ctx.get("life_state")
+            )
         if self._companion_inject_enabled("companion_inject_relationship"):
             fields["relationship"] = self._companion_relationship_text(
                 ctx.get("relationship")
@@ -1284,8 +1358,8 @@ class CompanionContextUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"group activity adapter init failed: {exc}")
+        except Exception:
+            self._debug("group activity adapter init failed")
             return False
         topic = _short_group_topic(text)
         try:
@@ -1300,8 +1374,8 @@ class CompanionContextUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"group activity record timeout umo={umo}")
             return False
-        except Exception as exc:
-            self._debug(f"group activity record failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"group activity record failed umo={umo} err_type=unknown")
             return False
         return isinstance(result, dict)
 
@@ -1316,8 +1390,8 @@ class CompanionContextUnitsMixin:
             return True, {}
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"group gate adapter init failed: {exc}")
+        except Exception:
+            self._debug("group gate adapter init failed")
             return True, {}
         try:
             view = await asyncio.wait_for(
@@ -1326,8 +1400,8 @@ class CompanionContextUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"group gate timeout umo={umo}")
             return True, {}
-        except Exception as exc:
-            self._debug(f"group gate failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"group gate failed umo={umo} err_type=unknown")
             return True, {}
         if not isinstance(view, dict):
             return True, {}
@@ -1380,30 +1454,235 @@ class CompanionContextUnitsMixin:
         sent: bool,
         reason_code: str,
         replied: bool = False,
+        persona_id: Optional[str] = None,
+        event_id: Optional[str] = None,
     ) -> bool:
         """发送结果回执；任何失败静默降级，绝不阻塞发送链路。"""
         if not self._companion_enabled() or not umo:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"companion outcome adapter init failed: {exc}")
+        except Exception:
+            self._debug("companion outcome adapter init failed")
             return False
         try:
-            return bool(
-                await asyncio.wait_for(
-                    adapter.report_outcome(
-                        umo,
-                        sent=sent,
-                        reason_code=reason_code,
-                        replied=replied,
+            result = await asyncio.wait_for(
+                adapter.report_outcome(
+                    umo,
+                    sent=sent,
+                    reason_code=reason_code,
+                    replied=replied,
+                    **(
+                        {"persona_id": persona_id, "event_id": event_id}
+                        if persona_id is not None or event_id is not None
+                        else {}
                     ),
-                    timeout=self._companion_timeout_sec(),
-                )
+                ),
+                timeout=self._companion_timeout_sec(),
             )
+            return (
+                result.get("ok") is True if isinstance(result, dict) else result is True
+            )
+        except asyncio.CancelledError:
+            raise
         except asyncio.TimeoutError:
             self._debug(f"companion outcome timeout umo={umo}")
             return False
-        except Exception as exc:
-            self._debug(f"companion outcome failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"companion outcome failed umo={umo} err_type=unknown")
             return False
+
+    # ------------------------------------------------------------------ #
+    # Phase 2 attempt receipts (idempotent, privacy-safe)
+    # ------------------------------------------------------------------ #
+    async def _report_attempt_outcome(
+        self,
+        umo: str,
+        *,
+        event_id: str,
+        persona_id: Optional[str],
+        sent: bool,
+        reason_code: str,
+    ) -> Dict:
+        """One adapter call plus its structured acknowledgement."""
+        if not self._companion_enabled() or not umo:
+            return {
+                "ok": False,
+                "result": None,
+                "retryable": False,
+                "reason": "disabled",
+            }
+        try:
+            adapter = self._companion_adapter()
+        except Exception:
+            self._debug("companion attempt outcome adapter init failed")
+            return {"ok": False, "result": None, "retryable": True}
+        try:
+            return await asyncio.wait_for(
+                adapter.report_outcome(
+                    umo,
+                    sent=sent,
+                    reason_code=reason_code,
+                    replied=False,
+                    persona_id=persona_id,
+                    event_id=event_id,
+                ),
+                timeout=self._companion_timeout_sec(),
+            )
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            self._debug(
+                f"companion attempt outcome timeout umo={umo} event_id={event_id}"
+            )
+            return {"ok": False, "result": None, "retryable": True}
+        except Exception:
+            self._debug(
+                "companion attempt outcome failed "
+                f"umo={umo} event_id={event_id} err_type=unknown"
+            )
+            return {"ok": False, "result": None, "retryable": True}
+
+    @staticmethod
+    def _attempt_receipt_pending(session: Dict) -> Dict:
+        pending = session.get("companion_attempt_receipt_pending")
+        if not isinstance(pending, dict):
+            pending = {}
+            session["companion_attempt_receipt_pending"] = pending
+        return pending
+
+    @staticmethod
+    def _clean_attempt_receipt_item(value, fallback_umo: str = "") -> Optional[Dict]:
+        if not isinstance(value, dict):
+            return None
+        event_id = _clean_text(value.get("event_id"))
+        if not event_id:
+            return None
+        return {
+            "event_id": event_id,
+            "umo": _clean_text(value.get("umo")) or _clean_text(fallback_umo),
+            "persona_id": _clean_text(value.get("persona_id")) or None,
+            "sent": value.get("sent") is True,
+            "reason_code": _clean_text(value.get("reason_code")),
+        }
+
+    def _attempt_receipt_value(self, value) -> Optional[Dict]:
+        """Return the five canonical contract fields from a stored row."""
+        return self._clean_attempt_receipt_item(value)
+
+    def _remember_attempt_receipt(self, session: Dict, receipt: Dict) -> bool:
+        if not isinstance(session, dict):
+            return False
+        pending = self._attempt_receipt_pending(session)
+        old = pending.get(receipt["event_id"])
+        stored = self._clean_attempt_receipt_item(old, receipt["umo"])
+        if stored is not None and stored == receipt:
+            # Already persisted (and possibly acknowledged); never call twice.
+            return True
+        if old is not None and old != receipt:
+            return False
+        if old is None and len(pending) >= ATTEMPT_OUTCOME_RECEIPT_LIMIT:
+            return False
+        pending[receipt["event_id"]] = dict(receipt)
+        return True
+
+    @staticmethod
+    def _mark_attempt_receipt_retryable(
+        session: Dict, event_id: str, retryable: Optional[bool]
+    ) -> None:
+        if retryable is False:
+            pending = session.get("companion_attempt_receipt_pending")
+            if isinstance(pending, dict):
+                item = pending.get(event_id)
+                if isinstance(item, dict):
+                    item["retryable"] = False
+
+    async def _record_attempt_outcome(
+        self,
+        session: Dict,
+        umo: str,
+        *,
+        event_id: str,
+        persona_id: Optional[str],
+        sent: bool,
+        reason_code: str,
+    ) -> bool:
+        """Persist then report one privacy-safe outcome receipt.
+
+        The pending row is removed only for an applied/duplicate acknowledgement.
+        Overflow is returned as an explicit failure (never a silent discard).
+        """
+        if not self._companion_enabled():
+            return False
+        if not isinstance(session, dict):
+            return False
+        event_id = _clean_text(event_id)
+        umo = _clean_text(umo)
+        if not event_id or not umo:
+            return False
+        receipt = {
+            "event_id": event_id,
+            "umo": umo,
+            "persona_id": _clean_text(persona_id) or None,
+            "sent": sent is True,
+            "reason_code": _clean_text(reason_code),
+        }
+        if not self._remember_attempt_receipt(session, receipt):
+            return False
+        stored = session.get("companion_attempt_receipt_pending", {}).get(event_id)
+        if stored is not None:
+            # A previously unacknowledged event retains its original fields and
+            # is retried rather than being replaced by caller-supplied values.
+            stored_receipt = self._clean_attempt_receipt_item(stored, umo)
+            if stored_receipt is None:
+                return False
+            if stored_receipt != receipt:
+                receipt = stored_receipt
+        self._save_state()
+        result = await self._report_attempt_outcome(
+            receipt["umo"],
+            event_id=event_id,
+            persona_id=receipt["persona_id"],
+            sent=receipt["sent"],
+            reason_code=receipt["reason_code"],
+        )
+        self._mark_attempt_receipt_retryable(session, event_id, result.get("retryable"))
+        if result.get("ok") is True:
+            pending = session.get("companion_attempt_receipt_pending")
+            if isinstance(pending, dict):
+                pending.pop(event_id, None)
+                if not pending:
+                    session.pop("companion_attempt_receipt_pending", None)
+            return True
+        return False
+
+    async def _flush_attempt_outcomes(self, session: Dict) -> bool:
+        """Retry original receipts only; never regenerate or resend messages."""
+        if not self._companion_enabled() or not isinstance(session, dict):
+            return False
+        pending = session.get("companion_attempt_receipt_pending")
+        if not isinstance(pending, dict) or not pending:
+            return False
+        for event_id, raw in list(pending.items()):
+            receipt = self._clean_attempt_receipt_item(raw)
+            if receipt is None or raw.get("retryable") is False:
+                continue
+            result = await self._report_attempt_outcome(
+                receipt["umo"],
+                event_id=receipt["event_id"],
+                persona_id=receipt["persona_id"],
+                sent=receipt["sent"],
+                reason_code=receipt["reason_code"],
+            )
+            self._mark_attempt_receipt_retryable(
+                session, event_id, result.get("retryable")
+            )
+            if result.get("ok") is True:
+                pending.pop(event_id, None)
+                attempts = session.get("proactive_attempt_pending")
+                if isinstance(attempts, dict):
+                    attempts.pop(event_id, None)
+        if not pending:
+            session.pop("companion_attempt_receipt_pending", None)
+        self._save_state()
+        return not pending

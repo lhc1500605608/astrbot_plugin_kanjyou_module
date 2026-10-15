@@ -117,8 +117,8 @@ def _install_star(plugin, star, name="astrbot_plugin_tcompanion_core", activated
 
 def _enable(plugin, **overrides):
     plugin.config["companion_enabled"] = True
-    plugin.config["private_whitelist"] = ["u1"]
-    plugin.config["group_whitelist"] = ["g1"]
+    plugin.config["private_whitelist"] = [plugin._whitelist_entry("u1", "aiocqhttp")]
+    plugin.config["group_whitelist"] = [plugin._whitelist_entry("g1", "aiocqhttp", kind="group")]
     for key, value in overrides.items():
         plugin.config[key] = value
 
@@ -138,8 +138,13 @@ def _event(message_id="", umo="aiocqhttp:private:u1", user_id="u1", group_id="")
 
 def _session(**overrides):
     session = {
-        "session_key": "private:u1",
+        "session_key": "private:aiocqhttp:private:u1",
         "unified_msg_origin": "aiocqhttp:private:u1",
+        "identity": {
+            "platform": "aiocqhttp",
+            "native_id": "u1",
+            "sender_id": "u1",
+        },
         "mood": 70.0,
         "companion_cold_streak": 0,
         "companion_positive_seen": False,
@@ -357,7 +362,12 @@ def test_inbound_inside_reply_window_only_books_valued_reply(plugin):
     )
     # 「谢谢你」同时命中 gratitude，但落在回复窗口内 -> 只结算 valued_reply。
     decided = plugin._collect_inbound_emotion_event(
-        "private:u1", session, "谢谢你", _event("m1"), "umo", send_ts + 60
+        "private:aiocqhttp:private:u1",
+        session,
+        "谢谢你",
+        _event("m1"),
+        "umo",
+        send_ts + 60,
     )
     assert decided == (
         "valued_reply",
@@ -374,7 +384,12 @@ def test_inbound_outside_window_uses_keyword(plugin):
         companion_receipt_pending={"send_ts": send_ts, "umo": "umo"}
     )
     decided = plugin._collect_inbound_emotion_event(
-        "private:u1", session, "谢谢你", _event("m2"), "umo", send_ts + 99999
+        "private:aiocqhttp:private:u1",
+        session,
+        "谢谢你",
+        _event("m2"),
+        "umo",
+        send_ts + 99999,
     )
     assert decided == ("gratitude", "msg:m2", "kanjyou:keyword")
 
@@ -383,16 +398,26 @@ def test_inbound_dedupe_key_fallback_without_message_id(plugin):
     _enable(plugin)
     session = _session()
     decided = plugin._collect_inbound_emotion_event(
-        "private:u1", session, "谢谢你", _event(""), "aiocqhttp:private:u1", 1234.9
+        "private:aiocqhttp:private:u1",
+        session,
+        "谢谢你",
+        _event(""),
+        "aiocqhttp:private:u1",
+        1234.9,
     )
     assert decided[1] == "msg:aiocqhttp:private:u1:1234"
 
 
 def test_inbound_group_is_isolated(plugin):
     _enable(plugin)
-    session = _session(session_key="group:g1")
+    session = _session(session_key="group:aiocqhttp:group:g1")
     decided = plugin._collect_inbound_emotion_event(
-        "group:g1", session, "谢谢你", _event("m3", group_id="g1"), "umo", 1.0
+        "group:aiocqhttp:group:g1",
+        session,
+        "谢谢你",
+        _event("m3", group_id="g1"),
+        "umo",
+        1.0,
     )
     assert decided is None
 
@@ -412,7 +437,7 @@ def test_disabled_emotion_events_short_circuit(plugin):
     session = _session()
     assert (
         plugin._collect_inbound_emotion_event(
-            "private:u1", session, "谢谢你", _event("m5"), "umo", 1.0
+            "private:aiocqhttp:private:u1", session, "谢谢你", _event("m5"), "umo", 1.0
         )
         is None
     )
@@ -448,7 +473,7 @@ def test_group_receipt_is_never_recorded(plugin):
     _enable(plugin)
     adapter = _RecordingAdapter()
     plugin._companion_adapter_override = adapter
-    session = _session(session_key="group:g1")
+    session = _session(session_key="group:aiocqhttp:group:g1")
     asyncio.run(plugin._begin_proactive_receipt(session, "aiocqhttp:group:g1", 1000.0))
     assert not session.get("companion_receipt_pending")
     assert (
@@ -494,10 +519,10 @@ def test_persona_style_adjust_maps_length_and_mood(plugin):
 def test_expression_merge_keeps_mode_and_bounds_total(plugin):
     _enable(plugin)
     expression = plugin._companion_expression(
-        {"expression": EMOTION_CONTEXT["expression"]}, "private:u1"
+        {"expression": EMOTION_CONTEXT["expression"]}, "private:aiocqhttp:private:u1"
     )
     merged = plugin._expression_style_merge(
-        expression, "低落", _session(mood=100.0), "private:u1"
+        expression, "低落", _session(mood=100.0), "private:aiocqhttp:private:u1"
     )
     assert merged["mode"] == "回避"
     assert merged["warmth"] == 0.35
@@ -526,12 +551,12 @@ def test_expression_group_suppression_and_warmth_cap(plugin):
                 },
             }
         },
-        "group:g1",
+        "group:aiocqhttp:group:g1",
     )
     assert expression["mode"] == "放松"
     assert expression["group_suppressed"] is True
     merged = plugin._expression_style_merge(
-        expression, "日常", _session(mood=100.0), "group:g1"
+        expression, "日常", _session(mood=100.0), "group:aiocqhttp:group:g1"
     )
     assert merged["mode"] == "放松"
     assert merged["warmth"] <= GROUP_WARMTH_CAP
@@ -541,7 +566,7 @@ def test_expression_unknown_mode_degrades(plugin):
     _enable(plugin)
     assert (
         plugin._companion_expression(
-            {"expression": {"mode": "未知档"}}, "private:u1"
+            {"expression": {"mode": "未知档"}}, "private:aiocqhttp:private:u1"
         )
         is None
     )
@@ -549,8 +574,8 @@ def test_expression_unknown_mode_degrades(plugin):
 
 def test_emotion_state_text_suppressed_in_group(plugin):
     ctx = {"emotion_state": EMOTION_CONTEXT["emotion_state"]}
-    assert plugin._companion_emotion_state_text(ctx, "private:u1")
-    assert plugin._companion_emotion_state_text(ctx, "group:g1") == ""
+    assert plugin._companion_emotion_state_text(ctx, "private:aiocqhttp:private:u1")
+    assert plugin._companion_emotion_state_text(ctx, "group:aiocqhttp:group:g1") == ""
 
 
 def test_expression_length_range_shrinks_on_negative_bias(plugin):
@@ -580,7 +605,9 @@ def test_generation_injects_emotion_and_expression(plugin):
     _mock_llm(plugin, captured)
     session = _session()
     text = asyncio.run(
-        plugin._generate_proactive_text("aiocqhttp:private:u1", "private:u1", 3600, session)
+        plugin._generate_proactive_text(
+            "aiocqhttp:private:u1", "private:aiocqhttp:private:u1", 3600, session
+        )
     )
     assert text
     prompt = captured["prompt"]
@@ -601,7 +628,7 @@ def test_generation_uses_placeholders_when_template_has_them(plugin):
     _mock_llm(plugin, captured)
     asyncio.run(
         plugin._generate_proactive_text(
-            "aiocqhttp:private:u1", "private:u1", 3600, _session()
+            "aiocqhttp:private:u1", "private:aiocqhttp:private:u1", 3600, _session()
         )
     )
     prompt = captured["prompt"]
@@ -616,7 +643,9 @@ def test_generation_group_hard_suppresses_intimate_mode(plugin):
     captured = {}
     _mock_llm(plugin, captured)
     asyncio.run(
-        plugin._generate_proactive_text("aiocqhttp:group:g1", "group:g1", 3600, _session())
+        plugin._generate_proactive_text(
+            "aiocqhttp:group:g1", "group:aiocqhttp:group:g1", 3600, _session()
+        )
     )
     prompt = captured["prompt"]
     assert "表达档位：放松" in prompt
@@ -632,7 +661,9 @@ def test_generation_without_expression_is_v240_equivalent(plugin):
     _mock_llm(plugin, captured)
     session = _session()
     asyncio.run(
-        plugin._generate_proactive_text("aiocqhttp:private:u1", "private:u1", 3600, session)
+        plugin._generate_proactive_text(
+            "aiocqhttp:private:u1", "private:aiocqhttp:private:u1", 3600, session
+        )
     )
     prompt = captured["prompt"]
     assert "【情绪与表达】" not in prompt

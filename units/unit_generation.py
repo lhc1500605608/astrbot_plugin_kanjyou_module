@@ -166,7 +166,10 @@ class PolicyGenerationUnitsMixin:
                 open_thread_followup=open_thread_text,
                 group_atmosphere=group_atmosphere,
             )
-            if self._persona_state_enabled() and "{persona_state_block}" not in prompt_tpl:
+            if (
+                self._persona_state_enabled()
+                and "{persona_state_block}" not in prompt_tpl
+            ):
                 if "{persona_state}" not in prompt_tpl:
                     prompt += f"\n{state_block}"
                 elif "{persona_state_note}" not in prompt_tpl and state_note:
@@ -218,7 +221,8 @@ class PolicyGenerationUnitsMixin:
                 self._debug("generate repetitive text, use fallback")
                 return fallback
             self._debug(
-                f"generate ok provider={provider_id} session={session_key} text={cleaned}"
+                f"generate ok provider={provider_id} session={session_key} "
+                f"chars={len(cleaned)}"
             )
             if selected_thread and isinstance(session, dict):
                 # 只有真正生成成功才登记回执候选；降级/fallback 不计入续接。
@@ -230,9 +234,11 @@ class PolicyGenerationUnitsMixin:
         except Exception as exc:
             self._log_error(
                 "generate_proactive_failed",
-                f"generate proactive text failed: {exc}",
+                f"generate proactive text failed: {type(exc).__name__}",
             )
-            self._debug(f"generate failed session={session_key} err={exc}")
+            self._debug(
+                f"generate failed session={session_key} err_type={type(exc).__name__}"
+            )
             return fallback
 
     def _lite_llm_enabled(self) -> bool:
@@ -472,7 +478,7 @@ class PolicyGenerationUnitsMixin:
                 "lite llm unavailable on this adapter/provider response type; fallback engaged"
             )
             return
-        self._debug(f"lite llm failed: {message}")
+        self._debug(f"lite llm failed reason_type={type(exc).__name__}")
 
     async def _main_llm_text(self, unified_msg_origin: str, prompt: str) -> str:
         provider_id = await self._resolve_main_provider_id(unified_msg_origin)
@@ -491,7 +497,7 @@ class PolicyGenerationUnitsMixin:
             return text
         except Exception as exc:
             self._quality_bump("main_rewrite_fallback")
-            self._debug(f"main llm text failed: {exc}")
+            self._debug(f"main llm text failed err_type={type(exc).__name__}")
             return ""
 
     async def _maybe_refine_proactive_prompt_with_lite(
@@ -790,7 +796,7 @@ class PolicyGenerationUnitsMixin:
                 )
                 return True
         except Exception as exc:
-            self._debug(f"text_to_image failed: {exc}")
+            self._debug(f"text_to_image failed err_type={type(exc).__name__}")
             return False
 
     async def _holiday_intent_from_lite_llm(
@@ -857,7 +863,11 @@ class PolicyGenerationUnitsMixin:
         ):
             return ""
         country = (
-            str(self.config.get("holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]))
+            str(
+                self.config.get(
+                    "holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]
+                )
+            )
             .upper()
             .strip()
         )
@@ -885,7 +895,8 @@ class PolicyGenerationUnitsMixin:
             1.0,
             float(
                 self.config.get(
-                    "holiday_api_timeout_sec", DEFAULT_CONFIG_FLAT["holiday_api_timeout_sec"]
+                    "holiday_api_timeout_sec",
+                    DEFAULT_CONFIG_FLAT["holiday_api_timeout_sec"],
                 )
             ),
         )
@@ -947,7 +958,9 @@ class PolicyGenerationUnitsMixin:
             ) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            self._debug(f"holiday api failed, fallback to builtin: {exc}")
+            self._debug(
+                f"holiday api failed, fallback to builtin err_type={type(exc).__name__}"
+            )
             return ""
 
         if not isinstance(payload, dict) or int(payload.get("code", -1)) != 0:
@@ -997,7 +1010,7 @@ class PolicyGenerationUnitsMixin:
             ) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            self._debug(f"holiday year api failed: {exc}")
+            self._debug(f"holiday year api failed err_type={type(exc).__name__}")
             return None
         if not isinstance(payload, dict) or int(payload.get("code", -1)) != 0:
             return None
@@ -1217,7 +1230,7 @@ class PolicyGenerationUnitsMixin:
                 raise
             except Exception as exc:
                 self._debug(
-                    f"dialogue wait timer failed session={session_key} err={exc}"
+                    f"dialogue wait timer failed session={session_key} err_type={type(exc).__name__}"
                 )
             finally:
                 cur = self._dialogue_wait_tasks.get(session_key)
@@ -1241,7 +1254,8 @@ class PolicyGenerationUnitsMixin:
         if not merged_text or not umo:
             return
         self._debug(
-            f"dialogue wait flush timeout session={session_key} merged={merged_text}"
+            f"dialogue wait flush timeout session={session_key} "
+            f"chars={len(merged_text)}"
         )
         await self._handle_wait_merged_text(
             user_text=merged_text,
@@ -1281,7 +1295,9 @@ class PolicyGenerationUnitsMixin:
             await self.context.send_message(unified_msg_origin, [Plain(msg)])
             return
         except Exception as exc:
-            self._debug(f"dialogue wait send fallback failed: {exc}")
+            self._debug(
+                f"dialogue wait send fallback failed err_type={type(exc).__name__}"
+            )
 
     async def _maybe_reply_shallow_query_with_wait(self, event: AstrMessageEvent):
         # Safety guard: this plugin no longer handles normal dialogue replies.
@@ -1296,7 +1312,7 @@ class PolicyGenerationUnitsMixin:
             session_key = self._session_key(event)
             self._clear_wait_buffer_for_session(session_key)
             self._debug(
-                f"dialogue wait bypass command session={session_key or '-'} text={text}"
+                f"dialogue wait bypass command session={session_key or '-'} chars={len(text)}"
             )
             return
         if not self._dialogue_wait_enabled():
@@ -1514,7 +1530,11 @@ class PolicyGenerationUnitsMixin:
         ):
             return False
         country = (
-            str(self.config.get("holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]))
+            str(
+                self.config.get(
+                    "holiday_country", DEFAULT_CONFIG_FLAT["holiday_country"]
+                )
+            )
             .upper()
             .strip()
         )
@@ -1795,8 +1815,7 @@ class PolicyGenerationUnitsMixin:
         if not isinstance(when, dict) or not when:
             return True
         return all(
-            self._persona_condition_item(key, value, ctx)
-            for key, value in when.items()
+            self._persona_condition_item(key, value, ctx) for key, value in when.items()
         )
 
     def _persona_condition_item(self, key: str, value, ctx: Dict) -> bool:
@@ -1807,7 +1826,9 @@ class PolicyGenerationUnitsMixin:
         if key == "important_topic":
             return bool(ctx.get("important_topic")) == bool(value)
         if key == "low_persist":
-            reached = ctx.get("low_rounds", 0) >= self._persona_state_low_persist_rounds()
+            reached = (
+                ctx.get("low_rounds", 0) >= self._persona_state_low_persist_rounds()
+            )
             return reached == bool(value)
         if key == "no_reply_streak_gte":
             try:
@@ -1991,45 +2012,100 @@ class PolicyGenerationUnitsMixin:
         return False
 
     def _is_whitelisted(self, event: AstrMessageEvent) -> bool:
-        msg_obj = getattr(event, "message_obj", None)
-        if msg_obj is None:
+        identity = self._event_identity(event)
+        if not identity:
             return False
+        entry = self._whitelist_entry(identity["native_id"], identity["platform"], identity["kind"])
+        return entry in self.config.get(identity["kind"] + "_whitelist", [])
 
-        group_id = str(getattr(msg_obj, "group_id", "") or "")
-        sender_id = str(
-            getattr(getattr(msg_obj, "sender", None), "user_id", "")
-            or event.get_sender_id()
-        )
+    def _whitelist_entry(self, native_id: str, platform: str, kind: str = "private") -> str:
+        if kind not in ("private", "group") or not platform or not native_id:
+            return ""
+        return json.dumps({"kind": kind, "platform": platform, "id": native_id}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
-        if group_id:
-            return group_id in self.config["group_whitelist"]
-        return sender_id in self.config["private_whitelist"]
+    def _whitelist_entry_from_string(self, value: object) -> Optional[str]:
+        try:
+            obj = json.loads(value) if isinstance(value, str) else None
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(obj, dict) or set(obj) != {"kind", "platform", "id"}:
+            return None
+        if any(not isinstance(obj[k], str) or not obj[k] for k in obj):
+            return None
+        return self._whitelist_entry(obj["id"], obj["platform"], obj["kind"]) or None
+
+    def _parse_umo(self, value: object) -> Optional[Dict[str, str]]:
+        # AstrBot MessageSession.from_str splits only twice: thread IDs may contain ':'.
+        if not isinstance(value, str) or value != value.strip():
+            return None
+        parts = value.split(":", 2)
+        if len(parts) != 3 or not all(parts):
+            return None
+        kinds = {"FriendMessage": "private", "GroupMessage": "group", "private": "private", "group": "group"}
+        kind = kinds.get(parts[1])
+        if not kind:
+            return None
+        return {"umo": value, "platform": parts[0], "kind": kind, "thread_id": parts[2]}
+
+    def _event_identity(self, event: AstrMessageEvent) -> Optional[Dict[str, str]]:
+        identity = self._parse_umo(getattr(event, "unified_msg_origin", None))
+        msg = getattr(event, "message_obj", None)
+        if not identity or msg is None:
+            return None
+        group = str(getattr(msg, "group_id", "") or "")
+        if identity["kind"] != ("group" if group else "private"):
+            return None
+        native = group or self._event_sender_id(event)
+        if not native:
+            return None
+        return {**identity, "native_id": native}
+
+    def _platform_instance_id(self, event: AstrMessageEvent) -> str:
+        # UMO is the authoritative instance ID. get_platform_name is an adapter name.
+        identity = self._event_identity(event)
+        return identity["platform"] if identity else ""
+
+    def _platform_instance_from_umo(self, umo: str) -> str:
+        parsed = self._parse_umo(umo)
+        return parsed["platform"] if parsed else ""
+
+    def _parse_canonical_session_key(self, session_key: str) -> Optional[Dict[str, str]]:
+        if not isinstance(session_key, str):
+            return None
+        kind, sep, umo = session_key.partition(":")
+        parsed = self._parse_umo(umo)
+        return parsed if sep and parsed and kind == parsed["kind"] else None
+
+    def _session_identity(self, key: str, session: Dict) -> Optional[Dict[str, str]]:
+        parsed = self._parse_canonical_session_key(key)
+        metadata = session.get("identity")
+        if (not parsed or session.get("session_key") != key
+                or session.get("unified_msg_origin") != parsed["umo"]
+                or not isinstance(metadata, dict)
+                or metadata.get("platform") != parsed["platform"]
+                or not isinstance(metadata.get("native_id"), str)
+                or not metadata["native_id"]):
+            return None
+        return {**parsed, "native_id": metadata["native_id"]}
+
+    def _session_state_whitelisted(self, session_key: str, session: Dict) -> bool:
+        identity = self._session_identity(session_key, session)
+        if not identity:
+            return False
+        entry = self._whitelist_entry(identity["native_id"], identity["platform"], identity["kind"])
+        return entry in self.config.get(identity["kind"] + "_whitelist", [])
 
     def _is_session_whitelisted(self, session_key: str) -> bool:
-        key = str(session_key or "").strip()
-        if not key:
-            return False
-        if key.startswith("group:"):
-            gid = key.split(":", 1)[1]
-            return gid in self.config.get("group_whitelist", [])
-        if key.startswith("private:"):
-            uid = key.split(":", 1)[1]
-            return uid in self.config.get("private_whitelist", [])
-        return False
+        session = self._sessions.get(session_key)
+        return isinstance(session, dict) and self._session_state_whitelisted(session_key, session)
 
     def _session_key(self, event: AstrMessageEvent) -> str:
-        msg_obj = getattr(event, "message_obj", None)
-        if msg_obj is None:
-            return ""
+        identity = self._event_identity(event)
+        return identity["kind"] + ":" + identity["umo"] if identity else ""
 
-        group_id = str(getattr(msg_obj, "group_id", "") or "")
-        sender_id = str(
-            getattr(getattr(msg_obj, "sender", None), "user_id", "")
-            or event.get_sender_id()
-        )
-        if group_id:
-            return f"group:{group_id}"
-        return f"private:{sender_id}"
+    def _canonical_umo(self, event: AstrMessageEvent) -> str:
+        identity = self._event_identity(event)
+        return identity["umo"] if identity else ""
 
     def _event_sender_id(self, event: AstrMessageEvent) -> str:
         """群内成员局部 id（用于 companion 局部成员键，绝不外发原文）。"""
@@ -2064,7 +2140,7 @@ class PolicyGenerationUnitsMixin:
                     return val.strip()
             return str(persona)
         except Exception as exc:
-            self._debug(f"resolve persona failed id={persona_id} err={exc}")
+            self._debug(f"resolve persona failed err_type={type(exc).__name__}")
             return f"人格ID: {persona_id}"
 
     def _completion_to_text(self, completion: object) -> str:

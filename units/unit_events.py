@@ -33,14 +33,16 @@ class EventUnitsMixin:
             session_key = self._session_key(event)
             await self._touch_session_for_command(event)
             self._debug(
-                f"skip decision env by command session={session_key or '-'} text={text}"
+                f"skip decision env by command session={session_key or '-'} "
+                f"chars={len(text or '')}"
             )
             return
         if text and self._is_command_like_text(text):
             session_key = self._session_key(event)
             await self._touch_session_for_command(event)
             self._debug(
-                f"skip plugin pipeline by external command session={session_key or '-'} text={text}"
+                f"skip plugin pipeline by external command "
+                f"session={session_key or '-'} chars={len(text or '')}"
             )
             return
 
@@ -56,14 +58,16 @@ class EventUnitsMixin:
         async with self._lock:
             s = self._get_or_create_session(event)
             self._ensure_session_shape(s)
-            umo = str(s.get("unified_msg_origin") or umo)
+            self._sessions[session_key] = s
             # Phase 2-A: settle at most one emotion event for this inbound message.
             try:
                 decided = self._collect_inbound_emotion_event(
                     session_key, s, text, event, umo, now_ts
                 )
             except Exception as exc:
-                self._debug(f"emotion detect failed session={session_key} err={exc}")
+                self._debug(
+                    f"emotion detect failed session={session_key} err_type={type(exc).__name__}"
+                )
                 decided = None
             # Phase 2-B: extract at most one unfinished item / settle a completion.
             try:
@@ -71,13 +75,17 @@ class EventUnitsMixin:
                     session_key, text, umo
                 )
             except Exception as exc:
-                self._debug(f"open thread detect failed session={session_key} err={exc}")
+                self._debug(
+                    f"open thread detect failed session={session_key} err_type={type(exc).__name__}"
+                )
                 open_thread_decision = None
             # TMEAAA-580: 在清理待回应状态前，捕获"用户这条是否在回应刚发的主动消息"。
             try:
                 self._arm_reply_context(session_key, s, now_ts)
             except Exception as exc:
-                self._debug(f"arm reply context failed session={session_key} err={exc}")
+                self._debug(
+                    f"arm reply context failed session={session_key} err_type={type(exc).__name__}"
+                )
             self._consume_session_mood_by_dialogue(s, now_ts)
             s["last_human_at"] = now_ts
             s["last_interaction_at"] = now_ts

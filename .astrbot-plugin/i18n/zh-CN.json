@@ -38,8 +38,9 @@
     "heading": "控制",
     "reload": "重载",
     "master_switch": {
-      "header": "总开关",
-      "enabled": "启用"
+      "header": "闲时主动问候",
+      "enabled": "主动轮询",
+      "scope": "关闭后仍处理消息合并和被动消息；完全停用请到插件管理。"
     },
     "manual_test": {
       "header": "手动测试",
@@ -51,13 +52,15 @@
       "header": "白名单 - 私聊",
       "placeholder": "用户 ID",
       "add": "添加",
-      "remove": "移除"
+      "remove": "移除",
+      "platform_placeholder": "平台实例 ID（区分同适配器的多个机器人）"
     },
     "whitelist_group": {
       "header": "白名单 - 群聊",
       "placeholder": "群组 ID",
       "add": "添加",
-      "remove": "移除"
+      "remove": "移除",
+      "platform_placeholder": "平台实例 ID（区分同适配器的多个机器人）"
     },
     "dnd": {
       "header": "免打扰",

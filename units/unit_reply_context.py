@@ -148,5 +148,5 @@ class ReplyContextUnitsMixin:
                 f"inject reply context session={session_key} group={is_group} "
                 f"chars={len(block)}"
             )
-        except Exception as exc:
-            self._debug(f"inject reply context failed err={exc}")
+        except Exception:
+            self._debug("inject reply context failed err_type=unknown")

@@ -248,8 +248,8 @@ class OpenThreadUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"open thread adapter init failed: {exc}")
+        except Exception:
+            self._debug("open thread adapter init failed")
             return False
         try:
             result = await asyncio.wait_for(
@@ -266,8 +266,10 @@ class OpenThreadUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"open thread record timeout umo={umo} kind={kind}")
             return False
-        except Exception as exc:
-            self._debug(f"open thread record failed umo={umo} kind={kind} err={exc}")
+        except Exception:
+            self._debug(
+                f"open thread record failed umo={umo} kind={kind} err_type=unknown"
+            )
             return False
         return isinstance(result, dict)
 
@@ -276,8 +278,8 @@ class OpenThreadUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"open thread close adapter init failed: {exc}")
+        except Exception:
+            self._debug("open thread close adapter init failed")
             return False
         try:
             result = await asyncio.wait_for(
@@ -287,8 +289,8 @@ class OpenThreadUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"open thread close timeout umo={umo}")
             return False
-        except Exception as exc:
-            self._debug(f"open thread close failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"open thread close failed umo={umo} err_type=unknown")
             return False
         return isinstance(result, dict)
 
@@ -297,8 +299,8 @@ class OpenThreadUnitsMixin:
             return False
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"open thread followup adapter init failed: {exc}")
+        except Exception:
+            self._debug("open thread followup adapter init failed")
             return False
         try:
             result = await asyncio.wait_for(
@@ -308,8 +310,8 @@ class OpenThreadUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"open thread followup timeout umo={umo}")
             return False
-        except Exception as exc:
-            self._debug(f"open thread followup failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"open thread followup failed umo={umo} err_type=unknown")
             return False
         return isinstance(result, dict)
 
@@ -340,8 +342,8 @@ class OpenThreadUnitsMixin:
             return ""
         try:
             adapter = self._companion_adapter()
-        except Exception as exc:
-            self._debug(f"open thread list adapter init failed: {exc}")
+        except Exception:
+            self._debug("open thread list adapter init failed")
             return ""
         try:
             rows = await asyncio.wait_for(
@@ -351,8 +353,8 @@ class OpenThreadUnitsMixin:
         except asyncio.TimeoutError:
             self._debug(f"open thread list timeout umo={umo}")
             return ""
-        except Exception as exc:
-            self._debug(f"open thread list failed umo={umo} err={exc}")
+        except Exception:
+            self._debug(f"open thread list failed umo={umo} err_type=unknown")
             return ""
         if not isinstance(rows, (list, tuple)):
             return ""
@@ -395,8 +397,8 @@ class OpenThreadUnitsMixin:
             return await self._record_companion_open_thread(
                 umo, source="kanjyou:assistant", **item
             )
-        except Exception as exc:
-            self._debug(f"open thread assistant topic failed: {exc}")
+        except Exception:
+            self._debug("open thread assistant topic failed")
             return False
 
     # ------------------------------------------------------------------ #

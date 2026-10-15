@@ -38,8 +38,9 @@
     "heading": "Control",
     "reload": "Reload",
     "master_switch": {
-      "header": "Master Switch",
-      "enabled": "Enabled"
+      "header": "Proactive greetings",
+      "enabled": "Proactive polling",
+      "scope": "Disabling polling keeps merging and passive processing active. Disable the plugin in plugin management to stop all processing."
     },
     "manual_test": {
       "header": "Manual Test",
@@ -51,13 +52,15 @@
       "header": "Whitelist - Private",
       "placeholder": "User ID",
       "add": "Add",
-      "remove": "Remove"
+      "remove": "Remove",
+      "platform_placeholder": "Platform instance ID (unique per bot)"
     },
     "whitelist_group": {
       "header": "Whitelist - Group",
       "placeholder": "Group ID",
       "add": "Add",
-      "remove": "Remove"
+      "remove": "Remove",
+      "platform_placeholder": "Platform instance ID (unique per bot)"
     },
     "dnd": {
       "header": "Do Not Disturb",
